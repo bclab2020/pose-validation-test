@@ -55,11 +55,29 @@
     let isRunning = false;
     let logData = [];
     let frameCount = 0;
-    
-    // 【修正点1】デフォルトをアウトカメラ（environment）に変更
     let currentFacingMode = 'environment'; 
 
-    logData.push(["Frame", "Timestamp_ms", "Model", "InferenceTime_ms", "Score_Average", "Nose_X", "Nose_Y"]);
+    // 全33ポイントの名称リスト（番号と一致）
+    const KEYPOINT_NAMES = [
+        "nose", "left_eye_inner", "left_eye", "left_eye_outer", 
+        "right_eye_inner", "right_eye", "right_eye_outer", 
+        "left_ear", "right_ear", "mouth_left", "mouth_right", 
+        "left_shoulder", "right_shoulder", "left_elbow", "right_elbow", 
+        "left_wrist", "right_wrist", "left_pinky", "right_pinky", 
+        "left_index", "right_index", "left_thumb", "right_thumb", 
+        "left_hip", "right_hip", "left_knee", "right_knee", 
+        "left_ankle", "right_ankle", "left_heel", "right_heel", 
+        "left_foot_index", "right_foot_index"
+    ];
+
+    // CSVヘッダーの動的生成
+    let csvHeaders = ["Frame", "Timestamp_ms", "Model", "InferenceTime_ms", "Score_Average"];
+    KEYPOINT_NAMES.forEach((name, index) => {
+        csvHeaders.push(`${index}_${name}_X`);
+        csvHeaders.push(`${index}_${name}_Y`);
+        csvHeaders.push(`${index}_${name}_Score`); // その関節が隠れていないかの信頼度
+    });
+    logData.push(csvHeaders);
 
     async function initModels() {
         await tf.ready();
@@ -84,7 +102,6 @@
             video.srcObject = null; 
         }
 
-        // 【修正点2】厳格な制約（exact）を外し、スマホ側でエラーが起きにくいように緩和
         let videoConstraints = {
             width: { ideal: 640 },
             height: { ideal: 480 },
@@ -96,7 +113,7 @@
             video.srcObject = stream;
         } catch (err) {
             console.error("カメラの取得に失敗しました:", err);
-            alert("カメラを起動できませんでした。ブラウザのカメラ許可設定をご確認ください。");
+            alert("カメラを起動できませんでした。");
             return Promise.reject(err);
         }
 
@@ -120,7 +137,6 @@
     document.getElementById('startBtn').addEventListener('click', async () => {
         try {
             await setupCamera();
-            
             document.getElementById('startBtn').disabled = true;
             document.getElementById('switchBtn').disabled = false;
             document.getElementById('stopBtn').disabled = false;
@@ -136,18 +152,11 @@
 
     document.getElementById('switchBtn').addEventListener('click', async () => {
         currentFacingMode = (currentFacingMode === 'environment') ? 'user' : 'environment';
-        
-        // ボタンのテキストを現在の状態に合わせて変更
         document.getElementById('switchBtn').innerText = 
             (currentFacingMode === 'environment') ? "🔄 インカメラに切替" : "🔄 アウトカメラに切替";
-            
         document.getElementById('switchBtn').disabled = true;
         
-        try {
-            await setupCamera();
-        } catch(e) {
-            alert("カメラの切り替えに失敗しました。");
-        }
+        try { await setupCamera(); } catch(e) { alert("切り替え失敗"); }
         
         document.getElementById('switchBtn').disabled = false;
     });
@@ -194,16 +203,33 @@
         }
     }
 
+    // 全ポイントのデータをCSV配列に格納する処理
     function logResults(poses, modelName, inferenceTime, timestamp) {
-        let avgScore = 0; let noseX = ""; let noseY = "";
+        let rowData = [frameCount, timestamp.toFixed(1), modelName, inferenceTime.toFixed(1)];
+        
         if (poses.length > 0) {
             const keypoints = poses[0].keypoints;
             const totalScore = keypoints.reduce((sum, kp) => sum + (kp.score || 0), 0);
-            avgScore = totalScore / keypoints.length;
-            const nose = keypoints.find(kp => kp.name === 'nose');
-            if (nose) { noseX = nose.x.toFixed(2); noseY = nose.y.toFixed(2); }
+            const avgScore = totalScore / keypoints.length;
+            rowData.push(avgScore.toFixed(3));
+
+            // チャート名（KEYPOINT_NAMES）と照合してデータを挿入
+            KEYPOINT_NAMES.forEach(targetName => {
+                const kp = keypoints.find(k => k.name === targetName);
+                if (kp) {
+                    rowData.push(kp.x.toFixed(2), kp.y.toFixed(2), (kp.score || 0).toFixed(3));
+                } else {
+                    // そのモデルに該当部位が存在しない場合は空白セルにする
+                    rowData.push("", "", ""); 
+                }
+            });
+        } else {
+            // 人物が未検出のフレーム
+            rowData.push("0.000");
+            KEYPOINT_NAMES.forEach(() => rowData.push("", "", ""));
         }
-        logData.push([frameCount, timestamp.toFixed(1), modelName, inferenceTime.toFixed(1), avgScore.toFixed(3), noseX, noseY]);
+        
+        logData.push(rowData);
     }
 
     document.getElementById('stopBtn').addEventListener('click', () => {
