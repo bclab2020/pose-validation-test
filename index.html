@@ -42,7 +42,7 @@
     </div>
 </div>
 
-<video id="video" autoplay playsinline></video>
+<video id="video" autoplay playsinline muted></video>
 
 <script>
     const video = document.getElementById('video');
@@ -55,12 +55,10 @@
     let isRunning = false;
     let logData = [];
     let frameCount = 0;
-    let currentFacingMode = 'user'; // 初期状態はインカメラ
+    let currentFacingMode = 'user';
 
-    // CSVヘッダーの定義
     logData.push(["Frame", "Timestamp_ms", "Model", "InferenceTime_ms", "Score_Average", "Nose_X", "Nose_Y"]);
 
-    // 初期化関数（AIモデルの読み込み）
     async function initModels() {
         await tf.ready();
 
@@ -78,34 +76,48 @@
         document.getElementById('statsMN').innerHTML = "MoveNet (Lightning)<br>待機中";
     }
 
-    // カメラストリームの取得設定
     async function setupCamera() {
-        // すでにカメラが動いている場合は一度停止する
+        // 【修正1】前のカメラの接続を「完全に」断ち切る（iOS Safari対策）
         if (video.srcObject) {
             video.srcObject.getTracks().forEach(track => track.stop());
+            video.srcObject = null; 
         }
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { 
-                facingMode: currentFacingMode, 
-                width: 640, 
-                height: 480, 
-                frameRate: { ideal: 60, max: 60 } 
-            }
-        });
-        video.srcObject = stream;
+        // 【修正2】アウトカメラが拒否されないよう、FPSの強制を解除し、facingModeをスマホ向けに厳格化
+        let videoConstraints = {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: currentFacingMode === 'environment' ? { exact: 'environment' } : 'user'
+        };
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
+            video.srcObject = stream;
+        } catch (err) {
+            // 【修正3】exact指定で弾かれた場合（一部のAndroid等）のフォールバック（保険）処理
+            console.warn("カメラの厳格指定が弾かれたため、通常モードで再試行します", err);
+            videoConstraints.facingMode = currentFacingMode;
+            const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
+            video.srcObject = stream;
+        }
 
         return new Promise((resolve) => {
-            video.onloadedmetadata = () => {
-                canvasMP.width = video.videoWidth; canvasMP.height = video.videoHeight;
-                canvasMN.width = video.videoWidth; canvasMN.height = video.videoHeight;
-                video.play();
+            video.onloadeddata = async () => {
+                canvasMP.width = video.videoWidth || 640; 
+                canvasMP.height = video.videoHeight || 480;
+                canvasMN.width = video.videoWidth || 640; 
+                canvasMN.height = video.videoHeight || 480;
+                
+                try {
+                    await video.play();
+                } catch (e) {
+                    console.error("ビデオの再生に失敗しました:", e);
+                }
                 resolve();
             };
         });
     }
 
-    // 開始ボタンの処理
     document.getElementById('startBtn').addEventListener('click', async () => {
         try {
             await setupCamera();
@@ -116,7 +128,7 @@
             
             if (!isRunning) {
                 isRunning = true;
-                processFrame(); // 推論ループ開始
+                processFrame();
             }
         } catch (err) {
             alert("カメラの取得に失敗しました。");
@@ -124,24 +136,30 @@
         }
     });
 
-    // カメラ切替ボタンの処理
     document.getElementById('switchBtn').addEventListener('click', async () => {
-        // user(イン) なら environment(アウト) へ、逆なら user へ変更
+        const previousMode = currentFacingMode;
         currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
-        
-        // ボタンを一時無効化してカメラを再セットアップ
         document.getElementById('switchBtn').disabled = true;
-        await setupCamera();
+        
+        try {
+            await setupCamera();
+        } catch(e) {
+            alert("アウトカメラへの切り替えに対応していない端末です。");
+            currentFacingMode = previousMode; // エラー時は元のカメラに戻す
+        }
+        
         document.getElementById('switchBtn').disabled = false;
     });
 
-    // メインの推論ループ
     async function processFrame() {
         if (!isRunning) return;
         frameCount++;
         const currentTimestamp = performance.now();
 
+        ctxMP.clearRect(0, 0, canvasMP.width, canvasMP.height);
         ctxMP.drawImage(video, 0, 0, canvasMP.width, canvasMP.height);
+        
+        ctxMN.clearRect(0, 0, canvasMN.width, canvasMN.height);
         ctxMN.drawImage(video, 0, 0, canvasMN.width, canvasMN.height);
 
         const startMP = performance.now();
@@ -187,7 +205,6 @@
         logData.push([frameCount, timestamp.toFixed(1), modelName, inferenceTime.toFixed(1), avgScore.toFixed(3), noseX, noseY]);
     }
 
-    // 終了ボタンの処理
     document.getElementById('stopBtn').addEventListener('click', () => {
         isRunning = false;
         if(video.srcObject) {
