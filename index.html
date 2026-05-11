@@ -57,7 +57,6 @@
     let frameCount = 0;
     let currentFacingMode = 'environment'; 
 
-    // 全33ポイントの名称リスト（番号と一致）
     const KEYPOINT_NAMES = [
         "nose", "left_eye_inner", "left_eye", "left_eye_outer", 
         "right_eye_inner", "right_eye", "right_eye_outer", 
@@ -75,7 +74,7 @@
     KEYPOINT_NAMES.forEach((name, index) => {
         csvHeaders.push(`${index}_${name}_X`);
         csvHeaders.push(`${index}_${name}_Y`);
-        csvHeaders.push(`${index}_${name}_Score`); // その関節が隠れていないかの信頼度
+        csvHeaders.push(`${index}_${name}_Score`); 
     });
     logData.push(csvHeaders);
 
@@ -175,35 +174,72 @@
         const startMP = performance.now();
         const posesMP = await detectorMP.estimatePoses(video);
         const timeMP = performance.now() - startMP;
-        drawPoses(posesMP, ctxMP, 'red');
+        // 【修正】棒人間（接続線）を含めて描画
+        drawPosesWithSkeleton(posesMP, ctxMP, 'red', KEYPOINT_NAMES);
         logResults(posesMP, "MediaPipe", timeMP, currentTimestamp);
         document.getElementById('statsMP').innerHTML = `MediaPipe (BlazePose)<br>推論: ${timeMP.toFixed(1)} ms<br>FPS: ${(1000/timeMP).toFixed(1)}`;
 
         const startMN = performance.now();
         const posesMN = await detectorMN.estimatePoses(video);
         const timeMN = performance.now() - startMN;
-        drawPoses(posesMN, ctxMN, 'cyan');
+        // 【修正】MoveNet用の全ポイント対応チャートを使用して棒人間を描画
+        drawPosesWithSkeleton(posesMN, ctxMN, 'cyan', KEYPOINT_NAMES);
         logResults(posesMN, "MoveNet", timeMN, currentTimestamp);
         document.getElementById('statsMN').innerHTML = `MoveNet (Lightning)<br>推論: ${timeMN.toFixed(1)} ms<br>FPS: ${(1000/timeMN).toFixed(1)}`;
 
         requestAnimationFrame(processFrame);
     }
 
-    function drawPoses(poses, ctx, color) {
+    // 主要な関節の接続定義 (MediaPipeのポイント番号に準拠)
+    const POSE_CONNECTIONS = [
+        // 顔周り
+        [0, 1], [0, 4], [1, 2], [2, 3], [4, 5], [5, 6], [3, 7], [6, 8], [9, 10], 
+        // 胴体
+        [11, 12], [11, 23], [12, 24], [23, 24],
+        // 右腕
+        [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20],
+        // 左腕
+        [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19],
+        // 右脚
+        [24, 26], [26, 28], [28, 30], [28, 32], [30, 32],
+        // 左脚
+        [23, 25], [25, 27], [27, 29], [27, 31], [29, 31]
+    ];
+
+    // 棒人間（骨格と関節ポイント）を描画する関数
+    function drawPosesWithSkeleton(poses, ctx, color, keypointNameList) {
         if (poses.length > 0) {
             const keypoints = poses[0].keypoints;
             ctx.fillStyle = color;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+
+            // 主要な関節の接続（骨格）を描画
+            POSE_CONNECTIONS.forEach(connection => {
+                const k1Name = keypointNameList[connection[0]];
+                const k2Name = keypointNameList[connection[1]];
+                const k1 = keypoints.find(kp => kp.name === k1Name);
+                const k2 = keypoints.find(kp => kp.name === k2Name);
+
+                if (k1 && k2 && k1.score > 0.3 && k2.score > 0.3) {
+                    ctx.beginPath();
+                    ctx.moveTo(k1.x, k1.y);
+                    ctx.lineTo(k2.x, k2.y);
+                    ctx.stroke();
+                }
+            });
+
+            // 関節ポイント自体（丸）を描画
             keypoints.forEach(keypoint => {
                 if (keypoint.score > 0.3) {
                     ctx.beginPath();
-                    ctx.arc(keypoint.x, keypoint.y, 4, 0, 2 * Math.PI);
+                    ctx.arc(keypoint.x, keypoint.y, 5, 0, 2 * Math.PI);
                     ctx.fill();
                 }
             });
         }
     }
 
-    // 全ポイントのデータをCSV配列に格納する処理
     function logResults(poses, modelName, inferenceTime, timestamp) {
         let rowData = [frameCount, timestamp.toFixed(1), modelName, inferenceTime.toFixed(1)];
         
@@ -213,18 +249,15 @@
             const avgScore = totalScore / keypoints.length;
             rowData.push(avgScore.toFixed(3));
 
-            // チャート名（KEYPOINT_NAMES）と照合してデータを挿入
             KEYPOINT_NAMES.forEach(targetName => {
                 const kp = keypoints.find(k => k.name === targetName);
                 if (kp) {
                     rowData.push(kp.x.toFixed(2), kp.y.toFixed(2), (kp.score || 0).toFixed(3));
                 } else {
-                    // そのモデルに該当部位が存在しない場合は空白セルにする
                     rowData.push("", "", ""); 
                 }
             });
         } else {
-            // 人物が未検出のフレーム
             rowData.push("0.000");
             KEYPOINT_NAMES.forEach(() => rowData.push("", "", ""));
         }
