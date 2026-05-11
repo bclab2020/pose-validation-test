@@ -27,7 +27,7 @@
 
 <div class="controls">
     <button id="startBtn" disabled>モデル読み込み中...</button>
-    <button id="switchBtn" disabled>🔄 カメラ切替</button>
+    <button id="switchBtn" disabled>🔄 インカメラに切替</button>
     <button id="stopBtn" disabled>検証終了 ＆ CSVダウンロード</button>
 </div>
 
@@ -55,7 +55,9 @@
     let isRunning = false;
     let logData = [];
     let frameCount = 0;
-    let currentFacingMode = 'user';
+    
+    // 【修正点1】デフォルトをアウトカメラ（environment）に変更
+    let currentFacingMode = 'environment'; 
 
     logData.push(["Frame", "Timestamp_ms", "Model", "InferenceTime_ms", "Score_Average", "Nose_X", "Nose_Y"]);
 
@@ -70,35 +72,32 @@
         const detectorConfigMN = { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING };
         detectorMN = await poseDetection.createDetector(modelMN, detectorConfigMN);
 
-        document.getElementById('startBtn').innerText = "▶️ カメラ起動＆開始";
+        document.getElementById('startBtn').innerText = "▶️ カメラ起動(アウト)＆開始";
         document.getElementById('startBtn').disabled = false;
         document.getElementById('statsMP').innerHTML = "MediaPipe (BlazePose)<br>待機中";
         document.getElementById('statsMN').innerHTML = "MoveNet (Lightning)<br>待機中";
     }
 
     async function setupCamera() {
-        // 【修正1】前のカメラの接続を「完全に」断ち切る（iOS Safari対策）
         if (video.srcObject) {
             video.srcObject.getTracks().forEach(track => track.stop());
             video.srcObject = null; 
         }
 
-        // 【修正2】アウトカメラが拒否されないよう、FPSの強制を解除し、facingModeをスマホ向けに厳格化
+        // 【修正点2】厳格な制約（exact）を外し、スマホ側でエラーが起きにくいように緩和
         let videoConstraints = {
             width: { ideal: 640 },
             height: { ideal: 480 },
-            facingMode: currentFacingMode === 'environment' ? { exact: 'environment' } : 'user'
+            facingMode: currentFacingMode
         };
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
             video.srcObject = stream;
         } catch (err) {
-            // 【修正3】exact指定で弾かれた場合（一部のAndroid等）のフォールバック（保険）処理
-            console.warn("カメラの厳格指定が弾かれたため、通常モードで再試行します", err);
-            videoConstraints.facingMode = currentFacingMode;
-            const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
-            video.srcObject = stream;
+            console.error("カメラの取得に失敗しました:", err);
+            alert("カメラを起動できませんでした。ブラウザのカメラ許可設定をご確認ください。");
+            return Promise.reject(err);
         }
 
         return new Promise((resolve) => {
@@ -111,7 +110,7 @@
                 try {
                     await video.play();
                 } catch (e) {
-                    console.error("ビデオの再生に失敗しました:", e);
+                    console.error("ビデオの再生に失敗:", e);
                 }
                 resolve();
             };
@@ -131,21 +130,23 @@
                 processFrame();
             }
         } catch (err) {
-            alert("カメラの取得に失敗しました。");
-            console.error(err);
+            console.log("初期化エラー");
         }
     });
 
     document.getElementById('switchBtn').addEventListener('click', async () => {
-        const previousMode = currentFacingMode;
-        currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+        currentFacingMode = (currentFacingMode === 'environment') ? 'user' : 'environment';
+        
+        // ボタンのテキストを現在の状態に合わせて変更
+        document.getElementById('switchBtn').innerText = 
+            (currentFacingMode === 'environment') ? "🔄 インカメラに切替" : "🔄 アウトカメラに切替";
+            
         document.getElementById('switchBtn').disabled = true;
         
         try {
             await setupCamera();
         } catch(e) {
-            alert("アウトカメラへの切り替えに対応していない端末です。");
-            currentFacingMode = previousMode; // エラー時は元のカメラに戻す
+            alert("カメラの切り替えに失敗しました。");
         }
         
         document.getElementById('switchBtn').disabled = false;
