@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>姿勢推論モデル 60FPS Side-by-Side 検証</title>
+    
+    <!-- TensorFlow.js と Pose Detection API, MediaPipeの読み込み -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+
+    <style>
+        body { margin: 0; font-family: sans-serif; background: #1a1a1a; color: white; }
+        .controls { padding: 15px; text-align: center; background: #333; }
+        button { padding: 10px 20px; font-size: 16px; margin: 0 10px; cursor: pointer; }
+        button:disabled { cursor: not-allowed; opacity: 0.5; }
+        .container { display: flex; width: 100vw; height: calc(100vh - 70px); }
+        .view-port { flex: 1; position: relative; border-right: 1px solid #555; }
+        video { display: none; }
+        canvas { width: 100%; height: 100%; object-fit: contain; }
+        .stats { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 10px; font-size: 14px; line-height: 1.5; border-radius: 5px; }
+        .loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="controls">
+    <button id="startBtn" disabled>モデル読み込み中...</button>
+    <button id="stopBtn" disabled>検証終了 ＆ CSVダウンロード</button>
+</div>
+
+<div class="container">
+    <div class="view-port">
+        <canvas id="canvasMP"></canvas>
+        <div class="stats" id="statsMP">MediaPipe (BlazePose)<br>準備中...</div>
+    </div>
+    <div class="view-port">
+        <canvas id="canvasMN"></canvas>
+        <div class="stats" id="statsMN">MoveNet (Lightning)<br>準備中...</div>
+    </div>
+</div>
+
+<video id="video" autoplay playsinline></video>
+
+<script>
+    const video = document.getElementById('video');
+    const canvasMP = document.getElementById('canvasMP');
+    const canvasMN = document.getElementById('canvasMN');
+    const ctxMP = canvasMP.getContext('2d');
+    const ctxMN = canvasMN.getContext('2d');
+    
+    let detectorMP, detectorMN;
+    let isRunning = false;
+    let logData = [];
+    let frameCount = 0;
+
+    // CSVヘッダーの定義
+    logData.push(["Frame", "Timestamp_ms", "Model", "InferenceTime_ms", "Score_Average", "Nose_X", "Nose_Y"]);
+
+    // 初期化関数（AIモデルの読み込み）
+    async function initModels() {
+        await tf.ready(); // WebGLバックエンドの初期化を待つ
+
+        // 1. MediaPipe (BlazePose) の読み込み
+        const modelMP = poseDetection.SupportedModels.BlazePose;
+        const detectorConfigMP = {
+            runtime: 'mediapipe',
+            solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose',
+            modelType: 'full' // Lite, Full, Heavy から選択可能
+        };
+        detectorMP = await poseDetection.createDetector(modelMP, detectorConfigMP);
+
+        // 2. MoveNet (Lightning: 速度重視) の読み込み
+        const modelMN = poseDetection.SupportedModels.MoveNet;
+        const detectorConfigMN = { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING };
+        detectorMN = await poseDetection.createDetector(modelMN, detectorConfigMN);
+
+        document.getElementById('startBtn').innerText = "カメラ起動 ＆ 検証開始";
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('statsMP').innerHTML = "MediaPipe (BlazePose)<br>待機中";
+        document.getElementById('statsMN').innerHTML = "MoveNet (Lightning)<br>待機中";
+    }
+
+    // カメラ起動と推論ループの開始
+    document.getElementById('startBtn').addEventListener('click', async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'user', width: 640, height: 480, frameRate: { ideal: 60, max: 60 } }
+            });
+            video.srcObject = stream;
+            video.onloadedmetadata = () => {
+                canvasMP.width = video.videoWidth; canvasMP.height = video.videoHeight;
+                canvasMN.width = video.videoWidth; canvasMN.height = video.videoHeight;
+                video.play();
+                
+                isRunning = true;
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = false;
+                processFrame(); // 推論ループ開始
+            };
+        } catch (err) {
+            alert("カメラの取得に失敗しました。ローカルサーバー(localhost)またはHTTPS環境で実行してください。");
+            console.error(err);
+        }
+    });
+
+    // メインの推論ループ
+    async function processFrame() {
+        if (!isRunning) return;
+        frameCount++;
+        const currentTimestamp = performance.now();
+
+        // 映像をキャンバスに描画
+        ctxMP.drawImage(video, 0, 0, canvasMP.width, canvasMP.height);
+        ctxMN.drawImage(video, 0, 0, canvasMN.width, canvasMN.height);
+
+        // === MediaPipeの推論 ===
+        const startMP = performance.now();
+        const posesMP = await detectorMP.estimatePoses(video);
+        const timeMP = performance.now() - startMP;
+        drawPoses(posesMP, ctxMP, 'red');
+        logResults(posesMP, "MediaPipe", timeMP, currentTimestamp);
+        document.getElementById('statsMP').innerHTML = `MediaPipe (BlazePose)<br>推論時間: ${timeMP.toFixed(1)} ms<br>推定FPS: ${(1000/timeMP).toFixed(1)}`;
+
+        // === MoveNetの推論 ===
+        const startMN = performance.now();
+        const posesMN = await detectorMN.estimatePoses(video);
+        const timeMN = performance.now() - startMN;
+        drawPoses(posesMN, ctxMN, 'cyan');
+        logResults(posesMN, "MoveNet", timeMN, currentTimestamp);
+        document.getElementById('statsMN').innerHTML = `MoveNet (Lightning)<br>推論時間: ${timeMN.toFixed(1)} ms<br>推定FPS: ${(1000/timeMN).toFixed(1)}`;
+
+        // 次のフレームを要求
+        requestAnimationFrame(processFrame);
+    }
+
+    // 骨格を描画する関数
+    function drawPoses(poses, ctx, color) {
+        if (poses.length > 0) {
+            const keypoints = poses[0].keypoints;
+            ctx.fillStyle = color;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+
+            keypoints.forEach(keypoint => {
+                if (keypoint.score > 0.3) { // 信頼度が低いものは描画しない
+                    ctx.beginPath();
+                    ctx.arc(keypoint.x, keypoint.y, 4, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+            });
+            // ※本来は骨（ライン）も繋ぎますが、プロトタイプの動作軽量化のため点（ジョイント）のみ描画しています
+        }
+    }
+
+    // CSV用にデータをログ配列に保存する関数
+    function logResults(poses, modelName, inferenceTime, timestamp) {
+        let avgScore = 0;
+        let noseX = "", noseY = "";
+
+        if (poses.length > 0) {
+            const keypoints = poses[0].keypoints;
+            // 全関節の信頼度スコアの平均を計算（追従性の指標）
+            const totalScore = keypoints.reduce((sum, kp) => sum + (kp.score || 0), 0);
+            avgScore = totalScore / keypoints.length;
+            
+            // 鼻の座標を取得（例として）
+            const nose = keypoints.find(kp => kp.name === 'nose');
+            if (nose) { noseX = nose.x.toFixed(2); noseY = nose.y.toFixed(2); }
+        }
+
+        logData.push([
+            frameCount, 
+            timestamp.toFixed(1), 
+            modelName, 
+            inferenceTime.toFixed(1), 
+            avgScore.toFixed(3), 
+            noseX, 
+            noseY
+        ]);
+    }
+
+    // CSVエクスポート処理
+    document.getElementById('stopBtn').addEventListener('click', () => {
+        isRunning = false;
+        video.srcObject.getTracks().forEach(track => track.stop()); // カメラ停止
+        
+        let csvContent = "data:text/csv;charset=utf-8," + logData.map(e => e.join(",")).join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `pose_benchmark_log_${new Date().getTime()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        document.getElementById('stopBtn').innerText = "出力完了";
+        document.getElementById('stopBtn').disabled = true;
+    });
+
+    // ページロード時にモデルを初期化
+    window.onload = initModels;
+</script>
+</body>
+</html>
