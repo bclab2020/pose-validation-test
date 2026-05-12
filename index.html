@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro - 重心定義改修版</title>
+    <title>姿勢検証ツール Pro - レーダー完全稼働版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -20,7 +20,7 @@
         #stopRecBtn { background: #1976d2; color: white; }
         #switchBtn { background: #616161; color: white; }
         #calibBtn { background: #673ab7; color: white; transition: all 0.2s; } 
-        #resetEvalBtn { background: #f57c00; color: white; display: none; } /* マットを維持したまま測定だけリセット */
+        #resetEvalBtn { background: #f57c00; color: white; display: none; }
         button:disabled { opacity: 0.3; cursor: not-allowed; }
         select { background: #eee; color: #333; }
         .container { display: flex; width: 100vw; height: calc(100vh - 120px); }
@@ -91,12 +91,13 @@
     let homographyMatrix = null; 
     let isOpenCvReady = false; 
 
-    // 評価データのリセット関数（マットのAR情報は消さない）
+    // 【修正】姿勢評価の基準変数をすべて復活
     let calib = {};
     function resetEvaluation() {
         ['MediaPipe', 'MoveNet'].forEach(m => {
             calib[m] = { 
                 state: 'waiting', countdownStart: 0, frames: 0, 
+                sumP: 0, sumS: 0, baseP: 0, baseS: 0, 
                 sumHipX: 0, sumHipY: 0, baseHipX: 0, baseHipY: 0, 
                 swayHistory: [] 
             };
@@ -158,7 +159,6 @@
         alert("マットの4隅を「左上→右上→右下→左下」の順でタップしてください。");
     });
 
-    // 測定のみをリセットするボタン（もう一度片足立ちをやり直す用）
     resetEvalBtn.addEventListener('click', () => {
         resetEvaluation();
     });
@@ -323,14 +323,14 @@
         return deg > 180 ? 360 - deg : deg;
     }
 
+    // 【修正】OpenCVのバグを回避する、純粋な数学による安全な座標変換
     function transformPointToMat(x, y) {
         if (!homographyMatrix) return {x, y, isNormalized: false};
-        let src = cv.matFromArray(1, 1, cv.CV_32FC2, [x, y]);
-        let dst = new cv.Mat();
-        cv.perspectiveTransform(src, dst, homographyMatrix);
-        let rx = dst.data32F[0];
-        let ry = dst.data32F[1];
-        src.delete(); dst.delete();
+        let m = homographyMatrix.data64F;
+        let w = m[6] * x + m[7] * y + m[8];
+        if (Math.abs(w) < 1e-6) return {x, y, isNormalized: false};
+        let rx = (m[0] * x + m[1] * y + m[2]) / w;
+        let ry = (m[3] * x + m[4] * y + m[5]) / w;
         return {x: rx, y: ry, isNormalized: true};
     }
 
@@ -359,7 +359,6 @@
             ctx.stroke();
             ctx.setLineDash([]);
             
-            // 十字線（マット中心）を描画
             if (calibrationPoints.length === 4) {
                 let midTopX = (calibrationPoints[0].x + calibrationPoints[1].x) / 2;
                 let midTopY = (calibrationPoints[0].y + calibrationPoints[1].y) / 2;
@@ -441,7 +440,6 @@
             
             let normHip = transformPointToMat(currentHipMidX, currentHipMidY);
 
-            // --- 【修正】生体力学に基づくキャリブレーション ---
             if (c.state === 'waiting') {
                 c.state = 'countdown';
                 c.countdownStart = performance.now();
@@ -458,11 +456,13 @@
                     ctx.fillText(`片足を挙げて、自然なバランスをとってください`, 10, textY + 25);
                 } else {
                     c.state = 'calibrating';
-                    c.frames = 0; c.sumHipX = 0; c.sumHipY = 0;
+                    c.frames = 0; c.sumHipX = 0; c.sumHipY = 0; c.sumP = 0; c.sumS = 0;
                 }
             } 
             else if (c.state === 'calibrating') {
-                // 片足立ちの瞬間の「その人の自然な重心」を0点とする
+                // 【修正】肩と骨盤のデータも忘れずに記録
+                c.sumP += pelvicTilt;
+                c.sumS += shoulderTilt;
                 c.sumHipX += normHip.x; 
                 c.sumHipY += normHip.y;
                 c.frames++;
@@ -471,6 +471,8 @@
                 ctx.fillText(`📸 バランス中心を記録中...`, 10, textY);
                 
                 if (c.frames >= 10) { 
+                    c.baseP = c.sumP / 10;
+                    c.baseS = c.sumS / 10;
                     c.baseHipX = c.sumHipX / 10; 
                     c.baseHipY = c.sumHipY / 10; 
                     c.state = 'done';
@@ -484,7 +486,6 @@
                 const radarCenterX = radarX + radarSize / 2;
                 const radarCenterY = radarY + radarSize / 2;
 
-                // レーダー背景
                 ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
                 ctx.fillRect(radarX, radarY, radarSize, radarSize);
                 ctx.strokeStyle = "white";
@@ -499,7 +500,6 @@
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // ゼロ点からの物理的なズレ（スウェイ）
                 let dx = normHip.x - c.baseHipX;
                 let dy = normHip.y - c.baseHipY;
                 c.swayHistory.push({dx: dx, dy: dy});
@@ -516,21 +516,23 @@
                     ctx.lineWidth = 2;
                     ctx.lineJoin = "round";
                     
-                    const radarSensitivity = 1.0; 
+                    // 【修正】マット空間(500)とレーダー空間(px)を正しく連動させるスケール計算
+                    // ズーム係数2.0（マットの中心の揺れを拡大表示）
+                    const mapScale = (radarSize / 500) * 2.0; 
                     
-                    let startX = radarCenterX + (c.swayHistory[0].dx * radarSensitivity);
-                    let startY = radarCenterY + (c.swayHistory[0].dy * radarSensitivity);
+                    let startX = radarCenterX + (c.swayHistory[0].dx * mapScale);
+                    let startY = radarCenterY + (c.swayHistory[0].dy * mapScale);
                     ctx.moveTo(startX, startY);
                     
                     for (let i = 1; i < c.swayHistory.length; i++) {
-                        let ptX = radarCenterX + (c.swayHistory[i].dx * radarSensitivity);
-                        let ptY = radarCenterY + (c.swayHistory[i].dy * radarSensitivity);
+                        let ptX = radarCenterX + (c.swayHistory[i].dx * mapScale);
+                        let ptY = radarCenterY + (c.swayHistory[i].dy * mapScale);
                         ctx.lineTo(ptX, ptY);
                     }
                     ctx.stroke();
 
-                    let currentPtX = radarCenterX + (c.swayHistory[c.swayHistory.length-1].dx * radarSensitivity);
-                    let currentPtY = radarCenterY + (c.swayHistory[c.swayHistory.length-1].dy * radarSensitivity);
+                    let currentPtX = radarCenterX + (c.swayHistory[c.swayHistory.length-1].dx * mapScale);
+                    let currentPtY = radarCenterY + (c.swayHistory[c.swayHistory.length-1].dy * mapScale);
                     ctx.beginPath();
                     ctx.fillStyle = "red";
                     ctx.arc(currentPtX, currentPtY, 4, 0, 2*Math.PI);
@@ -540,11 +542,10 @@
 
                 let isPerfectPosture = true; 
 
-                // --- 【修正】アライメント評価（水平面からの絶対角度で評価） ---
-                if (Math.abs(pelvicTilt) > 8.0) {
+                if (Math.abs(pelvicTilt - c.baseP) > 8.0) {
                     ctx.fillStyle = "#FF4444"; ctx.fillText(`⚠️ 骨盤の傾斜 (トレンデレンブルグ疑い)`, 10, textY);
                     isPerfectPosture = false;
-                } else if (Math.abs(shoulderTilt) > 8.0) {
+                } else if (Math.abs(shoulderTilt - c.baseS) > 8.0) {
                     ctx.fillStyle = "#FF8800"; ctx.fillText(`⚠️ 体幹の傾斜 (デュシェンヌ代償)`, 10, textY);
                     isPerfectPosture = false;
                 } else {
@@ -552,8 +553,8 @@
                 }
                 textY += 25;
 
-                // --- 【修正】スウェイ評価（ゼロ点からの距離） ---
-                let physicalSway = Math.sqrt(dx*dx + dy*dy); // ピタゴラスの定理で中心からの絶対距離を出す
+                // スウェイの絶対距離計算
+                let physicalSway = Math.sqrt(dx*dx + dy*dy); 
 
                 if (physicalSway >= 40.0) {
                     ctx.fillStyle = "#FF0000"; ctx.fillText(`❌ 重心動揺(大): バランス崩れ`, 10, textY);
