@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro - ARゲージ＆ホモグラフィ補正</title>
+    <title>姿勢検証ツール Pro - ARゲージ完全版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -86,7 +86,6 @@
     let logData = [], frameCount = 0;
     let currentFacingMode = 'environment'; 
 
-    // AR/ホモグラフィ関連の状態
     let calibrationPoints = []; 
     let isCalibratingMat = false;
     let homographyMatrix = null; 
@@ -105,14 +104,12 @@
     }
     resetEvaluation();
 
-    // --- 【完全修正】OpenCVの安全な非同期読み込み ---
     const cvScript = document.createElement("script");
     cvScript.src = "https://docs.opencv.org/4.5.4/opencv.js";
     cvScript.async = true;
     
     cvScript.onload = () => {
         let attempts = 0;
-        // OpenCVの準備が整うまで0.5秒おきにチェック
         const checkReady = setInterval(() => {
             attempts++;
             if (typeof cv !== 'undefined' && cv.getPerspectiveTransform) {
@@ -126,7 +123,7 @@
                 if (modeSelect.value === 'single_leg') {
                     calibBtn.disabled = false;
                 }
-            } else if (attempts > 20) { // 10秒経ってもダメならエラー
+            } else if (attempts > 20) { 
                 clearInterval(checkReady);
                 document.getElementById('cvStatus').innerText = "❌ モジュールの展開に失敗しました。リロードしてください。";
                 document.getElementById('cvStatus').style.color = "#ff4444";
@@ -134,11 +131,10 @@
         }, 500);
     };
     cvScript.onerror = () => {
-        document.getElementById('cvStatus').innerText = "❌ 通信エラー: モジュールが取得できません。Wi-Fi環境をご確認ください。";
+        document.getElementById('cvStatus').innerText = "❌ 通信エラー: モジュールが取得できません。";
         document.getElementById('cvStatus').style.color = "#ff4444";
     };
     document.body.appendChild(cvScript);
-    // ------------------------------------------------
 
     modeSelect.addEventListener('change', () => {
         resetEvaluation();
@@ -160,11 +156,26 @@
         alert("マットの4隅を「左上→右上→右下→左下」の順でタップしてください。");
     });
 
+    // --- 【修正】クリック座標の正確な計算 ---
     const handleCanvasClick = (e) => {
         if (!isCalibratingMat) return;
-        const rect = e.target.getBoundingClientRect();
-        const x = (e.clientX - rect.left) * (canvasMP.width / rect.width);
-        const y = (e.clientY - rect.top) * (canvasMP.height / rect.height);
+        const canvas = e.target;
+        const rect = canvas.getBoundingClientRect();
+
+        // object-fit: contain による実際の描画スケールと余白（レターボックス）を計算
+        const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+        const renderWidth = canvas.width * scale;
+        const renderHeight = canvas.height * scale;
+        const offsetX = (rect.width - renderWidth) / 2;
+        const offsetY = (rect.height - renderHeight) / 2;
+
+        // 余白を引いてからスケールで割り、本当の画像ピクセル座標を算出
+        const x = (e.clientX - rect.left - offsetX) / scale;
+        const y = (e.clientY - rect.top - offsetY) / scale;
+
+        // 映像の枠外（黒い帯の部分）をクリックした場合は無視する
+        if (x < 0 || x > canvas.width || y < 0 || y > canvas.height) return;
+
         calibrationPoints.push({x, y});
 
         if (calibrationPoints.length === 4) {
@@ -174,6 +185,7 @@
     };
     canvasMP.addEventListener('mousedown', handleCanvasClick);
     canvasMN.addEventListener('mousedown', handleCanvasClick);
+    // ----------------------------------------
 
     function computeHomography() {
         try {
@@ -183,7 +195,6 @@
             calibrationPoints.forEach(p => srcCoords.push(p.x, p.y));
             let srcMat = cv.matFromArray(4, 1, cv.CV_32FC2, srcCoords);
 
-            // デスティネーション（理想的な正方形 500x500）
             let dstCoords = [0, 0, 500, 0, 500, 500, 0, 500];
             let dstMat = cv.matFromArray(4, 1, cv.CV_32FC2, dstCoords);
 
@@ -335,7 +346,6 @@
 
         let textY = 40;
 
-        // ARゲージ描画ロジック
         if (calibrationPoints.length > 0) {
             ctx.beginPath();
             ctx.setLineDash([5, 5]);
@@ -369,7 +379,6 @@
                 } else {
                     ctx.fillStyle = "#00FF00"; ctx.fillText(`✅ 下肢-体幹の平行性良好`, 10, textY);
                 }
-                textY += 25;
             }
         } 
         else if (mode === 'squat_front') {
