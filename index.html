@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro - 重心レーダー搭載</title>
+    <title>姿勢検証ツール Pro - 重心レーダー完全版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -78,7 +78,6 @@
     let logData = [], frameCount = 0;
     let currentFacingMode = 'environment'; 
 
-    // 【修正】レーダー用の基準点(baseHipX, baseHipY)を追加
     let calib = {
         MediaPipe: { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, baseShoulderW: 0, sumHipX: 0, sumHipY: 0, baseHipX: 0, baseHipY: 0, swayHistory: [], isDone: false },
         MoveNet: { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, baseShoulderW: 0, sumHipX: 0, sumHipY: 0, baseHipX: 0, baseHipY: 0, swayHistory: [], isDone: false }
@@ -209,29 +208,7 @@
 
         let textY = 40;
 
-        if (mode === 'squat_front' || mode === 'single_leg') {
-            if (lShoulder && rShoulder && lHip && rHip) {
-                const midShoulderX = (lShoulder.x + rShoulder.x) / 2;
-                const midShoulderY = (lShoulder.y + rShoulder.y) / 2;
-                const midHipX = (lHip.x + rHip.x) / 2;
-                const midHipY = (lHip.y + rHip.y) / 2;
-                
-                ctx.beginPath();
-                ctx.setLineDash([5, 5]);
-                ctx.strokeStyle = "#00FF00"; 
-                ctx.lineWidth = 3;
-                ctx.moveTo(midShoulderX, midShoulderY);
-                ctx.lineTo(midHipX, midHipY);
-                const extensionY = canvasObj.height;
-                const extensionX = midShoulderX + (midHipX - midShoulderX) * ((extensionY - midShoulderY) / (midHipY - midShoulderY));
-                ctx.lineTo(extensionX, extensionY);
-                ctx.stroke();
-                ctx.setLineDash([]);
-            }
-        }
-
         if (mode === 'squat_side') {
-            // ... (側面スクワットのコードはそのまま維持)
             const torsoAngle = getAngleFromVertical(rShoulder, rHip); 
             const tibiaAngle = getAngleFromVertical(rKnee, rAnkle);   
             const armAngle = getAngleFromVertical(rWrist, rShoulder); 
@@ -247,18 +224,8 @@
                 }
                 textY += 25;
             }
-
-            if (armAngle !== null) {
-                const armDrop = Math.abs(180 - armAngle);
-                if (armDrop > 20) {
-                    ctx.fillStyle = "#FF4444"; ctx.fillText(`⚠️ 胸椎モビリティ低下 (腕前傾)`, 10, textY);
-                } else {
-                    ctx.fillStyle = "#00FF00"; ctx.fillText(`✅ 胸椎モビリティ良好`, 10, textY);
-                }
-            }
         } 
         else if (mode === 'squat_front') {
-            // ... (正面スクワットのコードはそのまま維持)
             ctx.fillStyle = "white"; ctx.fillText(`【正面: スタビリティ評価】`, 10, textY); textY += 25;
 
             const rKneeAngle = calculateAngle(rHip, rKnee, rAnkle);
@@ -270,161 +237,181 @@
                 } else {
                     ctx.fillStyle = "#00FF00"; ctx.fillText(`✅ 下肢アライメント良好`, 10, textY);
                 }
-                textY += 25;
             }
         }
         else if (mode === 'single_leg') {
-            ctx.fillStyle = "white"; ctx.fillText(`【正面: 軌跡レーダー＆バランス】`, 10, textY); textY += 25;
+            ctx.fillStyle = "white"; ctx.fillText(`【正面: 重心レーダー＆バランス】`, 10, textY); textY += 25;
 
+            // 【追加】エラーハンドリング（なぜ止まっているかをユーザーに知らせる）
+            let bodyScoreOk = lHip && rHip && lShoulder && rShoulder && lHip.score >= 0.3 && rHip.score >= 0.3 && lShoulder.score >= 0.3 && rShoulder.score >= 0.3;
+            let ankleScoreOk = lAnkle && rAnkle && (lAnkle.score >= 0.3 || rAnkle.score >= 0.3); // 少なくとも片足は見えていること
+
+            if (!bodyScoreOk) {
+                ctx.fillStyle = "#FF4444";
+                ctx.fillText(`⚠️ 肩〜骨盤が認識できません（全身を映してください）`, 10, textY);
+                return; // ここで描画を中断（サイレントエラーの防止）
+            }
+            if (!ankleScoreOk) {
+                ctx.fillStyle = "#FF8800";
+                ctx.fillText(`⚠️ 足首が認識できません（少しカメラから離れてください）`, 10, textY);
+                return; // ここで描画を中断
+            }
+
+            // これ以降は各関節が確実に認識されている状態
             const pelvicTilt = calculateSignedTilt(lHip, rHip);
             const shoulderTilt = calculateSignedTilt(lShoulder, rShoulder);
             let c = calib[modelName];
 
-            if (pelvicTilt !== null && shoulderTilt !== null && lAnkle && rAnkle && lShoulder && rShoulder && lHip && rHip) {
-                let currentHipMidX = (lHip.x + rHip.x) / 2;
-                let currentHipMidY = (lHip.y + rHip.y) / 2;
+            let currentHipMidX = (lHip.x + rHip.x) / 2;
+            let currentHipMidY = (lHip.y + rHip.y) / 2;
 
-                if (!c.isDone) {
-                    c.sumP += pelvicTilt;
-                    c.sumS += shoulderTilt;
-                    c.sumHipX += currentHipMidX;
-                    c.sumHipY += currentHipMidY;
-                    c.swayHistory = []; 
-                    c.frames++;
-                    
-                    let progress = Math.min(100, Math.floor((c.frames / 60) * 100));
-                    ctx.fillStyle = "#FFFF00";
-                    ctx.fillText(`⏳ 両足で直立... ${progress}%`, 10, textY);
-                    
-                    if (c.frames >= 60) {
-                        c.baseP = c.sumP / 60;
-                        c.baseS = c.sumS / 60;
-                        c.baseHipX = c.sumHipX / 60; // ゼロ点での骨盤のX座標
-                        c.baseHipY = c.sumHipY / 60; // ゼロ点での骨盤のY座標
-                        c.baseShoulderW = Math.abs(rShoulder.x - lShoulder.x);
-                        c.isDone = true;
-                    }
-                } 
-                else {
-                    let isRightStance = rAnkle.y > lAnkle.y;
-                    let stanceAnkleX = isRightStance ? rAnkle.x : lAnkle.x;
+            if (!c.isDone) {
+                c.sumP += pelvicTilt;
+                c.sumS += shoulderTilt;
+                c.sumHipX += currentHipMidX;
+                c.sumHipY += currentHipMidY;
+                c.swayHistory = []; 
+                c.frames++;
+                
+                let progress = Math.min(100, Math.floor((c.frames / 60) * 100));
+                ctx.fillStyle = "#FFFF00";
+                ctx.fillText(`⏳ 両足で直立して静止... ${progress}%`, 10, textY);
+                
+                if (c.frames >= 60) {
+                    c.baseP = c.sumP / 60;
+                    c.baseS = c.sumS / 60;
+                    c.baseHipX = c.sumHipX / 60; 
+                    c.baseHipY = c.sumHipY / 60; 
+                    c.baseShoulderW = Math.abs(rShoulder.x - lShoulder.x);
+                    c.isDone = true;
+                }
+            } 
+            else {
+                // 軸足の安全な判別（スコアが高い方、または画面下部にある方）
+                let stanceAnkleX = 0;
+                if (lAnkle.score >= 0.3 && rAnkle.score >= 0.3) {
+                    stanceAnkleX = (rAnkle.y > lAnkle.y) ? rAnkle.x : lAnkle.x;
+                } else if (lAnkle.score >= 0.3) {
+                    stanceAnkleX = lAnkle.x;
+                } else {
+                    stanceAnkleX = rAnkle.x;
+                }
 
-                    // 1. 軸足の真上の正中線
+                // 1. 軸足の真上の正中線
+                ctx.beginPath();
+                ctx.setLineDash([10, 10]);
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.7)"; 
+                ctx.lineWidth = 2;
+                ctx.moveTo(stanceAnkleX, 0);
+                ctx.lineTo(stanceAnkleX, canvasObj.height);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // --- 【修正】レスポンシブな重心レーダーの描画 ---
+                // スマホ解像度に合わせてレーダーサイズを動的に計算（最低120px、最大でも画面の25%）
+                const radarSize = Math.max(120, Math.min(canvasObj.width, canvasObj.height) * 0.25);
+                const radarMargin = 15;
+                const radarX = canvasObj.width - radarSize - radarMargin;
+                const radarY = canvasObj.height - radarSize - radarMargin;
+                const radarCenterX = radarX + radarSize / 2;
+                const radarCenterY = radarY + radarSize / 2;
+
+                ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+                ctx.fillRect(radarX, radarY, radarSize, radarSize);
+                ctx.strokeStyle = "white";
+                ctx.lineWidth = 1;
+                ctx.strokeRect(radarX, radarY, radarSize, radarSize);
+
+                ctx.beginPath();
+                ctx.setLineDash([3, 3]);
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+                ctx.moveTo(radarCenterX, radarY); ctx.lineTo(radarCenterX, radarY + radarSize);
+                ctx.moveTo(radarX, radarCenterY); ctx.lineTo(radarX + radarSize, radarCenterY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // 軌跡データの保存（カメラ解像度に依存しない「肩幅に対する比率」として保存）
+                let dx = currentHipMidX - c.baseHipX;
+                let dy = currentHipMidY - c.baseHipY;
+                let normDx = c.baseShoulderW > 0 ? (dx / c.baseShoulderW) : 0;
+                let normDy = c.baseShoulderW > 0 ? (dy / c.baseShoulderW) : 0;
+                
+                c.swayHistory.push({nx: normDx, ny: normDy});
+                if (c.swayHistory.length > 200) c.swayHistory.shift();
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(radarX, radarY, radarSize, radarSize);
+                ctx.clip();
+
+                if (c.swayHistory.length > 1) {
                     ctx.beginPath();
-                    ctx.setLineDash([10, 10]);
-                    ctx.strokeStyle = "rgba(255, 255, 255, 0.7)"; 
+                    ctx.strokeStyle = "#00FFFF"; 
                     ctx.lineWidth = 2;
-                    ctx.moveTo(stanceAnkleX, 0);
-                    ctx.lineTo(stanceAnkleX, canvasObj.height);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-
-                    // --- 【新機能】重心レーダー（ミニマップ）の描画 ---
-                    const radarSize = 120; // レーダーのサイズ
-                    const radarMargin = 15;
-                    // キャンバスの右下に配置
-                    const radarX = canvasObj.width - radarSize - radarMargin;
-                    const radarY = canvasObj.height - radarSize - radarMargin;
-                    const radarCenterX = radarX + radarSize / 2;
-                    const radarCenterY = radarY + radarSize / 2;
-                    const amplification = 3.0; // 【重要】動きを何倍に拡大するか
-
-                    // レーダーの背景（半透明の黒）
-                    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-                    ctx.fillRect(radarX, radarY, radarSize, radarSize);
-                    ctx.strokeStyle = "white";
-                    ctx.lineWidth = 1;
-                    ctx.strokeRect(radarX, radarY, radarSize, radarSize);
-
-                    // 十字線（クロスヘア）
-                    ctx.beginPath();
-                    ctx.setLineDash([3, 3]);
-                    ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
-                    ctx.moveTo(radarCenterX, radarY); ctx.lineTo(radarCenterX, radarY + radarSize);
-                    ctx.moveTo(radarX, radarCenterY); ctx.lineTo(radarX + radarSize, radarCenterY);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-
-                    // 軌跡データの保存
-                    // 基準点(baseHip)からの差分を保存する
-                    let dx = currentHipMidX - c.baseHipX;
-                    let dy = currentHipMidY - c.baseHipY;
-                    c.swayHistory.push({dx: dx, dy: dy});
-                    if (c.swayHistory.length > 200) c.swayHistory.shift(); // 過去数秒を保持
-
-                    // レーダー内に軌跡を描画
-                    ctx.save();
-                    // レーダーボックスの外にはみ出さないようにクリッピング
-                    ctx.beginPath();
-                    ctx.rect(radarX, radarY, radarSize, radarSize);
-                    ctx.clip();
-
-                    if (c.swayHistory.length > 1) {
-                        ctx.beginPath();
-                        ctx.strokeStyle = "#00FFFF"; // 鮮やかなシアン
-                        ctx.lineWidth = 2;
-                        ctx.lineJoin = "round";
-                        
-                        // 最初の点
-                        let startX = radarCenterX + c.swayHistory[0].dx * amplification;
-                        let startY = radarCenterY + c.swayHistory[0].dy * amplification;
-                        ctx.moveTo(startX, startY);
-                        
-                        for (let i = 1; i < c.swayHistory.length; i++) {
-                            let ptX = radarCenterX + c.swayHistory[i].dx * amplification;
-                            let ptY = radarCenterY + c.swayHistory[i].dy * amplification;
-                            ctx.lineTo(ptX, ptY);
-                        }
-                        ctx.stroke();
-
-                        // 現在位置（最新の点）を赤丸で強調
-                        let currentPtX = radarCenterX + c.swayHistory[c.swayHistory.length-1].dx * amplification;
-                        let currentPtY = radarCenterY + c.swayHistory[c.swayHistory.length-1].dy * amplification;
-                        ctx.beginPath();
-                        ctx.fillStyle = "red";
-                        ctx.arc(currentPtX, currentPtY, 4, 0, 2*Math.PI);
-                        ctx.fill();
+                    ctx.lineJoin = "round";
+                    
+                    // レーダー感度（2.0 = 肩幅の半分のブレでレーダーの端に到達する設定）
+                    const radarSensitivity = 2.0;
+                    const maxRadius = radarSize / 2;
+                    
+                    let startX = radarCenterX + (c.swayHistory[0].nx * radarSensitivity * maxRadius);
+                    let startY = radarCenterY + (c.swayHistory[0].ny * radarSensitivity * maxRadius);
+                    ctx.moveTo(startX, startY);
+                    
+                    for (let i = 1; i < c.swayHistory.length; i++) {
+                        let ptX = radarCenterX + (c.swayHistory[i].nx * radarSensitivity * maxRadius);
+                        let ptY = radarCenterY + (c.swayHistory[i].ny * radarSensitivity * maxRadius);
+                        ctx.lineTo(ptX, ptY);
                     }
-                    ctx.restore();
-                    // ----------------------------------------------------
+                    ctx.stroke();
 
-                    let devPelvic = Math.abs(pelvicTilt - c.baseP);
-                    let devShoulder = Math.abs(shoulderTilt - c.baseS);
-                    let isPerfectPosture = false; 
+                    // 現在位置の強調
+                    let currentPtX = radarCenterX + (c.swayHistory[c.swayHistory.length-1].nx * radarSensitivity * maxRadius);
+                    let currentPtY = radarCenterY + (c.swayHistory[c.swayHistory.length-1].ny * radarSensitivity * maxRadius);
+                    ctx.beginPath();
+                    ctx.fillStyle = "red";
+                    ctx.arc(currentPtX, currentPtY, 4, 0, 2*Math.PI);
+                    ctx.fill();
+                }
+                ctx.restore();
+                // ----------------------------------------------------
 
-                    if (devPelvic > 12.0 && devShoulder <= 12.0) {
-                        ctx.fillStyle = "#FF4444"; ctx.fillText(`⚠️ 骨盤の傾斜 (トレンデレンブルグ疑い)`, 10, textY);
-                    } else if (devShoulder > 12.0) {
-                        ctx.fillStyle = "#FF8800"; ctx.fillText(`⚠️ 体幹の傾斜 (デュシェンヌ代償)`, 10, textY);
+                let devPelvic = Math.abs(pelvicTilt - c.baseP);
+                let devShoulder = Math.abs(shoulderTilt - c.baseS);
+                let isPerfectPosture = false; 
+
+                if (devPelvic > 12.0 && devShoulder <= 12.0) {
+                    ctx.fillStyle = "#FF4444"; ctx.fillText(`⚠️ 骨盤の傾斜 (トレンデレンブルグ疑い)`, 10, textY);
+                } else if (devShoulder > 12.0) {
+                    ctx.fillStyle = "#FF8800"; ctx.fillText(`⚠️ 体幹の傾斜 (デュシェンヌ代償)`, 10, textY);
+                } else {
+                    ctx.fillStyle = "#00FF00"; ctx.fillText(`✅ アライメント良好`, 10, textY);
+                    if (devPelvic <= 8.0 && devShoulder <= 8.0) isPerfectPosture = true; 
+                }
+                textY += 25;
+
+                if (c.baseShoulderW > 0) {
+                    let swayRatio = (Math.abs(currentHipMidX - stanceAnkleX) / c.baseShoulderW) * 100;
+
+                    if (swayRatio >= 25.0) {
+                        ctx.fillStyle = "#FF0000"; ctx.fillText(`❌ 重心動揺(大): 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
+                        isPerfectPosture = false;
+                    } else if (swayRatio >= 15.0) {
+                        ctx.fillStyle = "#FF8800"; ctx.fillText(`⚠️ 重心動揺(中): 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
+                        isPerfectPosture = false;
                     } else {
-                        ctx.fillStyle = "#00FF00"; ctx.fillText(`✅ アライメント良好`, 10, textY);
-                        if (devPelvic <= 8.0 && devShoulder <= 8.0) isPerfectPosture = true; 
+                        ctx.fillStyle = "#00FF00"; ctx.fillText(`✅ 軸足荷重OK: 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
+                        if (swayRatio >= 15.0) isPerfectPosture = false; 
                     }
-                    textY += 25;
 
-                    if (c.baseShoulderW > 0) {
-                        let swayRatio = (Math.abs(currentHipMidX - stanceAnkleX) / c.baseShoulderW) * 100;
-
-                        if (swayRatio >= 25.0) {
-                            ctx.fillStyle = "#FF0000"; ctx.fillText(`❌ 重心動揺(大): 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
-                            isPerfectPosture = false;
-                        } else if (swayRatio >= 15.0) {
-                            ctx.fillStyle = "#FF8800"; ctx.fillText(`⚠️ 重心動揺(中): 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
-                            isPerfectPosture = false;
-                        } else {
-                            ctx.fillStyle = "#00FF00"; ctx.fillText(`✅ 軸足荷重OK: 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
-                            if (swayRatio >= 15.0) isPerfectPosture = false; 
-                        }
-
-                        if (isPerfectPosture) {
-                            ctx.save();
-                            ctx.font = "bold 140px sans-serif";
-                            ctx.fillStyle = "rgba(0, 255, 0, 0.4)"; 
-                            ctx.textAlign = "center";
-                            ctx.textBaseline = "middle";
-                            ctx.fillText("OK", canvasObj.width / 2, canvasObj.height / 2);
-                            ctx.restore();
-                        }
+                    if (isPerfectPosture) {
+                        ctx.save();
+                        ctx.font = "bold 140px sans-serif";
+                        ctx.fillStyle = "rgba(0, 255, 0, 0.4)"; 
+                        ctx.textAlign = "center";
+                        ctx.textBaseline = "middle";
+                        ctx.fillText("OK", canvasObj.width / 2, canvasObj.height / 2);
+                        ctx.restore();
                     }
                 }
             }
