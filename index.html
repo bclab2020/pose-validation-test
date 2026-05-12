@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro</title>
+    <title>姿勢検証ツール Pro - Joint-by-Joint</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -15,16 +15,12 @@
         body { margin: 0; font-family: sans-serif; background: #1a1a1a; color: white; }
         .controls { padding: 10px; text-align: center; background: #333; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; align-items: center; }
         button, select { padding: 10px 14px; font-size: 14px; cursor: pointer; border-radius: 4px; border: none; font-weight: bold; }
-        
-        /* ボタンごとの色分け */
         #startCamBtn { background: #4a4a4a; color: white; }
         #recordBtn { background: #d32f2f; color: white; }
         #stopRecBtn { background: #1976d2; color: white; }
         #switchBtn { background: #616161; color: white; }
-        
         button:disabled { opacity: 0.3; cursor: not-allowed; }
         select { background: #eee; color: #333; }
-        
         .container { display: flex; width: 100vw; height: calc(100vh - 120px); }
         .view-port { flex: 1; position: relative; border-right: 1px solid #444; overflow: hidden; }
         video { display: none; }
@@ -38,15 +34,12 @@
 <div class="controls">
     <button id="startCamBtn" disabled>モデル読込中...</button>
     <button id="switchBtn" disabled>🔄 カメラ切替</button>
-    
     <div style="border-left: 1px solid #666; height: 30px; margin: 0 10px;"></div>
-
     <select id="modeSelect">
         <option value="none">可視化オフ</option>
-        <option value="squat">スクワット測定</option>
-        <option value="single_leg">片足立ち測定</option>
+        <option value="squat">スクワット測定 (JbJ評価)</option>
+        <option value="single_leg">片足立ち測定 (JbJ評価)</option>
     </select>
-
     <button id="recordBtn" disabled>🔴 計測開始</button>
     <button id="stopRecBtn" disabled>⏹️ 計測終了 & 保存</button>
 </div>
@@ -78,10 +71,8 @@
     const recInds = [document.getElementById('recIndMP'), document.getElementById('recIndMN')];
     
     let detectorMP, detectorMN;
-    let isCameraRunning = false;
-    let isRecording = false; // 計測中フラグ
-    let logData = [];
-    let frameCount = 0;
+    let isCameraRunning = false, isRecording = false;
+    let logData = [], frameCount = 0;
     let currentFacingMode = 'environment'; 
 
     const KEYPOINT_NAMES = [
@@ -96,30 +87,22 @@
         await tf.ready();
         detectorMP = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
         detectorMN = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING });
-
         const btn = document.getElementById('startCamBtn');
-        btn.innerText = "📷 カメラ起動";
-        btn.disabled = false;
+        btn.innerText = "📷 カメラ起動"; btn.disabled = false;
     }
 
     async function setupCamera() {
-        if (video.srcObject) {
-            video.srcObject.getTracks().forEach(track => track.stop());
-        }
-        let videoConstraints = { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: currentFacingMode };
-        const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
+        if (video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: currentFacingMode } });
         video.srcObject = stream;
         return new Promise((resolve) => {
             video.onloadeddata = async () => {
-                canvasMP.width = canvasMN.width = video.videoWidth;
-                canvasMP.height = canvasMN.height = video.videoHeight;
-                await video.play();
-                resolve();
+                canvasMP.width = canvasMN.width = video.videoWidth; canvasMP.height = canvasMN.height = video.videoHeight;
+                await video.play(); resolve();
             };
         });
     }
 
-    // カメラ起動（プレビュー開始）
     document.getElementById('startCamBtn').addEventListener('click', async () => {
         await setupCamera();
         isCameraRunning = true;
@@ -129,57 +112,35 @@
         processFrame();
     });
 
-    // 計測開始ボタン
     recordBtn.addEventListener('click', () => {
-        isRecording = true;
-        logData = []; // 新規バッファ
-        frameCount = 0;
-        
-        // CSVヘッダー作成
+        isRecording = true; logData = []; frameCount = 0;
         let csvHeaders = ["Frame", "Timestamp_ms", "Model", "InferenceTime_ms", "Score_Average"];
         KEYPOINT_NAMES.forEach((name, index) => csvHeaders.push(`${index}_${name}_X`, `${index}_${name}_Y`, `${index}_${name}_Score`));
         logData.push(csvHeaders);
-
-        recordBtn.disabled = true;
-        stopRecBtn.disabled = false;
-        modeSelect.disabled = true; // 計測中はモード固定
+        recordBtn.disabled = true; stopRecBtn.disabled = false; modeSelect.disabled = true;
         recInds.forEach(el => el.style.display = 'flex');
     });
 
-    // 計測終了 & 保存
     stopRecBtn.addEventListener('click', () => {
-        isRecording = false;
-        saveCSV();
-        
-        recordBtn.disabled = false;
-        stopRecBtn.disabled = true;
-        modeSelect.disabled = false;
+        isRecording = false; saveCSV();
+        recordBtn.disabled = false; stopRecBtn.disabled = true; modeSelect.disabled = false;
         recInds.forEach(el => el.style.display = 'none');
     });
 
     function saveCSV() {
-        const modeName = modeSelect.value;
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const fileName = `pose_data_${modeName}_${timestamp}.csv`;
-        
-        let csvContent = "data:text/csv;charset=utf-8," + logData.map(e => e.join(",")).join("\n");
+        const fileName = `pose_data_${modeSelect.value}_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
         const link = document.createElement("a");
-        link.setAttribute("href", encodeURI(csvContent));
+        link.setAttribute("href", encodeURI("data:text/csv;charset=utf-8," + logData.map(e => e.join(",")).join("\n")));
         link.setAttribute("download", fileName);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
     }
 
     async function processFrame() {
         if (!isCameraRunning) return;
         const currentMode = modeSelect.value;
-
-        // 描画
         ctxMP.drawImage(video, 0, 0, canvasMP.width, canvasMP.height);
         ctxMN.drawImage(video, 0, 0, canvasMN.width, canvasMN.height);
 
-        // 推論（MediaPipe）
         const startMP = performance.now();
         const posesMP = await detectorMP.estimatePoses(video);
         const timeMP = performance.now() - startMP;
@@ -187,7 +148,6 @@
         if (isRecording) logFrame(posesMP, "MediaPipe", timeMP);
         document.getElementById('statsMP').innerText = `MediaPipe: ${timeMP.toFixed(1)}ms`;
 
-        // 推論（MoveNet）
         const startMN = performance.now();
         const posesMN = await detectorMN.estimatePoses(video);
         const timeMN = performance.now() - startMN;
@@ -198,7 +158,7 @@
         requestAnimationFrame(processFrame);
     }
 
-    // 角度計算等の共通ロジックは前回同様
+    // --- 数学関数 ---
     function calculateAngle(A, B, C) {
         if (!A || !B || !C || A.score < 0.3 || B.score < 0.3 || C.score < 0.3) return null;
         let rad = Math.atan2(C.y-B.y, C.x-B.x) - Math.atan2(A.y-B.y, A.x-B.x);
@@ -212,30 +172,110 @@
         return deg > 90 ? 180 - deg : deg;
     }
 
+    // 垂直線（Y軸）に対する角度を計算（0度が真下または真上）
+    function getAngleFromVertical(topPt, bottomPt) {
+        if (!topPt || !bottomPt || topPt.score < 0.3 || bottomPt.score < 0.3) return null;
+        let dx = bottomPt.x - topPt.x;
+        let dy = bottomPt.y - topPt.y;
+        return Math.abs(Math.atan2(dx, dy) * 180 / Math.PI);
+    }
+
     function drawPoses(poses, ctx, color, mode) {
         if (poses.length === 0) return;
         const kps = poses[0].keypoints;
         const getK = (n) => kps.find(k => k.name === n);
-
-        // スケルトン描画（省略版ロジック）
-        ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 3;
-        // ... (POSE_CONNECTIONSの描画ロジック：前回のものを使用)
-        // 今回は簡略化のため描画関数のみ定義し、内部は既存の接続ロジックを維持
         renderSkeleton(ctx, kps, color);
 
-        // 分析表示
-        ctx.font = "bold 20px sans-serif"; ctx.fillStyle = "yellow";
+        // --- Joint-by-Joint 分析表示 ---
+        ctx.font = "bold 16px sans-serif"; 
+        
+        const rShoulder = getK('right_shoulder'), rHip = getK('right_hip'), rKnee = getK('right_knee'), rAnkle = getK('right_ankle'), rWrist = getK('right_wrist');
+        const lShoulder = getK('left_shoulder'), lHip = getK('left_hip'), lKnee = getK('left_knee'), lAnkle = getK('left_ankle');
+
         if (mode === 'squat') {
-            const a = calculateAngle(getK('right_hip'), getK('right_knee'), getK('right_ankle'));
-            if(a) ctx.fillText(`膝: ${a.toFixed(0)}°`, getK('right_knee').x+10, getK('right_knee').y);
-        } else if (mode === 'single_leg') {
-            const t = calculateTilt(getK('left_hip'), getK('right_hip'));
-            if(t) ctx.fillText(`骨盤傾斜: ${t.toFixed(1)}°`, getK('left_hip').x, getK('left_hip').y-20);
+            // 右側面のデータで計算
+            const torsoAngle = getAngleFromVertical(rShoulder, rHip); // 体幹の前傾角
+            const tibiaAngle = getAngleFromVertical(rKnee, rAnkle);   // すねの前傾角
+            const armAngle = getAngleFromVertical(rWrist, rShoulder); // 腕の前傾角
+
+            let textY = 40;
+            ctx.fillStyle = "white";
+            ctx.fillText(`【JbJ スクワット分析】`, 10, textY); textY += 25;
+
+            // 1. 足首モビリティ vs 腰椎スタビリティ (体幹と下腿の平行性)
+            if (torsoAngle !== null && tibiaAngle !== null) {
+                const diff = Math.abs(torsoAngle - tibiaAngle);
+                if (diff > 15) {
+                    ctx.fillStyle = "#FF4444";
+                    ctx.fillText(`⚠️ 足首モビリティ不足 / 体幹代償 (差: ${diff.toFixed(1)}°)`, 10, textY);
+                } else {
+                    ctx.fillStyle = "#00FF00";
+                    ctx.fillText(`✅ 下肢-体幹の連動良好`, 10, textY);
+                }
+                textY += 25;
+            }
+
+            // 2. 胸椎モビリティ (腕の挙上角度)
+            if (armAngle !== null) {
+                // 腕が真上なら180度付近。垂直からどれだけ倒れているかを計算
+                const armDrop = Math.abs(180 - armAngle);
+                if (armDrop > 20) {
+                    ctx.fillStyle = "#FF4444";
+                    ctx.fillText(`⚠️ 胸椎モビリティ低下 (腕前傾: ${armDrop.toFixed(1)}°)`, 10, textY);
+                } else {
+                    ctx.fillStyle = "#00FF00";
+                    ctx.fillText(`✅ 胸椎モビリティ良好`, 10, textY);
+                }
+            }
+        } 
+        else if (mode === 'single_leg') {
+            let textY = 40;
+            ctx.fillStyle = "white";
+            ctx.fillText(`【JbJ 片足バランス分析】`, 10, textY); textY += 25;
+
+            // 1. 股関節スタビリティ (骨盤と肩の傾き)
+            const pelvicTilt = calculateTilt(lHip, rHip);
+            const shoulderTilt = calculateTilt(lShoulder, rShoulder);
+            
+            if (pelvicTilt !== null && shoulderTilt !== null) {
+                if (pelvicTilt > 5.0) {
+                    ctx.fillStyle = "#FF4444";
+                    ctx.fillText(`⚠️ 股関節スタビリティ低下 (骨盤傾斜: ${pelvicTilt.toFixed(1)}°)`, 10, textY);
+                } else if (shoulderTilt > 5.0) {
+                    ctx.fillStyle = "#FF4444";
+                    ctx.fillText(`⚠️ 腰椎/体幹の代償 (肩傾斜: ${shoulderTilt.toFixed(1)}°)`, 10, textY);
+                } else {
+                    ctx.fillStyle = "#00FF00";
+                    ctx.fillText(`✅ 体幹・骨盤の安定性良好`, 10, textY);
+                }
+                textY += 25;
+            }
+
+            // 2. 軸足のニーイン (足のスタビリティ低下による代償)
+            // 軸足を判定（Y座標が大きい＝画面下にある方を軸足とする）
+            if (rAnkle && lAnkle && rHip && lHip && rKnee && lKnee) {
+                const isRightStance = rAnkle.y > lAnkle.y;
+                const sHip = isRightStance ? rHip : lHip;
+                const sKnee = isRightStance ? rKnee : lKnee;
+                const sAnkle = isRightStance ? rAnkle : lAnkle;
+
+                const stanceKneeAngle = calculateAngle(sHip, sKnee, sAnkle);
+                if (stanceKneeAngle !== null) {
+                    if (stanceKneeAngle < 165) {
+                        ctx.fillStyle = "#FF4444";
+                        ctx.fillText(`⚠️ 膝スタビリティ低下 / ニーイン発生`, 10, textY);
+                    } else {
+                        ctx.fillStyle = "#00FF00";
+                        ctx.fillText(`✅ 下肢アライメント良好`, 10, textY);
+                    }
+                }
+            }
         }
     }
 
     function renderSkeleton(ctx, kps, color) {
         const connections = [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]];
+        ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 3;
         connections.forEach(c => {
             const s = kps.find(k => k.name === KEYPOINT_NAMES[c[0]]);
             const e = kps.find(k => k.name === KEYPOINT_NAMES[c[1]]);
