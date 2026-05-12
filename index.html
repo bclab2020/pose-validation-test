@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro - 重心動揺・バイオメカニクス評価</title>
+    <title>姿勢検証ツール Pro - 重心動揺・バイオフィードバック評価</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -25,8 +25,8 @@
         .view-port { flex: 1; position: relative; border-right: 1px solid #444; overflow: hidden; }
         video { display: none; }
         canvas { width: 100%; height: 100%; object-fit: contain; }
-        .stats { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 8px; font-size: 12px; border-radius: 4px; pointer-events: none; }
-        .recording-indicator { position: absolute; top: 10px; right: 10px; color: #ff1744; font-weight: bold; display: none; align-items: center; gap: 5px; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 20px; }
+        .stats { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 8px; font-size: 12px; border-radius: 4px; pointer-events: none; z-index: 10; }
+        .recording-indicator { position: absolute; top: 10px; right: 10px; color: #ff1744; font-weight: bold; display: none; align-items: center; gap: 5px; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 20px; z-index: 10; }
     </style>
 </head>
 <body>
@@ -78,7 +78,6 @@
     let logData = [], frameCount = 0;
     let currentFacingMode = 'environment'; 
 
-    // キャリブレーションデータに baseShoulderW (肩幅の基準ピクセル) を追加
     let calib = {
         MediaPipe: { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, baseMidX: 0, baseShoulderW: 0, isDone: false },
         MoveNet: { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, baseMidX: 0, baseShoulderW: 0, isDone: false }
@@ -202,13 +201,13 @@
         renderSkeleton(ctx, kps, color);
 
         ctx.font = "bold 16px sans-serif"; 
+        ctx.textAlign = "left"; // デフォルトのテキスト配置
         
         const rShoulder = getK('right_shoulder'), rHip = getK('right_hip'), rKnee = getK('right_knee'), rAnkle = getK('right_ankle'), rWrist = getK('right_wrist');
         const lShoulder = getK('left_shoulder'), lHip = getK('left_hip'), lKnee = getK('left_knee'), lAnkle = getK('left_ankle');
 
         let textY = 40;
 
-        // --- 動的重心線の描画 ---
         if (mode === 'squat_front' || mode === 'single_leg') {
             if (lShoulder && rShoulder && lHip && rHip) {
                 const midShoulderX = (lShoulder.x + rShoulder.x) / 2;
@@ -298,13 +297,11 @@
                         c.baseP = c.sumP / 60;
                         c.baseS = c.sumS / 60;
                         c.baseMidX = (lAnkle.x + rAnkle.x) / 2;
-                        // 肩幅を基準距離として保存
                         c.baseShoulderW = Math.abs(rShoulder.x - lShoulder.x);
                         c.isDone = true;
                     }
                 } 
                 else {
-                    // 1. 絶対正中線の描画
                     ctx.beginPath();
                     ctx.setLineDash([10, 10]);
                     ctx.strokeStyle = "rgba(255, 255, 255, 0.7)"; 
@@ -314,9 +311,10 @@
                     ctx.stroke();
                     ctx.setLineDash([]);
 
-                    // 2. 姿勢の代償判定 (骨盤と肩の傾き)
                     let devPelvic = Math.abs(pelvicTilt - c.baseP);
                     let devShoulder = Math.abs(shoulderTilt - c.baseS);
+                    
+                    let isPerfectPosture = false; // 完全なアライメントかどうかのフラグ
 
                     if (devPelvic > 10.0 && devShoulder <= 10.0) {
                         ctx.fillStyle = "#FF4444";
@@ -327,25 +325,40 @@
                     } else {
                         ctx.fillStyle = "#00FF00";
                         ctx.fillText(`✅ アライメント良好`, 10, textY);
+                        // 傾斜が5度以下なら姿勢は完璧に近いとみなす
+                        if (devPelvic <= 5.0 && devShoulder <= 5.0) isPerfectPosture = true; 
                     }
                     textY += 25;
 
-                    // 3. 重心のブレ（スウェイ）判定
                     if (c.baseShoulderW > 0) {
-                        // 現在の骨盤中心X座標
                         let currentHipMidX = (lHip.x + rHip.x) / 2;
-                        // 正中線からのズレ幅を肩幅に対するパーセンテージで計算
                         let swayRatio = (Math.abs(currentHipMidX - c.baseMidX) / c.baseShoulderW) * 100;
 
                         if (swayRatio >= 20.0) {
-                            ctx.fillStyle = "#FF0000"; // 赤
+                            ctx.fillStyle = "#FF0000"; 
                             ctx.fillText(`❌ 重心動揺(大): 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
+                            isPerfectPosture = false;
                         } else if (swayRatio >= 10.0) {
-                            ctx.fillStyle = "#FF8800"; // オレンジ
+                            ctx.fillStyle = "#FF8800"; 
                             ctx.fillText(`⚠️ 重心動揺(中): 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
+                            isPerfectPosture = false;
                         } else {
-                            ctx.fillStyle = "#00FF00"; // 緑
+                            ctx.fillStyle = "#00FF00"; 
                             ctx.fillText(`✅ 重心安定: 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
+                            // ズレが5%以上なら完璧フラグを下ろす
+                            if (swayRatio >= 5.0) isPerfectPosture = false; 
+                        }
+
+                        // 【追加】姿勢も重心も完璧に正中線に戻った場合に「OK」を大きく描画
+                        if (isPerfectPosture) {
+                            ctx.save(); // 現在の描画設定を保存
+                            ctx.font = "bold 140px sans-serif";
+                            ctx.fillStyle = "rgba(0, 255, 0, 0.4)"; // 半透明の鮮やかな緑
+                            ctx.textAlign = "center";
+                            ctx.textBaseline = "middle";
+                            // キャンバスの中央に描画
+                            ctx.fillText("OK", canvasObj.width / 2, canvasObj.height / 2);
+                            ctx.restore(); // 描画設定を元に戻す（左上のテキストに影響させないため）
                         }
                     }
                 }
