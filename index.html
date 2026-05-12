@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro - ARゲージ完全版</title>
+    <title>姿勢検証ツール Pro - ARゲージ＆生体力学修正版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -91,13 +91,14 @@
     let homographyMatrix = null; 
     let isOpenCvReady = false; 
 
+    // 【修正】評価用変数のリセット（絶対座標のbaseHipXを削除）
     let calib = {};
     function resetEvaluation() {
         ['MediaPipe', 'MoveNet'].forEach(m => {
             calib[m] = { 
                 state: 'waiting', countdownStart: 0, frames: 0, 
                 sumP: 0, sumS: 0, baseP: 0, baseS: 0, 
-                baseShoulderW: 0, baseHipX: 0, baseHipY: 0, 
+                baseShoulderW: 0, sumHipY: 0, baseHipY: 0, 
                 swayHistory: [] 
             };
         });
@@ -154,11 +155,10 @@
         isCalibratingMat = true;
         homographyMatrix = null;
         calibBtn.innerText = `🎯 校正中 (0/4)`;
-        calibBtn.style.backgroundColor = "#d81b60"; // 押下中は色を変える
+        calibBtn.style.backgroundColor = "#d81b60"; 
         alert("マットの4隅を「左上→右上→右下→左下」の順でタップしてください。");
     });
 
-    // --- 【修正】タップの空振りを防ぐ絶対カウント処理 ---
     const handleCanvasClick = (e) => {
         if (!isCalibratingMat) return;
         const canvas = e.target;
@@ -173,25 +173,22 @@
         let x = (e.clientX - rect.left - offsetX) / scale;
         let y = (e.clientY - rect.top - offsetY) / scale;
 
-        // クランプ処理：枠外をタップしても、一番近い画面の端として強制的に拾う（無視しない）
         x = Math.max(0, Math.min(canvas.width, x));
         y = Math.max(0, Math.min(canvas.height, y));
 
         calibrationPoints.push({x, y});
         
-        // リアルタイムでボタンの文字を更新
         calibBtn.innerText = `🎯 校正中 (${calibrationPoints.length}/4)`;
 
         if (calibrationPoints.length === 4) {
             isCalibratingMat = false;
-            calibBtn.innerText = `🎯 ゲージ校正`; // 文字を元に戻す
-            calibBtn.style.backgroundColor = "#673ab7"; // 色を元に戻す
+            calibBtn.innerText = `🎯 ゲージ校正`; 
+            calibBtn.style.backgroundColor = "#673ab7"; 
             computeHomography();
         }
     };
     canvasMP.addEventListener('mousedown', handleCanvasClick);
     canvasMN.addEventListener('mousedown', handleCanvasClick);
-    // ---------------------------------------------------
 
     function computeHomography() {
         try {
@@ -331,17 +328,6 @@
         return deg > 180 ? 360 - deg : deg;
     }
 
-    function transformPointToMat(x, y) {
-        if (!homographyMatrix) return {x, y, isNormalized: false};
-        let src = cv.matFromArray(1, 1, cv.CV_32FC2, [x, y]);
-        let dst = new cv.Mat();
-        cv.perspectiveTransform(src, dst, homographyMatrix);
-        let rx = dst.data32F[0];
-        let ry = dst.data32F[1];
-        src.delete(); dst.delete();
-        return {x: rx, y: ry, isNormalized: true};
-    }
-
     function drawPoses(poses, ctx, color, mode, modelName, canvasObj) {
         if (poses.length === 0) return;
         const kps = poses[0].keypoints;
@@ -356,6 +342,7 @@
 
         let textY = 40;
 
+        // ARゲージ描画（床のパース補正はそのまま維持）
         if (calibrationPoints.length > 0) {
             ctx.beginPath();
             ctx.setLineDash([5, 5]);
@@ -429,8 +416,6 @@
             const shoulderTilt = calculateSignedTilt(lShoulder, rShoulder);
             let currentHipMidX = (lHip.x + rHip.x) / 2;
             let currentHipMidY = (lHip.y + rHip.y) / 2;
-            
-            let normHip = transformPointToMat(currentHipMidX, currentHipMidY);
 
             if (c.state === 'waiting') {
                 c.state = 'countdown';
@@ -449,29 +434,47 @@
                 } else {
                     c.state = 'calibrating';
                     c.frames = 0;
-                    c.sumP = 0; c.sumS = 0; c.sumHipX = 0; c.sumHipY = 0;
+                    c.sumP = 0; c.sumS = 0; c.sumHipY = 0;
                 }
             } 
             else if (c.state === 'calibrating') {
                 c.sumP += pelvicTilt;
                 c.sumS += shoulderTilt;
-                c.sumHipX += normHip.x; 
-                c.sumHipY += normHip.y;
+                c.sumHipY += currentHipMidY;
                 c.frames++;
                 
                 ctx.fillStyle = "#00FF00";
-                ctx.fillText(`📸 ゼロ点を記録中...`, 10, textY);
+                ctx.fillText(`📸 基準アライメントを記録中...`, 10, textY);
                 
                 if (c.frames >= 10) { 
                     c.baseP = c.sumP / 10;
                     c.baseS = c.sumS / 10;
-                    c.baseHipX = c.sumHipX / 10; 
                     c.baseHipY = c.sumHipY / 10; 
                     c.baseShoulderW = Math.abs(rShoulder.x - lShoulder.x);
                     c.state = 'done';
                 }
             } 
             else if (c.state === 'done') {
+                // --- 【修正】評価軸を「両足の中心」から「地面についている軸足」へ自動シフト ---
+                let stanceAnkleX = 0;
+                if (lAnkle.score >= 0.3 && rAnkle.score >= 0.3) {
+                    stanceAnkleX = (rAnkle.y > lAnkle.y) ? rAnkle.x : lAnkle.x; // 画面下にある方（地面に近い方）を軸足とする
+                } else if (lAnkle.score >= 0.3) {
+                    stanceAnkleX = lAnkle.x;
+                } else {
+                    stanceAnkleX = rAnkle.x;
+                }
+
+                // 軸足の真上に正中線を描画
+                ctx.beginPath();
+                ctx.setLineDash([10, 10]);
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.7)"; 
+                ctx.lineWidth = 2;
+                ctx.moveTo(stanceAnkleX, 0);
+                ctx.lineTo(stanceAnkleX, canvasObj.height);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
                 const radarSize = Math.max(120, canvasObj.width * 0.25);
                 const radarMargin = 15;
                 const radarX = canvasObj.width - radarSize - radarMargin;
@@ -493,9 +496,14 @@
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                let dx = normHip.x - c.baseHipX;
-                let dy = normHip.y - c.baseHipY;
-                c.swayHistory.push({dx: dx, dy: dy});
+                // 【修正】レーダーの入力を、パララックスの影響を受けない生座標（軸足からのズレ）に戻す
+                let dx = currentHipMidX - stanceAnkleX;
+                let dy = currentHipMidY - c.baseHipY;
+
+                let normDx = c.baseShoulderW > 0 ? (dx / c.baseShoulderW) : 0;
+                let normDy = c.baseShoulderW > 0 ? (dy / c.baseShoulderW) : 0;
+
+                c.swayHistory.push({nx: normDx, ny: normDy});
                 if (c.swayHistory.length > 200) c.swayHistory.shift();
 
                 ctx.save();
@@ -509,21 +517,22 @@
                     ctx.lineWidth = 2;
                     ctx.lineJoin = "round";
                     
-                    const radarSensitivity = 1.0; 
+                    const radarSensitivity = 2.0; 
+                    const maxRadius = radarSize / 2;
                     
-                    let startX = radarCenterX + (c.swayHistory[0].dx * radarSensitivity);
-                    let startY = radarCenterY + (c.swayHistory[0].dy * radarSensitivity);
+                    let startX = radarCenterX + (c.swayHistory[0].nx * radarSensitivity * maxRadius);
+                    let startY = radarCenterY + (c.swayHistory[0].ny * radarSensitivity * maxRadius);
                     ctx.moveTo(startX, startY);
                     
                     for (let i = 1; i < c.swayHistory.length; i++) {
-                        let ptX = radarCenterX + (c.swayHistory[i].dx * radarSensitivity);
-                        let ptY = radarCenterY + (c.swayHistory[i].dy * radarSensitivity);
+                        let ptX = radarCenterX + (c.swayHistory[i].nx * radarSensitivity * maxRadius);
+                        let ptY = radarCenterY + (c.swayHistory[i].ny * radarSensitivity * maxRadius);
                         ctx.lineTo(ptX, ptY);
                     }
                     ctx.stroke();
 
-                    let currentPtX = radarCenterX + (c.swayHistory[c.swayHistory.length-1].dx * radarSensitivity);
-                    let currentPtY = radarCenterY + (c.swayHistory[c.swayHistory.length-1].dy * radarSensitivity);
+                    let currentPtX = radarCenterX + (c.swayHistory[c.swayHistory.length-1].nx * radarSensitivity * maxRadius);
+                    let currentPtY = radarCenterY + (c.swayHistory[c.swayHistory.length-1].ny * radarSensitivity * maxRadius);
                     ctx.beginPath();
                     ctx.fillStyle = "red";
                     ctx.arc(currentPtX, currentPtY, 4, 0, 2*Math.PI);
@@ -531,6 +540,7 @@
                 }
                 ctx.restore();
 
+                // 判定ロジック
                 let devPelvic = Math.abs(pelvicTilt - c.baseP);
                 let devShoulder = Math.abs(shoulderTilt - c.baseS);
                 let isPerfectPosture = false; 
@@ -545,17 +555,21 @@
                 }
                 textY += 25;
 
-                let physicalSway = Math.abs(dx); 
+                // 【修正】横ブレの評価を、一番精度が高かった「軸足基準」に戻す
+                let swayRatio = 0;
+                if (c.baseShoulderW > 0) {
+                    swayRatio = (Math.abs(dx) / c.baseShoulderW) * 100;
+                }
 
-                if (physicalSway >= 50.0) {
-                    ctx.fillStyle = "#FF0000"; ctx.fillText(`❌ 重心動揺(大): マットズレ大`, 10, textY);
+                if (swayRatio >= 25.0) {
+                    ctx.fillStyle = "#FF0000"; ctx.fillText(`❌ 重心動揺(大): 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
                     isPerfectPosture = false;
-                } else if (physicalSway >= 20.0) {
-                    ctx.fillStyle = "#FF8800"; ctx.fillText(`⚠️ 重心動揺(中): マットズレ注意`, 10, textY);
+                } else if (swayRatio >= 15.0) {
+                    ctx.fillStyle = "#FF8800"; ctx.fillText(`⚠️ 重心動揺(中): 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
                     isPerfectPosture = false;
                 } else {
-                    ctx.fillStyle = "#00FF00"; ctx.fillText(`✅ 軸足荷重OK: マットズレ少`, 10, textY);
-                    if (physicalSway >= 20.0) isPerfectPosture = false; 
+                    ctx.fillStyle = "#00FF00"; ctx.fillText(`✅ 軸足荷重OK: 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
+                    if (swayRatio >= 15.0) isPerfectPosture = false; 
                 }
 
                 if (isPerfectPosture) {
