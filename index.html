@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro - 重心レーダー完全版</title>
+    <title>姿勢検証ツール Pro - キャリブレーション改修版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -19,6 +19,7 @@
         #recordBtn { background: #d32f2f; color: white; }
         #stopRecBtn { background: #1976d2; color: white; }
         #switchBtn { background: #616161; color: white; }
+        #resetCalibBtn { background: #f57c00; color: white; display: none; } /* リセットボタン追加 */
         button:disabled { opacity: 0.3; cursor: not-allowed; }
         select { background: #eee; color: #333; }
         .container { display: flex; width: 100vw; height: calc(100vh - 120px); }
@@ -32,19 +33,19 @@
 <body>
 
 <div class="controls">
-    <button id="startCamBtn" disabled>モデル読込中...</button>
-    <button id="switchBtn" disabled>🔄 カメラ切替</button>
-    <div style="border-left: 1px solid #666; height: 30px; margin: 0 10px;"></div>
+    <button id="startCamBtn" disabled>📷 起動</button>
+    <button id="switchBtn" disabled>🔄 カメラ</button>
+    <button id="resetCalibBtn" disabled>🎯 ゼロリセット</button> <div style="border-left: 1px solid #666; height: 30px; margin: 0 10px;"></div>
     
     <select id="modeSelect">
         <option value="none">可視化オフ</option>
         <option value="squat_side">スクワット側面 (モビリティ)</option>
         <option value="squat_front">スクワット正面 (スタビリティ)</option>
-        <option value="single_leg">片足立ち正面 (重心レーダー/バランス)</option>
+        <option value="single_leg">片足立ち正面 (重心レーダー)</option>
     </select>
     
     <button id="recordBtn" disabled>🔴 計測開始</button>
-    <button id="stopRecBtn" disabled>⏹️ 計測終了 & 保存</button>
+    <button id="stopRecBtn" disabled>⏹️ 終了&保存</button>
 </div>
 
 <div class="container">
@@ -71,6 +72,7 @@
     const modeSelect = document.getElementById('modeSelect');
     const recordBtn = document.getElementById('recordBtn');
     const stopRecBtn = document.getElementById('stopRecBtn');
+    const resetCalibBtn = document.getElementById('resetCalibBtn'); // NEW
     const recInds = [document.getElementById('recIndMP'), document.getElementById('recIndMN')];
     
     let detectorMP, detectorMN;
@@ -78,15 +80,34 @@
     let logData = [], frameCount = 0;
     let currentFacingMode = 'environment'; 
 
-    let calib = {
-        MediaPipe: { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, baseShoulderW: 0, sumHipX: 0, sumHipY: 0, baseHipX: 0, baseHipY: 0, swayHistory: [], isDone: false },
-        MoveNet: { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, baseShoulderW: 0, sumHipX: 0, sumHipY: 0, baseHipX: 0, baseHipY: 0, swayHistory: [], isDone: false }
-    };
-
-    modeSelect.addEventListener('change', () => {
+    // 【修正】キャリブレーション状態を管理する state を追加 ('waiting', 'countdown', 'calibrating', 'done')
+    let calib = {};
+    function resetCalibration() {
         ['MediaPipe', 'MoveNet'].forEach(m => {
-            calib[m] = { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, baseShoulderW: 0, sumHipX: 0, sumHipY: 0, baseHipX: 0, baseHipY: 0, swayHistory: [], isDone: false };
+            calib[m] = { 
+                state: 'waiting', countdownStart: 0, frames: 0, 
+                sumP: 0, sumS: 0, baseP: 0, baseS: 0, 
+                baseShoulderW: 0, sumHipX: 0, sumHipY: 0, baseHipX: 0, baseHipY: 0, 
+                swayHistory: [] 
+            };
         });
+    }
+    resetCalibration();
+
+    // モード切替時の処理
+    modeSelect.addEventListener('change', () => {
+        resetCalibration();
+        if (modeSelect.value === 'single_leg') {
+            resetCalibBtn.style.display = 'inline-block';
+            resetCalibBtn.disabled = false;
+        } else {
+            resetCalibBtn.style.display = 'none';
+        }
+    });
+
+    // ゼロリセットボタンの処理
+    resetCalibBtn.addEventListener('click', () => {
+        resetCalibration();
     });
 
     const KEYPOINT_NAMES = [
@@ -131,13 +152,13 @@
         let csvHeaders = ["Frame", "Timestamp_ms", "Model", "InferenceTime_ms", "Score_Average"];
         KEYPOINT_NAMES.forEach((name, index) => csvHeaders.push(`${index}_${name}_X`, `${index}_${name}_Y`, `${index}_${name}_Score`));
         logData.push(csvHeaders);
-        recordBtn.disabled = true; stopRecBtn.disabled = false; modeSelect.disabled = true;
+        recordBtn.disabled = true; stopRecBtn.disabled = false; modeSelect.disabled = true; resetCalibBtn.disabled = true;
         recInds.forEach(el => el.style.display = 'flex');
     });
 
     stopRecBtn.addEventListener('click', () => {
         isRecording = false; saveCSV();
-        recordBtn.disabled = false; stopRecBtn.disabled = true; modeSelect.disabled = false;
+        recordBtn.disabled = false; stopRecBtn.disabled = true; modeSelect.disabled = false; resetCalibBtn.disabled = false;
         recInds.forEach(el => el.style.display = 'none');
     });
 
@@ -242,52 +263,66 @@
         else if (mode === 'single_leg') {
             ctx.fillStyle = "white"; ctx.fillText(`【正面: 重心レーダー＆バランス】`, 10, textY); textY += 25;
 
-            // 【追加】エラーハンドリング（なぜ止まっているかをユーザーに知らせる）
             let bodyScoreOk = lHip && rHip && lShoulder && rShoulder && lHip.score >= 0.3 && rHip.score >= 0.3 && lShoulder.score >= 0.3 && rShoulder.score >= 0.3;
-            let ankleScoreOk = lAnkle && rAnkle && (lAnkle.score >= 0.3 || rAnkle.score >= 0.3); // 少なくとも片足は見えていること
-
-            if (!bodyScoreOk) {
-                ctx.fillStyle = "#FF4444";
-                ctx.fillText(`⚠️ 肩〜骨盤が認識できません（全身を映してください）`, 10, textY);
-                return; // ここで描画を中断（サイレントエラーの防止）
-            }
-            if (!ankleScoreOk) {
-                ctx.fillStyle = "#FF8800";
-                ctx.fillText(`⚠️ 足首が認識できません（少しカメラから離れてください）`, 10, textY);
-                return; // ここで描画を中断
-            }
-
-            // これ以降は各関節が確実に認識されている状態
-            const pelvicTilt = calculateSignedTilt(lHip, rHip);
-            const shoulderTilt = calculateSignedTilt(lShoulder, rShoulder);
+            let ankleScoreOk = lAnkle && rAnkle && (lAnkle.score >= 0.3 || rAnkle.score >= 0.3); 
             let c = calib[modelName];
 
+            // 画面から見切れた場合、カウントダウンを中断して待機状態に戻す
+            if (!bodyScoreOk || !ankleScoreOk) {
+                if (c.state !== 'done') c.state = 'waiting'; 
+                ctx.fillStyle = "#FF4444";
+                ctx.fillText(`⚠️ 全身（肩〜足首）をカメラに収めてください`, 10, textY);
+                return; 
+            }
+
+            const pelvicTilt = calculateSignedTilt(lHip, rHip);
+            const shoulderTilt = calculateSignedTilt(lShoulder, rShoulder);
             let currentHipMidX = (lHip.x + rHip.x) / 2;
             let currentHipMidY = (lHip.y + rHip.y) / 2;
 
-            if (!c.isDone) {
+            // --- 【新設】状態遷移ロジック（カウントダウン -> 記録 -> 完了） ---
+            if (c.state === 'waiting') {
+                c.state = 'countdown';
+                c.countdownStart = performance.now();
+            } 
+            else if (c.state === 'countdown') {
+                let elapsed = performance.now() - c.countdownStart;
+                let remaining = Math.ceil(3.0 - (elapsed / 1000));
+                
+                if (remaining > 0) {
+                    ctx.fillStyle = "#FFFF00";
+                    ctx.font = "bold 24px sans-serif";
+                    ctx.fillText(`⏳ ${remaining}秒後にゼロ点を記録します`, 10, textY);
+                    ctx.font = "bold 16px sans-serif";
+                    ctx.fillText(`両足でまっすぐ立って静止してください`, 10, textY + 25);
+                } else {
+                    c.state = 'calibrating';
+                    c.frames = 0;
+                    c.sumP = 0; c.sumS = 0; c.sumHipX = 0; c.sumHipY = 0;
+                }
+            } 
+            else if (c.state === 'calibrating') {
                 c.sumP += pelvicTilt;
                 c.sumS += shoulderTilt;
                 c.sumHipX += currentHipMidX;
                 c.sumHipY += currentHipMidY;
-                c.swayHistory = []; 
                 c.frames++;
                 
-                let progress = Math.min(100, Math.floor((c.frames / 60) * 100));
-                ctx.fillStyle = "#FFFF00";
-                ctx.fillText(`⏳ 両足で直立して静止... ${progress}%`, 10, textY);
+                ctx.fillStyle = "#00FF00";
+                ctx.fillText(`📸 ゼロ点を記録中...`, 10, textY);
                 
-                if (c.frames >= 60) {
-                    c.baseP = c.sumP / 60;
-                    c.baseS = c.sumS / 60;
-                    c.baseHipX = c.sumHipX / 60; 
-                    c.baseHipY = c.sumHipY / 60; 
+                // たった10フレーム（約0.16秒）のスナップショットで基準を確定する
+                if (c.frames >= 10) { 
+                    c.baseP = c.sumP / 10;
+                    c.baseS = c.sumS / 10;
+                    c.baseHipX = c.sumHipX / 10; 
+                    c.baseHipY = c.sumHipY / 10; 
                     c.baseShoulderW = Math.abs(rShoulder.x - lShoulder.x);
-                    c.isDone = true;
+                    c.state = 'done';
                 }
             } 
-            else {
-                // 軸足の安全な判別（スコアが高い方、または画面下部にある方）
+            else if (c.state === 'done') {
+                // --- 測定＆レーダー表示フェーズ ---
                 let stanceAnkleX = 0;
                 if (lAnkle.score >= 0.3 && rAnkle.score >= 0.3) {
                     stanceAnkleX = (rAnkle.y > lAnkle.y) ? rAnkle.x : lAnkle.x;
@@ -297,7 +332,6 @@
                     stanceAnkleX = rAnkle.x;
                 }
 
-                // 1. 軸足の真上の正中線
                 ctx.beginPath();
                 ctx.setLineDash([10, 10]);
                 ctx.strokeStyle = "rgba(255, 255, 255, 0.7)"; 
@@ -307,8 +341,6 @@
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // --- 【修正】レスポンシブな重心レーダーの描画 ---
-                // スマホ解像度に合わせてレーダーサイズを動的に計算（最低120px、最大でも画面の25%）
                 const radarSize = Math.max(120, Math.min(canvasObj.width, canvasObj.height) * 0.25);
                 const radarMargin = 15;
                 const radarX = canvasObj.width - radarSize - radarMargin;
@@ -330,7 +362,6 @@
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // 軌跡データの保存（カメラ解像度に依存しない「肩幅に対する比率」として保存）
                 let dx = currentHipMidX - c.baseHipX;
                 let dy = currentHipMidY - c.baseHipY;
                 let normDx = c.baseShoulderW > 0 ? (dx / c.baseShoulderW) : 0;
@@ -350,7 +381,6 @@
                     ctx.lineWidth = 2;
                     ctx.lineJoin = "round";
                     
-                    // レーダー感度（2.0 = 肩幅の半分のブレでレーダーの端に到達する設定）
                     const radarSensitivity = 2.0;
                     const maxRadius = radarSize / 2;
                     
@@ -365,7 +395,6 @@
                     }
                     ctx.stroke();
 
-                    // 現在位置の強調
                     let currentPtX = radarCenterX + (c.swayHistory[c.swayHistory.length-1].nx * radarSensitivity * maxRadius);
                     let currentPtY = radarCenterY + (c.swayHistory[c.swayHistory.length-1].ny * radarSensitivity * maxRadius);
                     ctx.beginPath();
@@ -374,7 +403,6 @@
                     ctx.fill();
                 }
                 ctx.restore();
-                // ----------------------------------------------------
 
                 let devPelvic = Math.abs(pelvicTilt - c.baseP);
                 let devShoulder = Math.abs(shoulderTilt - c.baseS);
