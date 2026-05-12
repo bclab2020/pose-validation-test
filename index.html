@@ -29,7 +29,7 @@
         canvas { width: 100%; height: 100%; object-fit: contain; }
         .stats { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 8px; font-size: 12px; border-radius: 4px; pointer-events: none; z-index: 10; }
         .recording-indicator { position: absolute; top: 10px; right: 10px; color: #ff1744; font-weight: bold; display: none; align-items: center; gap: 5px; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 20px; z-index: 10; }
-        #cvStatus { position: fixed; bottom: 10px; left: 10px; font-size: 12px; color: #ffeb3b; font-weight: bold; background: rgba(0,0,0,0.5); padding: 4px 8px; border-radius: 4px; }
+        #cvStatus { position: fixed; bottom: 10px; left: 10px; font-size: 12px; color: #ffeb3b; font-weight: bold; background: rgba(0,0,0,0.5); padding: 4px 8px; border-radius: 4px; z-index: 20; }
     </style>
 </head>
 <body>
@@ -90,7 +90,7 @@
     let calibrationPoints = []; 
     let isCalibratingMat = false;
     let homographyMatrix = null; 
-    let isOpenCvReady = false; // OpenCVの準備フラグ
+    let isOpenCvReady = false; 
 
     let calib = {};
     function resetEvaluation() {
@@ -105,23 +105,38 @@
     }
     resetEvaluation();
 
-    // --- 【修正】OpenCVのバックグラウンド読み込み ---
-    window.Module = {
-        onRuntimeInitialized: function() {
-            isOpenCvReady = true;
-            const statusEl = document.getElementById('cvStatus');
-            statusEl.innerText = "✅ ARモジュール準備完了";
-            statusEl.style.color = "#00e676";
-            setTimeout(() => statusEl.style.display = 'none', 3000); // 3秒後に非表示
-
-            if (modeSelect.value === 'single_leg') {
-                calibBtn.disabled = false;
-            }
-        }
-    };
+    // --- 【完全修正】OpenCVの安全な非同期読み込み ---
     const cvScript = document.createElement("script");
-    cvScript.src = "https://docs.opencv.org/4.8.0/opencv.js";
+    cvScript.src = "https://docs.opencv.org/4.5.4/opencv.js";
     cvScript.async = true;
+    
+    cvScript.onload = () => {
+        let attempts = 0;
+        // OpenCVの準備が整うまで0.5秒おきにチェック
+        const checkReady = setInterval(() => {
+            attempts++;
+            if (typeof cv !== 'undefined' && cv.getPerspectiveTransform) {
+                clearInterval(checkReady);
+                isOpenCvReady = true;
+                const statusEl = document.getElementById('cvStatus');
+                statusEl.innerText = "✅ ARモジュール準備完了";
+                statusEl.style.color = "#00e676";
+                setTimeout(() => statusEl.style.display = 'none', 3000); 
+
+                if (modeSelect.value === 'single_leg') {
+                    calibBtn.disabled = false;
+                }
+            } else if (attempts > 20) { // 10秒経ってもダメならエラー
+                clearInterval(checkReady);
+                document.getElementById('cvStatus').innerText = "❌ モジュールの展開に失敗しました。リロードしてください。";
+                document.getElementById('cvStatus').style.color = "#ff4444";
+            }
+        }, 500);
+    };
+    cvScript.onerror = () => {
+        document.getElementById('cvStatus').innerText = "❌ 通信エラー: モジュールが取得できません。Wi-Fi環境をご確認ください。";
+        document.getElementById('cvStatus').style.color = "#ff4444";
+    };
     document.body.appendChild(cvScript);
     // ------------------------------------------------
 
@@ -130,7 +145,7 @@
         if (modeSelect.value === 'single_leg') {
             calibBtn.style.display = 'inline-block';
             resetCalibBtn.style.display = 'inline-block';
-            if(isOpenCvReady) calibBtn.disabled = false; // 準備完了していれば有効化
+            if(isOpenCvReady) calibBtn.disabled = false; 
             resetCalibBtn.disabled = false;
         } else {
             calibBtn.style.display = 'none';
@@ -396,7 +411,6 @@
             let currentHipMidX = (lHip.x + rHip.x) / 2;
             let currentHipMidY = (lHip.y + rHip.y) / 2;
             
-            // ホモグラフィ適用
             let normHip = transformPointToMat(currentHipMidX, currentHipMidY);
 
             if (c.state === 'waiting') {
@@ -422,7 +436,7 @@
             else if (c.state === 'calibrating') {
                 c.sumP += pelvicTilt;
                 c.sumS += shoulderTilt;
-                c.sumHipX += normHip.x; // 正規化された座標を足す
+                c.sumHipX += normHip.x; 
                 c.sumHipY += normHip.y;
                 c.frames++;
                 
@@ -439,7 +453,6 @@
                 }
             } 
             else if (c.state === 'done') {
-                // レーダー描画
                 const radarSize = Math.max(120, canvasObj.width * 0.25);
                 const radarMargin = 15;
                 const radarX = canvasObj.width - radarSize - radarMargin;
@@ -463,7 +476,6 @@
 
                 let dx = normHip.x - c.baseHipX;
                 let dy = normHip.y - c.baseHipY;
-                // 今回から座標は500x500の絶対空間なので、直接ピクセルとして扱える
                 c.swayHistory.push({dx: dx, dy: dy});
                 if (c.swayHistory.length > 200) c.swayHistory.shift();
 
@@ -478,7 +490,7 @@
                     ctx.lineWidth = 2;
                     ctx.lineJoin = "round";
                     
-                    const radarSensitivity = 1.0; // 絶対座標空間になったので感度調整
+                    const radarSensitivity = 1.0; 
                     
                     let startX = radarCenterX + (c.swayHistory[0].dx * radarSensitivity);
                     let startY = radarCenterY + (c.swayHistory[0].dy * radarSensitivity);
@@ -514,7 +526,6 @@
                 }
                 textY += 25;
 
-                // 物理的な横ズレ判定（500px正規化空間におけるズレ）
                 let physicalSway = Math.abs(dx); 
 
                 if (physicalSway >= 50.0) {
@@ -575,7 +586,6 @@
         await setupCamera();
     });
 
-    // 読み込み完了待ちをやめて即時実行
     initModels();
 </script>
 </body>
