@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro - Joint-by-Joint</title>
+    <title>姿勢検証ツール Pro - バイオメカニクス評価</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -35,11 +35,14 @@
     <button id="startCamBtn" disabled>モデル読込中...</button>
     <button id="switchBtn" disabled>🔄 カメラ切替</button>
     <div style="border-left: 1px solid #666; height: 30px; margin: 0 10px;"></div>
+    
     <select id="modeSelect">
         <option value="none">可視化オフ</option>
-        <option value="squat">スクワット測定 (JbJ評価)</option>
-        <option value="single_leg">片足立ち測定 (JbJ評価)</option>
+        <option value="squat_side">スクワット側面 (モビリティ)</option>
+        <option value="squat_front">スクワット正面 (スタビリティ)</option>
+        <option value="single_leg">片足立ち正面 (バランス/ゼロ点校正)</option>
     </select>
+    
     <button id="recordBtn" disabled>🔴 計測開始</button>
     <button id="stopRecBtn" disabled>⏹️ 計測終了 & 保存</button>
 </div>
@@ -74,6 +77,19 @@
     let isCameraRunning = false, isRecording = false;
     let logData = [], frameCount = 0;
     let currentFacingMode = 'environment'; 
+
+    // キャリブレーション用データ（モデルごとに独立して管理）
+    let calib = {
+        MediaPipe: { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, isDone: false },
+        MoveNet: { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, isDone: false }
+    };
+
+    // モード切替時にキャリブレーションをリセット
+    modeSelect.addEventListener('change', () => {
+        ['MediaPipe', 'MoveNet'].forEach(m => {
+            calib[m] = { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, isDone: false };
+        });
+    });
 
     const KEYPOINT_NAMES = [
         "nose", "left_eye_inner", "left_eye", "left_eye_outer", "right_eye_inner", "right_eye", "right_eye_outer", 
@@ -144,14 +160,14 @@
         const startMP = performance.now();
         const posesMP = await detectorMP.estimatePoses(video);
         const timeMP = performance.now() - startMP;
-        drawPoses(posesMP, ctxMP, 'red', currentMode);
+        drawPoses(posesMP, ctxMP, 'red', currentMode, 'MediaPipe');
         if (isRecording) logFrame(posesMP, "MediaPipe", timeMP);
         document.getElementById('statsMP').innerText = `MediaPipe: ${timeMP.toFixed(1)}ms`;
 
         const startMN = performance.now();
         const posesMN = await detectorMN.estimatePoses(video);
         const timeMN = performance.now() - startMN;
-        drawPoses(posesMN, ctxMN, 'cyan', currentMode);
+        drawPoses(posesMN, ctxMN, 'cyan', currentMode, 'MoveNet');
         if (isRecording) logFrame(posesMN, "MoveNet", timeMN);
         document.getElementById('statsMN').innerText = `MoveNet: ${timeMN.toFixed(1)}ms`;
 
@@ -166,13 +182,12 @@
         return deg > 180 ? 360 - deg : deg;
     }
 
-    function calculateTilt(L, R) {
+    // 符号付きの傾きを計算（右下がりなら正、右上がりなら負）
+    function calculateSignedTilt(L, R) {
         if (!L || !R || L.score < 0.3 || R.score < 0.3) return null;
-        let deg = Math.abs(Math.atan2(R.y-L.y, R.x-L.x) * 180 / Math.PI);
-        return deg > 90 ? 180 - deg : deg;
+        return Math.atan2(R.y-L.y, R.x-L.x) * 180 / Math.PI;
     }
 
-    // 垂直線（Y軸）に対する角度を計算（0度が真下または真上）
     function getAngleFromVertical(topPt, bottomPt) {
         if (!topPt || !bottomPt || topPt.score < 0.3 || bottomPt.score < 0.3) return null;
         let dx = bottomPt.x - topPt.x;
@@ -180,29 +195,29 @@
         return Math.abs(Math.atan2(dx, dy) * 180 / Math.PI);
     }
 
-    function drawPoses(poses, ctx, color, mode) {
+    function drawPoses(poses, ctx, color, mode, modelName) {
         if (poses.length === 0) return;
         const kps = poses[0].keypoints;
         const getK = (n) => kps.find(k => k.name === n);
         renderSkeleton(ctx, kps, color);
 
-        // --- Joint-by-Joint 分析表示 ---
         ctx.font = "bold 16px sans-serif"; 
         
         const rShoulder = getK('right_shoulder'), rHip = getK('right_hip'), rKnee = getK('right_knee'), rAnkle = getK('right_ankle'), rWrist = getK('right_wrist');
         const lShoulder = getK('left_shoulder'), lHip = getK('left_hip'), lKnee = getK('left_knee'), lAnkle = getK('left_ankle');
 
-        if (mode === 'squat') {
-            // 右側面のデータで計算
-            const torsoAngle = getAngleFromVertical(rShoulder, rHip); // 体幹の前傾角
-            const tibiaAngle = getAngleFromVertical(rKnee, rAnkle);   // すねの前傾角
-            const armAngle = getAngleFromVertical(rWrist, rShoulder); // 腕の前傾角
+        let textY = 40;
 
-            let textY = 40;
-            ctx.fillStyle = "white";
-            ctx.fillText(`【JbJ スクワット分析】`, 10, textY); textY += 25;
+        // ==========================================
+        // 1. スクワット側面測定 (モビリティ評価)
+        // ==========================================
+        if (mode === 'squat_side') {
+            const torsoAngle = getAngleFromVertical(rShoulder, rHip); 
+            const tibiaAngle = getAngleFromVertical(rKnee, rAnkle);   
+            const armAngle = getAngleFromVertical(rWrist, rShoulder); 
 
-            // 1. 足首モビリティ vs 腰椎スタビリティ (体幹と下腿の平行性)
+            ctx.fillStyle = "white"; ctx.fillText(`【側面: モビリティ評価】`, 10, textY); textY += 25;
+
             if (torsoAngle !== null && tibiaAngle !== null) {
                 const diff = Math.abs(torsoAngle - tibiaAngle);
                 if (diff > 15) {
@@ -210,63 +225,106 @@
                     ctx.fillText(`⚠️ 足首モビリティ不足 / 体幹代償 (差: ${diff.toFixed(1)}°)`, 10, textY);
                 } else {
                     ctx.fillStyle = "#00FF00";
-                    ctx.fillText(`✅ 下肢-体幹の連動良好`, 10, textY);
+                    ctx.fillText(`✅ 下肢-体幹の平行性良好`, 10, textY);
                 }
                 textY += 25;
             }
 
-            // 2. 胸椎モビリティ (腕の挙上角度)
             if (armAngle !== null) {
-                // 腕が真上なら180度付近。垂直からどれだけ倒れているかを計算
                 const armDrop = Math.abs(180 - armAngle);
                 if (armDrop > 20) {
                     ctx.fillStyle = "#FF4444";
                     ctx.fillText(`⚠️ 胸椎モビリティ低下 (腕前傾: ${armDrop.toFixed(1)}°)`, 10, textY);
                 } else {
                     ctx.fillStyle = "#00FF00";
-                    ctx.fillText(`✅ 胸椎モビリティ良好`, 10, textY);
+                    ctx.fillText(`✅ 胸椎・肩関節モビリティ良好`, 10, textY);
                 }
             }
         } 
-        else if (mode === 'single_leg') {
-            let textY = 40;
-            ctx.fillStyle = "white";
-            ctx.fillText(`【JbJ 片足バランス分析】`, 10, textY); textY += 25;
+        // ==========================================
+        // 2. スクワット正面測定 (スタビリティ評価)
+        // ==========================================
+        else if (mode === 'squat_front') {
+            ctx.fillStyle = "white"; ctx.fillText(`【正面: スタビリティ評価】`, 10, textY); textY += 25;
 
-            // 1. 股関節スタビリティ (骨盤と肩の傾き)
-            const pelvicTilt = calculateTilt(lHip, rHip);
-            const shoulderTilt = calculateTilt(lShoulder, rShoulder);
+            // ニーイン検知
+            const rKneeAngle = calculateAngle(rHip, rKnee, rAnkle);
+            const lKneeAngle = calculateAngle(lHip, lKnee, lAnkle);
             
-            if (pelvicTilt !== null && shoulderTilt !== null) {
-                if (pelvicTilt > 5.0) {
+            if (rKneeAngle !== null && lKneeAngle !== null) {
+                if (rKneeAngle < 165 || lKneeAngle < 165) {
                     ctx.fillStyle = "#FF4444";
-                    ctx.fillText(`⚠️ 股関節スタビリティ低下 (骨盤傾斜: ${pelvicTilt.toFixed(1)}°)`, 10, textY);
-                } else if (shoulderTilt > 5.0) {
-                    ctx.fillStyle = "#FF4444";
-                    ctx.fillText(`⚠️ 腰椎/体幹の代償 (肩傾斜: ${shoulderTilt.toFixed(1)}°)`, 10, textY);
+                    ctx.fillText(`⚠️ ニーイン発生 (Knee Valgus)`, 10, textY);
                 } else {
                     ctx.fillStyle = "#00FF00";
-                    ctx.fillText(`✅ 体幹・骨盤の安定性良好`, 10, textY);
+                    ctx.fillText(`✅ 下肢アライメント良好`, 10, textY);
                 }
                 textY += 25;
             }
 
-            // 2. 軸足のニーイン (足のスタビリティ低下による代償)
-            // 軸足を判定（Y座標が大きい＝画面下にある方を軸足とする）
-            if (rAnkle && lAnkle && rHip && lHip && rKnee && lKnee) {
-                const isRightStance = rAnkle.y > lAnkle.y;
-                const sHip = isRightStance ? rHip : lHip;
-                const sKnee = isRightStance ? rKnee : lKnee;
-                const sAnkle = isRightStance ? rAnkle : lAnkle;
-
-                const stanceKneeAngle = calculateAngle(sHip, sKnee, sAnkle);
-                if (stanceKneeAngle !== null) {
-                    if (stanceKneeAngle < 165) {
+            // 骨盤の左右ウェイトシフト検知
+            if (rShoulder && lShoulder && rHip && lHip && rAnkle && lAnkle) {
+                let shoulderWidth = Math.abs(rShoulder.x - lShoulder.x);
+                let hipMidX = (lHip.x + rHip.x) / 2;
+                let ankleMidX = (lAnkle.x + rAnkle.x) / 2;
+                
+                if (shoulderWidth > 0) {
+                    // 肩幅を基準にしたズレの割合を計算
+                    let shiftRatio = Math.abs(hipMidX - ankleMidX) / shoulderWidth;
+                    if (shiftRatio > 0.12) { // 12%以上のズレを代償とする
                         ctx.fillStyle = "#FF4444";
-                        ctx.fillText(`⚠️ 膝スタビリティ低下 / ニーイン発生`, 10, textY);
+                        ctx.fillText(`⚠️ 骨盤の側方シフト (ウェイトシフト)`, 10, textY);
                     } else {
                         ctx.fillStyle = "#00FF00";
-                        ctx.fillText(`✅ 下肢アライメント良好`, 10, textY);
+                        ctx.fillText(`✅ 重心の左右対称性良好`, 10, textY);
+                    }
+                }
+            }
+        }
+        // ==========================================
+        // 3. 片足立ち正面測定 (ゼロ点校正付きバランス)
+        // ==========================================
+        else if (mode === 'single_leg') {
+            ctx.fillStyle = "white"; ctx.fillText(`【正面: 片足バランス評価】`, 10, textY); textY += 25;
+
+            const pelvicTilt = calculateSignedTilt(lHip, rHip);
+            const shoulderTilt = calculateSignedTilt(lShoulder, rShoulder);
+            let c = calib[modelName];
+
+            if (pelvicTilt !== null && shoulderTilt !== null) {
+                // キャリブレーションフェーズ（約1秒間＝60フレーム）
+                if (!c.isDone) {
+                    c.sumP += pelvicTilt;
+                    c.sumS += shoulderTilt;
+                    c.frames++;
+                    
+                    let progress = Math.min(100, Math.floor((c.frames / 60) * 100));
+                    ctx.fillStyle = "#FFFF00";
+                    ctx.fillText(`⏳ ゼロ点校正中... ${progress}%`, 10, textY);
+                    ctx.fillText(`(両足で直立してお待ちください)`, 10, textY + 20);
+                    
+                    if (c.frames >= 60) {
+                        c.baseP = c.sumP / 60;
+                        c.baseS = c.sumS / 60;
+                        c.isDone = true;
+                    }
+                } 
+                // 評価フェーズ
+                else {
+                    // ベースライン（解剖学的な初期値）からの絶対偏差を計算
+                    let devPelvic = Math.abs(pelvicTilt - c.baseP);
+                    let devShoulder = Math.abs(shoulderTilt - c.baseS);
+
+                    // 代償動作の切り分けロジック
+                    if (devPelvic > 5.0 && devShoulder <= 5.0) {
+                        ctx.fillStyle = "#FF4444";
+                        ctx.fillText(`⚠️ トレンデレンブルグ徴候 (骨盤降下: ${devPelvic.toFixed(1)}°)`, 10, textY);
+                    } else if (devShoulder > 5.0) {
+                        ctx.fillStyle = "#FF8800";
+                        ctx.fillText(`⚠️ デュシェンヌ代償 (体幹傾斜: ${devShoulder.toFixed(1)}°)`, 10, textY);
+                    } else {
+                        ctx.fillStyle = "#00FF00";
+                        ctx.fillText(`✅ 生理的範囲内 (安定性良好)`, 10, textY);
                     }
                 }
             }
