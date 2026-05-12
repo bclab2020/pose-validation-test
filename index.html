@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro - 重心動揺・バイオフィードバック評価</title>
+    <title>姿勢検証ツール Pro - 軸足追従・バイオフィードバック</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -40,7 +40,7 @@
         <option value="none">可視化オフ</option>
         <option value="squat_side">スクワット側面 (モビリティ)</option>
         <option value="squat_front">スクワット正面 (スタビリティ)</option>
-        <option value="single_leg">片足立ち正面 (重心動揺/バランス)</option>
+        <option value="single_leg">片足立ち正面 (軸足追従/バランス)</option>
     </select>
     
     <button id="recordBtn" disabled>🔴 計測開始</button>
@@ -79,13 +79,13 @@
     let currentFacingMode = 'environment'; 
 
     let calib = {
-        MediaPipe: { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, baseMidX: 0, baseShoulderW: 0, isDone: false },
-        MoveNet: { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, baseMidX: 0, baseShoulderW: 0, isDone: false }
+        MediaPipe: { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, baseShoulderW: 0, isDone: false },
+        MoveNet: { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, baseShoulderW: 0, isDone: false }
     };
 
     modeSelect.addEventListener('change', () => {
         ['MediaPipe', 'MoveNet'].forEach(m => {
-            calib[m] = { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, baseMidX: 0, baseShoulderW: 0, isDone: false };
+            calib[m] = { frames: 0, sumP: 0, sumS: 0, baseP: 0, baseS: 0, baseShoulderW: 0, isDone: false };
         });
     });
 
@@ -201,13 +201,14 @@
         renderSkeleton(ctx, kps, color);
 
         ctx.font = "bold 16px sans-serif"; 
-        ctx.textAlign = "left"; // デフォルトのテキスト配置
+        ctx.textAlign = "left"; 
         
         const rShoulder = getK('right_shoulder'), rHip = getK('right_hip'), rKnee = getK('right_knee'), rAnkle = getK('right_ankle'), rWrist = getK('right_wrist');
         const lShoulder = getK('left_shoulder'), lHip = getK('left_hip'), lKnee = getK('left_knee'), lAnkle = getK('left_ankle');
 
         let textY = 40;
 
+        // --- 動的重心線の描画 ---
         if (mode === 'squat_front' || mode === 'single_leg') {
             if (lShoulder && rShoulder && lHip && rHip) {
                 const midShoulderX = (lShoulder.x + rShoulder.x) / 2;
@@ -240,7 +241,7 @@
                 const diff = Math.abs(torsoAngle - tibiaAngle);
                 if (diff > 15) {
                     ctx.fillStyle = "#FF4444";
-                    ctx.fillText(`⚠️ 足首モビリティ不足 / 体幹代償 (差: ${diff.toFixed(1)}°)`, 10, textY);
+                    ctx.fillText(`⚠️ 足首モビリティ不足 / 体幹代償`, 10, textY);
                 } else {
                     ctx.fillStyle = "#00FF00";
                     ctx.fillText(`✅ 下肢-体幹の平行性良好`, 10, textY);
@@ -252,10 +253,10 @@
                 const armDrop = Math.abs(180 - armAngle);
                 if (armDrop > 20) {
                     ctx.fillStyle = "#FF4444";
-                    ctx.fillText(`⚠️ 胸椎モビリティ低下 (腕前傾: ${armDrop.toFixed(1)}°)`, 10, textY);
+                    ctx.fillText(`⚠️ 胸椎モビリティ低下 (腕前傾)`, 10, textY);
                 } else {
                     ctx.fillStyle = "#00FF00";
-                    ctx.fillText(`✅ 胸椎・肩関節モビリティ良好`, 10, textY);
+                    ctx.fillText(`✅ 胸椎モビリティ良好`, 10, textY);
                 }
             }
         } 
@@ -277,7 +278,7 @@
             }
         }
         else if (mode === 'single_leg') {
-            ctx.fillStyle = "white"; ctx.fillText(`【正面: 重心動揺/バランス評価】`, 10, textY); textY += 25;
+            ctx.fillStyle = "white"; ctx.fillText(`【正面: 軸足追従バランス評価】`, 10, textY); textY += 25;
 
             const pelvicTilt = calculateSignedTilt(lHip, rHip);
             const shoulderTilt = calculateSignedTilt(lShoulder, rShoulder);
@@ -291,74 +292,78 @@
                     
                     let progress = Math.min(100, Math.floor((c.frames / 60) * 100));
                     ctx.fillStyle = "#FFFF00";
-                    ctx.fillText(`⏳ ゼロ点校正中... ${progress}%`, 10, textY);
+                    ctx.fillText(`⏳ 両足で直立... ${progress}%`, 10, textY);
                     
                     if (c.frames >= 60) {
                         c.baseP = c.sumP / 60;
                         c.baseS = c.sumS / 60;
-                        c.baseMidX = (lAnkle.x + rAnkle.x) / 2;
                         c.baseShoulderW = Math.abs(rShoulder.x - lShoulder.x);
                         c.isDone = true;
                     }
                 } 
                 else {
+                    // 【修正】軸足の自動判別（画面下にある方の足を軸足とする）
+                    let isRightStance = rAnkle.y > lAnkle.y;
+                    let stanceAnkleX = isRightStance ? rAnkle.x : lAnkle.x;
+
+                    // 1. 絶対正中線（白い点線）を軸足の真上に引く
                     ctx.beginPath();
                     ctx.setLineDash([10, 10]);
                     ctx.strokeStyle = "rgba(255, 255, 255, 0.7)"; 
                     ctx.lineWidth = 2;
-                    ctx.moveTo(c.baseMidX, 0);
-                    ctx.lineTo(c.baseMidX, canvasObj.height);
+                    ctx.moveTo(stanceAnkleX, 0);
+                    ctx.lineTo(stanceAnkleX, canvasObj.height);
                     ctx.stroke();
                     ctx.setLineDash([]);
 
+                    // 2. 姿勢判定（閾値を5度から8度に緩和）
                     let devPelvic = Math.abs(pelvicTilt - c.baseP);
                     let devShoulder = Math.abs(shoulderTilt - c.baseS);
-                    
-                    let isPerfectPosture = false; // 完全なアライメントかどうかのフラグ
+                    let isPerfectPosture = false; 
 
-                    if (devPelvic > 10.0 && devShoulder <= 10.0) {
+                    if (devPelvic > 12.0 && devShoulder <= 12.0) {
                         ctx.fillStyle = "#FF4444";
                         ctx.fillText(`⚠️ 骨盤の傾斜 (トレンデレンブルグ疑い)`, 10, textY);
-                    } else if (devShoulder > 10.0) {
+                    } else if (devShoulder > 12.0) {
                         ctx.fillStyle = "#FF8800";
                         ctx.fillText(`⚠️ 体幹の傾斜 (デュシェンヌ代償)`, 10, textY);
                     } else {
                         ctx.fillStyle = "#00FF00";
                         ctx.fillText(`✅ アライメント良好`, 10, textY);
-                        // 傾斜が5度以下なら姿勢は完璧に近いとみなす
-                        if (devPelvic <= 5.0 && devShoulder <= 5.0) isPerfectPosture = true; 
+                        if (devPelvic <= 8.0 && devShoulder <= 8.0) isPerfectPosture = true; 
                     }
                     textY += 25;
 
+                    // 3. 重心動揺（スウェイ）判定
                     if (c.baseShoulderW > 0) {
                         let currentHipMidX = (lHip.x + rHip.x) / 2;
-                        let swayRatio = (Math.abs(currentHipMidX - c.baseMidX) / c.baseShoulderW) * 100;
+                        // 骨盤の中央が、軸足の真上からどれくらいズレているかを計算（閾値緩和）
+                        let swayRatio = (Math.abs(currentHipMidX - stanceAnkleX) / c.baseShoulderW) * 100;
 
-                        if (swayRatio >= 20.0) {
+                        if (swayRatio >= 25.0) {
                             ctx.fillStyle = "#FF0000"; 
                             ctx.fillText(`❌ 重心動揺(大): 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
                             isPerfectPosture = false;
-                        } else if (swayRatio >= 10.0) {
+                        } else if (swayRatio >= 15.0) {
                             ctx.fillStyle = "#FF8800"; 
                             ctx.fillText(`⚠️ 重心動揺(中): 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
                             isPerfectPosture = false;
                         } else {
                             ctx.fillStyle = "#00FF00"; 
-                            ctx.fillText(`✅ 重心安定: 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
-                            // ズレが5%以上なら完璧フラグを下ろす
-                            if (swayRatio >= 5.0) isPerfectPosture = false; 
+                            ctx.fillText(`✅ 軸足荷重OK: 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
+                            // ズレが15%未満ならOKとみなす（大幅緩和）
+                            if (swayRatio >= 15.0) isPerfectPosture = false; 
                         }
 
-                        // 【追加】姿勢も重心も完璧に正中線に戻った場合に「OK」を大きく描画
+                        // 【OK表示】現実的な閾値をクリアした場合に表示
                         if (isPerfectPosture) {
-                            ctx.save(); // 現在の描画設定を保存
+                            ctx.save();
                             ctx.font = "bold 140px sans-serif";
-                            ctx.fillStyle = "rgba(0, 255, 0, 0.4)"; // 半透明の鮮やかな緑
+                            ctx.fillStyle = "rgba(0, 255, 0, 0.4)"; 
                             ctx.textAlign = "center";
                             ctx.textBaseline = "middle";
-                            // キャンバスの中央に描画
                             ctx.fillText("OK", canvasObj.width / 2, canvasObj.height / 2);
-                            ctx.restore(); // 描画設定を元に戻す（左上のテキストに影響させないため）
+                            ctx.restore();
                         }
                     }
                 }
