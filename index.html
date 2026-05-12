@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro - ARゲージ＆生体力学修正版</title>
+    <title>姿勢検証ツール Pro - 重心定義改修版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -20,7 +20,7 @@
         #stopRecBtn { background: #1976d2; color: white; }
         #switchBtn { background: #616161; color: white; }
         #calibBtn { background: #673ab7; color: white; transition: all 0.2s; } 
-        #resetCalibBtn { background: #f57c00; color: white; display: none; }
+        #resetEvalBtn { background: #f57c00; color: white; display: none; } /* マットを維持したまま測定だけリセット */
         button:disabled { opacity: 0.3; cursor: not-allowed; }
         select { background: #eee; color: #333; }
         .container { display: flex; width: 100vw; height: calc(100vh - 120px); }
@@ -37,8 +37,8 @@
 <div class="controls">
     <button id="startCamBtn" disabled>モデル読込中...</button>
     <button id="switchBtn" disabled>🔄 カメラ</button>
-    <button id="calibBtn" disabled>🎯 ゲージ校正</button>
-    <button id="resetCalibBtn" disabled>🔄 リセット</button>
+    <button id="calibBtn" disabled>🎯 マット校正</button>
+    <button id="resetEvalBtn" disabled>🔄 測定リセット</button>
     <div style="border-left: 1px solid #666; height: 30px; margin: 0 10px;"></div>
     
     <select id="modeSelect">
@@ -78,7 +78,7 @@
     const recordBtn = document.getElementById('recordBtn');
     const stopRecBtn = document.getElementById('stopRecBtn');
     const calibBtn = document.getElementById('calibBtn');
-    const resetCalibBtn = document.getElementById('resetCalibBtn');
+    const resetEvalBtn = document.getElementById('resetEvalBtn');
     const recInds = [document.getElementById('recIndMP'), document.getElementById('recIndMN')];
     
     let detectorMP, detectorMN;
@@ -91,14 +91,13 @@
     let homographyMatrix = null; 
     let isOpenCvReady = false; 
 
-    // 【修正】評価用変数のリセット（絶対座標のbaseHipXを削除）
+    // 評価データのリセット関数（マットのAR情報は消さない）
     let calib = {};
     function resetEvaluation() {
         ['MediaPipe', 'MoveNet'].forEach(m => {
             calib[m] = { 
                 state: 'waiting', countdownStart: 0, frames: 0, 
-                sumP: 0, sumS: 0, baseP: 0, baseS: 0, 
-                baseShoulderW: 0, sumHipY: 0, baseHipY: 0, 
+                sumHipX: 0, sumHipY: 0, baseHipX: 0, baseHipY: 0, 
                 swayHistory: [] 
             };
         });
@@ -141,12 +140,12 @@
         resetEvaluation();
         if (modeSelect.value === 'single_leg') {
             calibBtn.style.display = 'inline-block';
-            resetCalibBtn.style.display = 'inline-block';
+            resetEvalBtn.style.display = 'inline-block';
             if(isOpenCvReady) calibBtn.disabled = false; 
-            resetCalibBtn.disabled = false;
+            resetEvalBtn.disabled = false;
         } else {
             calibBtn.style.display = 'none';
-            resetCalibBtn.style.display = 'none';
+            resetEvalBtn.style.display = 'none';
         }
     });
 
@@ -157,6 +156,11 @@
         calibBtn.innerText = `🎯 校正中 (0/4)`;
         calibBtn.style.backgroundColor = "#d81b60"; 
         alert("マットの4隅を「左上→右上→右下→左下」の順でタップしてください。");
+    });
+
+    // 測定のみをリセットするボタン（もう一度片足立ちをやり直す用）
+    resetEvalBtn.addEventListener('click', () => {
+        resetEvaluation();
     });
 
     const handleCanvasClick = (e) => {
@@ -177,12 +181,11 @@
         y = Math.max(0, Math.min(canvas.height, y));
 
         calibrationPoints.push({x, y});
-        
         calibBtn.innerText = `🎯 校正中 (${calibrationPoints.length}/4)`;
 
         if (calibrationPoints.length === 4) {
             isCalibratingMat = false;
-            calibBtn.innerText = `🎯 ゲージ校正`; 
+            calibBtn.innerText = `🎯 マット校正`; 
             calibBtn.style.backgroundColor = "#673ab7"; 
             computeHomography();
         }
@@ -205,23 +208,15 @@
             
             srcMat.delete(); dstMat.delete();
             resetEvaluation();
-            alert("✅ 校正完了！\nARゲージをロックしました。被験者にマットへ立ってもらってください。");
+            alert("✅ マットのAR登録完了！\n次に、被験者に片足で立ってもらい、静止してください。");
         } catch (err) {
             console.error(err);
             alert("❌ エラーが発生しました。\nもう一度校正ボタンを押してやり直してください。");
             calibrationPoints = [];
-            calibBtn.innerText = `🎯 ゲージ校正`;
+            calibBtn.innerText = `🎯 マット校正`;
             calibBtn.style.backgroundColor = "#673ab7";
         }
     }
-
-    resetCalibBtn.addEventListener('click', () => {
-        resetEvaluation();
-        calibrationPoints = [];
-        homographyMatrix = null;
-        calibBtn.innerText = `🎯 ゲージ校正`;
-        calibBtn.style.backgroundColor = "#673ab7";
-    });
 
     const KEYPOINT_NAMES = [
         "nose", "left_eye_inner", "left_eye", "left_eye_outer", "right_eye_inner", "right_eye", "right_eye_outer", 
@@ -265,13 +260,13 @@
         let csvHeaders = ["Frame", "Timestamp_ms", "Model", "InferenceTime_ms", "Score_Average"];
         KEYPOINT_NAMES.forEach((name, index) => csvHeaders.push(`${index}_${name}_X`, `${index}_${name}_Y`, `${index}_${name}_Score`));
         logData.push(csvHeaders);
-        recordBtn.disabled = true; stopRecBtn.disabled = false; modeSelect.disabled = true; resetCalibBtn.disabled = true; calibBtn.disabled = true;
+        recordBtn.disabled = true; stopRecBtn.disabled = false; modeSelect.disabled = true; resetEvalBtn.disabled = true; calibBtn.disabled = true;
         recInds.forEach(el => el.style.display = 'flex');
     });
 
     stopRecBtn.addEventListener('click', () => {
         isRecording = false; saveCSV();
-        recordBtn.disabled = false; stopRecBtn.disabled = true; modeSelect.disabled = false; resetCalibBtn.disabled = false; if(isOpenCvReady) calibBtn.disabled = false;
+        recordBtn.disabled = false; stopRecBtn.disabled = true; modeSelect.disabled = false; resetEvalBtn.disabled = false; if(isOpenCvReady) calibBtn.disabled = false;
         recInds.forEach(el => el.style.display = 'none');
     });
 
@@ -328,6 +323,17 @@
         return deg > 180 ? 360 - deg : deg;
     }
 
+    function transformPointToMat(x, y) {
+        if (!homographyMatrix) return {x, y, isNormalized: false};
+        let src = cv.matFromArray(1, 1, cv.CV_32FC2, [x, y]);
+        let dst = new cv.Mat();
+        cv.perspectiveTransform(src, dst, homographyMatrix);
+        let rx = dst.data32F[0];
+        let ry = dst.data32F[1];
+        src.delete(); dst.delete();
+        return {x: rx, y: ry, isNormalized: true};
+    }
+
     function drawPoses(poses, ctx, color, mode, modelName, canvasObj) {
         if (poses.length === 0) return;
         const kps = poses[0].keypoints;
@@ -342,7 +348,6 @@
 
         let textY = 40;
 
-        // ARゲージ描画（床のパース補正はそのまま維持）
         if (calibrationPoints.length > 0) {
             ctx.beginPath();
             ctx.setLineDash([5, 5]);
@@ -353,6 +358,23 @@
             if(calibrationPoints.length === 4) ctx.closePath();
             ctx.stroke();
             ctx.setLineDash([]);
+            
+            // 十字線（マット中心）を描画
+            if (calibrationPoints.length === 4) {
+                let midTopX = (calibrationPoints[0].x + calibrationPoints[1].x) / 2;
+                let midTopY = (calibrationPoints[0].y + calibrationPoints[1].y) / 2;
+                let midBotX = (calibrationPoints[3].x + calibrationPoints[2].x) / 2;
+                let midBotY = (calibrationPoints[3].y + calibrationPoints[2].y) / 2;
+                let midLeftX = (calibrationPoints[0].x + calibrationPoints[3].x) / 2;
+                let midLeftY = (calibrationPoints[0].y + calibrationPoints[3].y) / 2;
+                let midRightX = (calibrationPoints[1].x + calibrationPoints[2].x) / 2;
+                let midRightY = (calibrationPoints[1].y + calibrationPoints[2].y) / 2;
+                
+                ctx.beginPath(); ctx.strokeStyle = "rgba(103, 58, 183, 0.5)"; ctx.lineWidth = 1;
+                ctx.moveTo(midTopX, midTopY); ctx.lineTo(midBotX, midBotY);
+                ctx.moveTo(midLeftX, midLeftY); ctx.lineTo(midRightX, midRightY);
+                ctx.stroke();
+            }
 
             calibrationPoints.forEach((p, idx) => {
                 ctx.fillStyle = "white";
@@ -393,7 +415,7 @@
             }
         }
         else if (mode === 'single_leg') {
-            ctx.fillStyle = "white"; ctx.fillText(`【正面: AR軌跡レーダー＆バランス】`, 10, textY); textY += 25;
+            ctx.fillStyle = "white"; ctx.fillText(`【片足立ち: スウェイ(動揺)評価】`, 10, textY); textY += 25;
 
             let bodyScoreOk = lHip && rHip && lShoulder && rShoulder && lHip.score >= 0.3 && rHip.score >= 0.3 && lShoulder.score >= 0.3 && rShoulder.score >= 0.3;
             let ankleScoreOk = lAnkle && rAnkle && (lAnkle.score >= 0.3 || rAnkle.score >= 0.3); 
@@ -401,7 +423,7 @@
 
             if (!homographyMatrix) {
                 ctx.fillStyle = "#FF8800";
-                ctx.fillText(`⚠️ 最初に「🎯 ゲージ校正」を行ってください`, 10, textY);
+                ctx.fillText(`⚠️ 最初に「🎯 マット校正」を行ってください`, 10, textY);
                 return;
             }
 
@@ -416,65 +438,45 @@
             const shoulderTilt = calculateSignedTilt(lShoulder, rShoulder);
             let currentHipMidX = (lHip.x + rHip.x) / 2;
             let currentHipMidY = (lHip.y + rHip.y) / 2;
+            
+            let normHip = transformPointToMat(currentHipMidX, currentHipMidY);
 
+            // --- 【修正】生体力学に基づくキャリブレーション ---
             if (c.state === 'waiting') {
                 c.state = 'countdown';
                 c.countdownStart = performance.now();
             } 
             else if (c.state === 'countdown') {
                 let elapsed = performance.now() - c.countdownStart;
-                let remaining = Math.ceil(3.0 - (elapsed / 1000));
+                let remaining = Math.ceil(4.0 - (elapsed / 1000));
                 
                 if (remaining > 0) {
                     ctx.fillStyle = "#FFFF00";
                     ctx.font = "bold 24px sans-serif";
                     ctx.fillText(`⏳ ${remaining}秒後にゼロ点を記録します`, 10, textY);
                     ctx.font = "bold 16px sans-serif";
-                    ctx.fillText(`両足でまっすぐ立って静止してください`, 10, textY + 25);
+                    ctx.fillText(`片足を挙げて、自然なバランスをとってください`, 10, textY + 25);
                 } else {
                     c.state = 'calibrating';
-                    c.frames = 0;
-                    c.sumP = 0; c.sumS = 0; c.sumHipY = 0;
+                    c.frames = 0; c.sumHipX = 0; c.sumHipY = 0;
                 }
             } 
             else if (c.state === 'calibrating') {
-                c.sumP += pelvicTilt;
-                c.sumS += shoulderTilt;
-                c.sumHipY += currentHipMidY;
+                // 片足立ちの瞬間の「その人の自然な重心」を0点とする
+                c.sumHipX += normHip.x; 
+                c.sumHipY += normHip.y;
                 c.frames++;
                 
                 ctx.fillStyle = "#00FF00";
-                ctx.fillText(`📸 基準アライメントを記録中...`, 10, textY);
+                ctx.fillText(`📸 バランス中心を記録中...`, 10, textY);
                 
                 if (c.frames >= 10) { 
-                    c.baseP = c.sumP / 10;
-                    c.baseS = c.sumS / 10;
+                    c.baseHipX = c.sumHipX / 10; 
                     c.baseHipY = c.sumHipY / 10; 
-                    c.baseShoulderW = Math.abs(rShoulder.x - lShoulder.x);
                     c.state = 'done';
                 }
             } 
             else if (c.state === 'done') {
-                // --- 【修正】評価軸を「両足の中心」から「地面についている軸足」へ自動シフト ---
-                let stanceAnkleX = 0;
-                if (lAnkle.score >= 0.3 && rAnkle.score >= 0.3) {
-                    stanceAnkleX = (rAnkle.y > lAnkle.y) ? rAnkle.x : lAnkle.x; // 画面下にある方（地面に近い方）を軸足とする
-                } else if (lAnkle.score >= 0.3) {
-                    stanceAnkleX = lAnkle.x;
-                } else {
-                    stanceAnkleX = rAnkle.x;
-                }
-
-                // 軸足の真上に正中線を描画
-                ctx.beginPath();
-                ctx.setLineDash([10, 10]);
-                ctx.strokeStyle = "rgba(255, 255, 255, 0.7)"; 
-                ctx.lineWidth = 2;
-                ctx.moveTo(stanceAnkleX, 0);
-                ctx.lineTo(stanceAnkleX, canvasObj.height);
-                ctx.stroke();
-                ctx.setLineDash([]);
-
                 const radarSize = Math.max(120, canvasObj.width * 0.25);
                 const radarMargin = 15;
                 const radarX = canvasObj.width - radarSize - radarMargin;
@@ -482,6 +484,7 @@
                 const radarCenterX = radarX + radarSize / 2;
                 const radarCenterY = radarY + radarSize / 2;
 
+                // レーダー背景
                 ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
                 ctx.fillRect(radarX, radarY, radarSize, radarSize);
                 ctx.strokeStyle = "white";
@@ -496,14 +499,10 @@
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // 【修正】レーダーの入力を、パララックスの影響を受けない生座標（軸足からのズレ）に戻す
-                let dx = currentHipMidX - stanceAnkleX;
-                let dy = currentHipMidY - c.baseHipY;
-
-                let normDx = c.baseShoulderW > 0 ? (dx / c.baseShoulderW) : 0;
-                let normDy = c.baseShoulderW > 0 ? (dy / c.baseShoulderW) : 0;
-
-                c.swayHistory.push({nx: normDx, ny: normDy});
+                // ゼロ点からの物理的なズレ（スウェイ）
+                let dx = normHip.x - c.baseHipX;
+                let dy = normHip.y - c.baseHipY;
+                c.swayHistory.push({dx: dx, dy: dy});
                 if (c.swayHistory.length > 200) c.swayHistory.shift();
 
                 ctx.save();
@@ -517,22 +516,21 @@
                     ctx.lineWidth = 2;
                     ctx.lineJoin = "round";
                     
-                    const radarSensitivity = 2.0; 
-                    const maxRadius = radarSize / 2;
+                    const radarSensitivity = 1.0; 
                     
-                    let startX = radarCenterX + (c.swayHistory[0].nx * radarSensitivity * maxRadius);
-                    let startY = radarCenterY + (c.swayHistory[0].ny * radarSensitivity * maxRadius);
+                    let startX = radarCenterX + (c.swayHistory[0].dx * radarSensitivity);
+                    let startY = radarCenterY + (c.swayHistory[0].dy * radarSensitivity);
                     ctx.moveTo(startX, startY);
                     
                     for (let i = 1; i < c.swayHistory.length; i++) {
-                        let ptX = radarCenterX + (c.swayHistory[i].nx * radarSensitivity * maxRadius);
-                        let ptY = radarCenterY + (c.swayHistory[i].ny * radarSensitivity * maxRadius);
+                        let ptX = radarCenterX + (c.swayHistory[i].dx * radarSensitivity);
+                        let ptY = radarCenterY + (c.swayHistory[i].dy * radarSensitivity);
                         ctx.lineTo(ptX, ptY);
                     }
                     ctx.stroke();
 
-                    let currentPtX = radarCenterX + (c.swayHistory[c.swayHistory.length-1].nx * radarSensitivity * maxRadius);
-                    let currentPtY = radarCenterY + (c.swayHistory[c.swayHistory.length-1].ny * radarSensitivity * maxRadius);
+                    let currentPtX = radarCenterX + (c.swayHistory[c.swayHistory.length-1].dx * radarSensitivity);
+                    let currentPtY = radarCenterY + (c.swayHistory[c.swayHistory.length-1].dy * radarSensitivity);
                     ctx.beginPath();
                     ctx.fillStyle = "red";
                     ctx.arc(currentPtX, currentPtY, 4, 0, 2*Math.PI);
@@ -540,36 +538,31 @@
                 }
                 ctx.restore();
 
-                // 判定ロジック
-                let devPelvic = Math.abs(pelvicTilt - c.baseP);
-                let devShoulder = Math.abs(shoulderTilt - c.baseS);
-                let isPerfectPosture = false; 
+                let isPerfectPosture = true; 
 
-                if (devPelvic > 12.0 && devShoulder <= 12.0) {
+                // --- 【修正】アライメント評価（水平面からの絶対角度で評価） ---
+                if (Math.abs(pelvicTilt) > 8.0) {
                     ctx.fillStyle = "#FF4444"; ctx.fillText(`⚠️ 骨盤の傾斜 (トレンデレンブルグ疑い)`, 10, textY);
-                } else if (devShoulder > 12.0) {
+                    isPerfectPosture = false;
+                } else if (Math.abs(shoulderTilt) > 8.0) {
                     ctx.fillStyle = "#FF8800"; ctx.fillText(`⚠️ 体幹の傾斜 (デュシェンヌ代償)`, 10, textY);
+                    isPerfectPosture = false;
                 } else {
                     ctx.fillStyle = "#00FF00"; ctx.fillText(`✅ アライメント良好`, 10, textY);
-                    if (devPelvic <= 8.0 && devShoulder <= 8.0) isPerfectPosture = true; 
                 }
                 textY += 25;
 
-                // 【修正】横ブレの評価を、一番精度が高かった「軸足基準」に戻す
-                let swayRatio = 0;
-                if (c.baseShoulderW > 0) {
-                    swayRatio = (Math.abs(dx) / c.baseShoulderW) * 100;
-                }
+                // --- 【修正】スウェイ評価（ゼロ点からの距離） ---
+                let physicalSway = Math.sqrt(dx*dx + dy*dy); // ピタゴラスの定理で中心からの絶対距離を出す
 
-                if (swayRatio >= 25.0) {
-                    ctx.fillStyle = "#FF0000"; ctx.fillText(`❌ 重心動揺(大): 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
+                if (physicalSway >= 40.0) {
+                    ctx.fillStyle = "#FF0000"; ctx.fillText(`❌ 重心動揺(大): バランス崩れ`, 10, textY);
                     isPerfectPosture = false;
-                } else if (swayRatio >= 15.0) {
-                    ctx.fillStyle = "#FF8800"; ctx.fillText(`⚠️ 重心動揺(中): 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
+                } else if (physicalSway >= 15.0) {
+                    ctx.fillStyle = "#FF8800"; ctx.fillText(`⚠️ 重心動揺(中): やや不安定`, 10, textY);
                     isPerfectPosture = false;
                 } else {
-                    ctx.fillStyle = "#00FF00"; ctx.fillText(`✅ 軸足荷重OK: 横ブレ ${swayRatio.toFixed(1)}%`, 10, textY);
-                    if (swayRatio >= 15.0) isPerfectPosture = false; 
+                    ctx.fillStyle = "#00FF00"; ctx.fillText(`✅ バランス安定`, 10, textY);
                 }
 
                 if (isPerfectPosture) {
