@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro - レーダー完全稼働版</title>
+    <title>姿勢検証ツール Pro - 超軽量・高速起動版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -29,7 +29,6 @@
         canvas { width: 100%; height: 100%; object-fit: contain; }
         .stats { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 8px; font-size: 12px; border-radius: 4px; pointer-events: none; z-index: 10; }
         .recording-indicator { position: absolute; top: 10px; right: 10px; color: #ff1744; font-weight: bold; display: none; align-items: center; gap: 5px; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 20px; z-index: 10; }
-        #cvStatus { position: fixed; bottom: 10px; left: 10px; font-size: 12px; color: #ffeb3b; font-weight: bold; background: rgba(0,0,0,0.5); padding: 4px 8px; border-radius: 4px; z-index: 20; }
     </style>
 </head>
 <body>
@@ -66,7 +65,6 @@
 </div>
 
 <video id="video" autoplay playsinline muted></video>
-<div id="cvStatus">⏳ ARモジュールをダウンロード中...</div>
 
 <script>
     const video = document.getElementById('video');
@@ -89,9 +87,7 @@
     let calibrationPoints = []; 
     let isCalibratingMat = false;
     let homographyMatrix = null; 
-    let isOpenCvReady = false; 
 
-    // 【修正】姿勢評価の基準変数をすべて復活
     let calib = {};
     function resetEvaluation() {
         ['MediaPipe', 'MoveNet'].forEach(m => {
@@ -105,44 +101,12 @@
     }
     resetEvaluation();
 
-    const cvScript = document.createElement("script");
-    cvScript.src = "https://docs.opencv.org/4.5.4/opencv.js";
-    cvScript.async = true;
-    
-    cvScript.onload = () => {
-        let attempts = 0;
-        const checkReady = setInterval(() => {
-            attempts++;
-            if (typeof cv !== 'undefined' && cv.getPerspectiveTransform) {
-                clearInterval(checkReady);
-                isOpenCvReady = true;
-                const statusEl = document.getElementById('cvStatus');
-                statusEl.innerText = "✅ ARモジュール準備完了";
-                statusEl.style.color = "#00e676";
-                setTimeout(() => statusEl.style.display = 'none', 3000); 
-
-                if (modeSelect.value === 'single_leg') {
-                    calibBtn.disabled = false;
-                }
-            } else if (attempts > 20) { 
-                clearInterval(checkReady);
-                document.getElementById('cvStatus').innerText = "❌ モジュールの展開に失敗しました。リロードしてください。";
-                document.getElementById('cvStatus').style.color = "#ff4444";
-            }
-        }, 500);
-    };
-    cvScript.onerror = () => {
-        document.getElementById('cvStatus').innerText = "❌ 通信エラー: モジュールが取得できません。";
-        document.getElementById('cvStatus').style.color = "#ff4444";
-    };
-    document.body.appendChild(cvScript);
-
     modeSelect.addEventListener('change', () => {
         resetEvaluation();
         if (modeSelect.value === 'single_leg') {
             calibBtn.style.display = 'inline-block';
             resetEvalBtn.style.display = 'inline-block';
-            if(isOpenCvReady) calibBtn.disabled = false; 
+            calibBtn.disabled = false; 
             resetEvalBtn.disabled = false;
         } else {
             calibBtn.style.display = 'none';
@@ -193,20 +157,50 @@
     canvasMP.addEventListener('mousedown', handleCanvasClick);
     canvasMN.addEventListener('mousedown', handleCanvasClick);
 
+    // --- 【完全新規】自作のホモグラフィ計算エンジン（OpenCV不要） ---
     function computeHomography() {
         try {
-            if(!cv || !cv.getPerspectiveTransform) throw new Error("OpenCV not ready");
+            let src = calibrationPoints;
+            let dst = [{x:0, y:0}, {x:500, y:0}, {x:500, y:500}, {x:0, y:500}];
             
-            let srcCoords = [];
-            calibrationPoints.forEach(p => srcCoords.push(p.x, p.y));
-            let srcMat = cv.matFromArray(4, 1, cv.CV_32FC2, srcCoords);
+            let a = [];
+            let b = [];
+            for (let i = 0; i < 4; i++) {
+                let x = src[i].x, y = src[i].y;
+                let u = dst[i].x, v = dst[i].y;
+                a.push([x, y, 1, 0, 0, 0, -x * u, -y * u]);
+                a.push([0, 0, 0, x, y, 1, -x * v, -y * v]);
+                b.push(u);
+                b.push(v);
+            }
 
-            let dstCoords = [0, 0, 500, 0, 500, 500, 0, 500];
-            let dstMat = cv.matFromArray(4, 1, cv.CV_32FC2, dstCoords);
+            // ガウスの消去法（連立方程式の解法）
+            let n = a.length;
+            for (let i = 0; i < n; i++) a[i].push(b[i]);
+            for (let i = 0; i < n; i++) {
+                let maxEl = Math.abs(a[i][i]), maxRow = i;
+                for (let k = i + 1; k < n; k++) {
+                    if (Math.abs(a[k][i]) > maxEl) { maxEl = Math.abs(a[k][i]); maxRow = k; }
+                }
+                for (let k = i; k < n + 1; k++) {
+                    let tmp = a[maxRow][k]; a[maxRow][k] = a[i][k]; a[i][k] = tmp;
+                }
+                for (let k = i + 1; k < n; k++) {
+                    let c = -a[k][i] / a[i][i];
+                    for (let j = i; j < n + 1; j++) {
+                        if (i === j) a[k][j] = 0;
+                        else a[k][j] += c * a[i][j];
+                    }
+                }
+            }
+            let h = new Array(n).fill(0);
+            for (let i = n - 1; i >= 0; i--) {
+                h[i] = a[i][n] / a[i][i];
+                for (let k = i - 1; k >= 0; k--) a[k][n] -= a[k][i] * h[i];
+            }
+            h.push(1); // h33 = 1
 
-            homographyMatrix = cv.getPerspectiveTransform(srcMat, dstMat);
-            
-            srcMat.delete(); dstMat.delete();
+            homographyMatrix = h; // 計算完了！
             resetEvaluation();
             alert("✅ マットのAR登録完了！\n次に、被験者に片足で立ってもらい、静止してください。");
         } catch (err) {
@@ -217,6 +211,17 @@
             calibBtn.style.backgroundColor = "#673ab7";
         }
     }
+
+    function transformPointToMat(x, y) {
+        if (!homographyMatrix) return {x, y, isNormalized: false};
+        let m = homographyMatrix;
+        let w = m[6] * x + m[7] * y + m[8];
+        if (Math.abs(w) < 1e-6) return {x, y, isNormalized: false};
+        let rx = (m[0] * x + m[1] * y + m[2]) / w;
+        let ry = (m[3] * x + m[4] * y + m[5]) / w;
+        return {x: rx, y: ry, isNormalized: true};
+    }
+    // -----------------------------------------------------------------
 
     const KEYPOINT_NAMES = [
         "nose", "left_eye_inner", "left_eye", "left_eye_outer", "right_eye_inner", "right_eye", "right_eye_outer", 
@@ -232,6 +237,13 @@
         detectorMN = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING });
         const btn = document.getElementById('startCamBtn');
         btn.innerText = "📷 カメラ起動"; btn.disabled = false;
+        
+        // 起動直後から片足立ちモードのボタンを有効化
+        if (modeSelect.value === 'single_leg') {
+            calibBtn.disabled = false;
+            calibBtn.style.display = 'inline-block';
+            resetEvalBtn.style.display = 'inline-block';
+        }
     }
 
     async function setupCamera() {
@@ -266,7 +278,7 @@
 
     stopRecBtn.addEventListener('click', () => {
         isRecording = false; saveCSV();
-        recordBtn.disabled = false; stopRecBtn.disabled = true; modeSelect.disabled = false; resetEvalBtn.disabled = false; if(isOpenCvReady) calibBtn.disabled = false;
+        recordBtn.disabled = false; stopRecBtn.disabled = true; modeSelect.disabled = false; resetEvalBtn.disabled = false; calibBtn.disabled = false;
         recInds.forEach(el => el.style.display = 'none');
     });
 
@@ -321,17 +333,6 @@
         let rad = Math.atan2(C.y-B.y, C.x-B.x) - Math.atan2(A.y-B.y, A.x-B.x);
         let deg = Math.abs(rad * 180 / Math.PI);
         return deg > 180 ? 360 - deg : deg;
-    }
-
-    // 【修正】OpenCVのバグを回避する、純粋な数学による安全な座標変換
-    function transformPointToMat(x, y) {
-        if (!homographyMatrix) return {x, y, isNormalized: false};
-        let m = homographyMatrix.data64F;
-        let w = m[6] * x + m[7] * y + m[8];
-        if (Math.abs(w) < 1e-6) return {x, y, isNormalized: false};
-        let rx = (m[0] * x + m[1] * y + m[2]) / w;
-        let ry = (m[3] * x + m[4] * y + m[5]) / w;
-        return {x: rx, y: ry, isNormalized: true};
     }
 
     function drawPoses(poses, ctx, color, mode, modelName, canvasObj) {
@@ -460,7 +461,6 @@
                 }
             } 
             else if (c.state === 'calibrating') {
-                // 【修正】肩と骨盤のデータも忘れずに記録
                 c.sumP += pelvicTilt;
                 c.sumS += shoulderTilt;
                 c.sumHipX += normHip.x; 
@@ -516,8 +516,6 @@
                     ctx.lineWidth = 2;
                     ctx.lineJoin = "round";
                     
-                    // 【修正】マット空間(500)とレーダー空間(px)を正しく連動させるスケール計算
-                    // ズーム係数2.0（マットの中心の揺れを拡大表示）
                     const mapScale = (radarSize / 500) * 2.0; 
                     
                     let startX = radarCenterX + (c.swayHistory[0].dx * mapScale);
@@ -553,7 +551,6 @@
                 }
                 textY += 25;
 
-                // スウェイの絶対距離計算
                 let physicalSway = Math.sqrt(dx*dx + dy*dy); 
 
                 if (physicalSway >= 40.0) {
