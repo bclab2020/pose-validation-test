@@ -19,7 +19,7 @@
         #recordBtn { background: #d32f2f; color: white; }
         #stopRecBtn { background: #1976d2; color: white; }
         #switchBtn { background: #616161; color: white; }
-        #calibBtn { background: #673ab7; color: white; } 
+        #calibBtn { background: #673ab7; color: white; transition: all 0.2s; } 
         #resetCalibBtn { background: #f57c00; color: white; display: none; }
         button:disabled { opacity: 0.3; cursor: not-allowed; }
         select { background: #eee; color: #333; }
@@ -153,39 +153,45 @@
         calibrationPoints = [];
         isCalibratingMat = true;
         homographyMatrix = null;
+        calibBtn.innerText = `🎯 校正中 (0/4)`;
+        calibBtn.style.backgroundColor = "#d81b60"; // 押下中は色を変える
         alert("マットの4隅を「左上→右上→右下→左下」の順でタップしてください。");
     });
 
-    // --- 【修正】クリック座標の正確な計算 ---
+    // --- 【修正】タップの空振りを防ぐ絶対カウント処理 ---
     const handleCanvasClick = (e) => {
         if (!isCalibratingMat) return;
         const canvas = e.target;
         const rect = canvas.getBoundingClientRect();
 
-        // object-fit: contain による実際の描画スケールと余白（レターボックス）を計算
         const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
         const renderWidth = canvas.width * scale;
         const renderHeight = canvas.height * scale;
         const offsetX = (rect.width - renderWidth) / 2;
         const offsetY = (rect.height - renderHeight) / 2;
 
-        // 余白を引いてからスケールで割り、本当の画像ピクセル座標を算出
-        const x = (e.clientX - rect.left - offsetX) / scale;
-        const y = (e.clientY - rect.top - offsetY) / scale;
+        let x = (e.clientX - rect.left - offsetX) / scale;
+        let y = (e.clientY - rect.top - offsetY) / scale;
 
-        // 映像の枠外（黒い帯の部分）をクリックした場合は無視する
-        if (x < 0 || x > canvas.width || y < 0 || y > canvas.height) return;
+        // クランプ処理：枠外をタップしても、一番近い画面の端として強制的に拾う（無視しない）
+        x = Math.max(0, Math.min(canvas.width, x));
+        y = Math.max(0, Math.min(canvas.height, y));
 
         calibrationPoints.push({x, y});
+        
+        // リアルタイムでボタンの文字を更新
+        calibBtn.innerText = `🎯 校正中 (${calibrationPoints.length}/4)`;
 
         if (calibrationPoints.length === 4) {
             isCalibratingMat = false;
+            calibBtn.innerText = `🎯 ゲージ校正`; // 文字を元に戻す
+            calibBtn.style.backgroundColor = "#673ab7"; // 色を元に戻す
             computeHomography();
         }
     };
     canvasMP.addEventListener('mousedown', handleCanvasClick);
     canvasMN.addEventListener('mousedown', handleCanvasClick);
-    // ----------------------------------------
+    // ---------------------------------------------------
 
     function computeHomography() {
         try {
@@ -202,11 +208,13 @@
             
             srcMat.delete(); dstMat.delete();
             resetEvaluation();
-            alert("校正完了！ARゲージをロックしました。被験者にマットへ立ってもらってください。");
+            alert("✅ 校正完了！\nARゲージをロックしました。被験者にマットへ立ってもらってください。");
         } catch (err) {
             console.error(err);
-            alert("エラーが発生しました。もう一度校正してください。");
+            alert("❌ エラーが発生しました。\nもう一度校正ボタンを押してやり直してください。");
             calibrationPoints = [];
+            calibBtn.innerText = `🎯 ゲージ校正`;
+            calibBtn.style.backgroundColor = "#673ab7";
         }
     }
 
@@ -214,6 +222,8 @@
         resetEvaluation();
         calibrationPoints = [];
         homographyMatrix = null;
+        calibBtn.innerText = `🎯 ゲージ校正`;
+        calibBtn.style.backgroundColor = "#673ab7";
     });
 
     const KEYPOINT_NAMES = [
