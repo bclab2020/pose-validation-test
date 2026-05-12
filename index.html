@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro - 超軽量・高速起動版</title>
+    <title>姿勢検証ツール Pro - レーダー完全復活版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -157,59 +157,58 @@
     canvasMP.addEventListener('mousedown', handleCanvasClick);
     canvasMN.addEventListener('mousedown', handleCanvasClick);
 
-    // --- 【完全新規】自作のホモグラフィ計算エンジン（OpenCV不要） ---
+    // --- 【修正】絶対に計算エラー（NaN）にならない代数的な厳密解 ---
+    function getSquareToQuad(x0, y0, x1, y1, x2, y2, x3, y3) {
+        let dx1 = x1 - x2, dx2 = x3 - x2, sx = x0 - x1 + x2 - x3;
+        let dy1 = y1 - y2, dy2 = y3 - y2, sy = y0 - y1 + y2 - y3;
+        let det = dx1 * dy2 - dy1 * dx2;
+        if (det === 0) return null;
+        let g = (sx * dy2 - sy * dx2) / det;
+        let h = (dx1 * sy - dy1 * sx) / det;
+        let a = x1 - x0 + g * x1;
+        let b = x3 - x0 + h * x3;
+        let c = x0;
+        let d = y1 - y0 + g * y1;
+        let e = y3 - y0 + h * y3;
+        let f = y0;
+        return [a, b, c, d, e, f, g, h, 1];
+    }
+
+    function invert3x3(m) {
+        let det = m[0]*(m[4]*m[8]-m[5]*m[7]) - m[1]*(m[3]*m[8]-m[5]*m[6]) + m[2]*(m[3]*m[7]-m[4]*m[6]);
+        if (det === 0) return null;
+        let invDet = 1 / det;
+        return [
+            (m[4]*m[8] - m[5]*m[7])*invDet, (m[2]*m[7] - m[1]*m[8])*invDet, (m[1]*m[5] - m[2]*m[4])*invDet,
+            (m[5]*m[6] - m[3]*m[8])*invDet, (m[0]*m[8] - m[2]*m[6])*invDet, (m[2]*m[3] - m[0]*m[5])*invDet,
+            (m[3]*m[7] - m[4]*m[6])*invDet, (m[1]*m[6] - m[0]*m[7])*invDet, (m[0]*m[4] - m[1]*m[3])*invDet
+        ];
+    }
+
+    function multiply3x3(a, b) {
+        return [
+            a[0]*b[0]+a[1]*b[3]+a[2]*b[6], a[0]*b[1]+a[1]*b[4]+a[2]*b[7], a[0]*b[2]+a[1]*b[5]+a[2]*b[8],
+            a[3]*b[0]+a[4]*b[3]+a[5]*b[6], a[3]*b[1]+a[4]*b[4]+a[5]*b[7], a[3]*b[2]+a[4]*b[5]+a[5]*b[8],
+            a[6]*b[0]+a[7]*b[3]+a[8]*b[6], a[6]*b[1]+a[7]*b[4]+a[8]*b[7], a[6]*b[2]+a[7]*b[5]+a[8]*b[8]
+        ];
+    }
+
     function computeHomography() {
-        try {
-            let src = calibrationPoints;
-            let dst = [{x:0, y:0}, {x:500, y:0}, {x:500, y:500}, {x:0, y:500}];
-            
-            let a = [];
-            let b = [];
-            for (let i = 0; i < 4; i++) {
-                let x = src[i].x, y = src[i].y;
-                let u = dst[i].x, v = dst[i].y;
-                a.push([x, y, 1, 0, 0, 0, -x * u, -y * u]);
-                a.push([0, 0, 0, x, y, 1, -x * v, -y * v]);
-                b.push(u);
-                b.push(v);
-            }
+        let pts = calibrationPoints;
+        let M_sq_to_src = getSquareToQuad(
+            pts[0].x, pts[0].y, pts[1].x, pts[1].y,
+            pts[2].x, pts[2].y, pts[3].x, pts[3].y
+        );
+        if (!M_sq_to_src) return alert("校正エラー：四角形の形が不適切です。");
+        
+        let M_src_to_sq = invert3x3(M_sq_to_src);
+        if (!M_src_to_sq) return alert("校正エラー：計算できません。");
 
-            // ガウスの消去法（連立方程式の解法）
-            let n = a.length;
-            for (let i = 0; i < n; i++) a[i].push(b[i]);
-            for (let i = 0; i < n; i++) {
-                let maxEl = Math.abs(a[i][i]), maxRow = i;
-                for (let k = i + 1; k < n; k++) {
-                    if (Math.abs(a[k][i]) > maxEl) { maxEl = Math.abs(a[k][i]); maxRow = k; }
-                }
-                for (let k = i; k < n + 1; k++) {
-                    let tmp = a[maxRow][k]; a[maxRow][k] = a[i][k]; a[i][k] = tmp;
-                }
-                for (let k = i + 1; k < n; k++) {
-                    let c = -a[k][i] / a[i][i];
-                    for (let j = i; j < n + 1; j++) {
-                        if (i === j) a[k][j] = 0;
-                        else a[k][j] += c * a[i][j];
-                    }
-                }
-            }
-            let h = new Array(n).fill(0);
-            for (let i = n - 1; i >= 0; i--) {
-                h[i] = a[i][n] / a[i][i];
-                for (let k = i - 1; k >= 0; k--) a[k][n] -= a[k][i] * h[i];
-            }
-            h.push(1); // h33 = 1
+        let M_sq_to_500 = [500,0,0, 0,500,0, 0,0,1];
+        homographyMatrix = multiply3x3(M_sq_to_500, M_src_to_sq);
 
-            homographyMatrix = h; // 計算完了！
-            resetEvaluation();
-            alert("✅ マットのAR登録完了！\n次に、被験者に片足で立ってもらい、静止してください。");
-        } catch (err) {
-            console.error(err);
-            alert("❌ エラーが発生しました。\nもう一度校正ボタンを押してやり直してください。");
-            calibrationPoints = [];
-            calibBtn.innerText = `🎯 マット校正`;
-            calibBtn.style.backgroundColor = "#673ab7";
-        }
+        resetEvaluation();
+        alert("✅ マットのAR登録完了！\n次に、被験者に片足で立ってもらい、静止してください。");
     }
 
     function transformPointToMat(x, y) {
@@ -238,7 +237,6 @@
         const btn = document.getElementById('startCamBtn');
         btn.innerText = "📷 カメラ起動"; btn.disabled = false;
         
-        // 起動直後から片足立ちモードのボタンを有効化
         if (modeSelect.value === 'single_leg') {
             calibBtn.disabled = false;
             calibBtn.style.display = 'inline-block';
