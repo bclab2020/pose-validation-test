@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro - 高感度スキャン版</title>
+    <title>姿勢検証ツール Pro - 高速・堅牢ロード版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -17,21 +17,23 @@
         body { margin: 0; font-family: sans-serif; background: #1a1a1a; color: white; }
         .controls { padding: 10px; text-align: center; background: #333; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; align-items: center; }
         button, select { padding: 10px 14px; font-size: 14px; cursor: pointer; border-radius: 4px; border: none; font-weight: bold; }
-        #startCamBtn { background: #4a4a4a; color: white; }
+        #startCamBtn { background: #4a4a4a; color: white; min-width: 200px; }
         #resetEvalBtn { background: #f57c00; color: white; display: none; }
+        button:disabled { opacity: 0.5; cursor: wait; }
         .container { display: flex; width: 100vw; height: calc(100vh - 120px); }
-        .view-port { flex: 1; position: relative; border-right: 1px solid #444; overflow: hidden; }
+        .view-port { flex: 1; position: relative; border-right: 1px solid #444; overflow: hidden; background: #000; }
         video { display: none; }
         canvas { width: 100%; height: 100%; object-fit: contain; }
         .calib-status { position: absolute; bottom: 10px; left: 10px; font-size: 12px; padding: 5px 12px; border-radius: 20px; z-index: 20; font-weight: bold; }
         .locked { background: #00c853; color: white; }
         .scanning { background: #ffab00; color: black; }
+        #debugLog { position: fixed; top: 60px; right: 10px; font-size: 10px; color: #aaa; pointer-events: none; }
     </style>
 </head>
 <body>
 
 <div class="controls">
-    <button id="startCamBtn" disabled>モデル読込中...</button>
+    <button id="startCamBtn" disabled>システム初期化中...</button>
     <button id="resetEvalBtn" disabled>🔄 測定リセット</button>
     <select id="modeSelect">
         <option value="single_leg" selected>片足立ち正面 (重心レーダー)</option>
@@ -51,6 +53,7 @@
 </div>
 
 <video id="video" autoplay playsinline muted></video>
+<div id="debugLog"></div>
 
 <script>
     const video = document.getElementById('video');
@@ -58,22 +61,82 @@
     const canvasMN = document.getElementById('canvasMN');
     const ctxMP = canvasMP.getContext('2d');
     const ctxMN = canvasMN.getContext('2d');
-    const modeSelect = document.getElementById('modeSelect');
     const startCamBtn = document.getElementById('startCamBtn');
+    const debugLog = document.getElementById('debugLog');
     
     let detectorMP, detectorMN;
     let isCameraRunning = false;
     let homographyMatrix = null;
-    let detectorAR = new AR.Detector(); 
+    let detectorAR = null; 
     let markerCoords = { 0:null, 1:null, 2:null, 3:null };
     let calib = {};
+
+    function log(msg) {
+        console.log(msg);
+        debugLog.innerText += msg + "\n";
+        startCamBtn.innerText = msg;
+    }
+
+    async function initModels() {
+        try {
+            log("⏳ エンジン起動中...");
+            await tf.ready();
+            await tf.setBackend('webgl');
+
+            log("⏳ 読込中 (MediaPipe)...");
+            detectorMP = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { 
+                runtime: 'mediapipe', 
+                solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', 
+                modelType: 'lite' // 高速化のためliteを採用
+            });
+
+            log("⏳ 読込中 (MoveNet)...");
+            detectorMN = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, { 
+                modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING 
+            });
+
+            if (typeof AR !== 'undefined') {
+                detectorAR = new AR.Detector();
+                log("📷 カメラ起動準備完了");
+                startCamBtn.disabled = false;
+            } else {
+                throw new Error("ARライブラリ読込失敗");
+            }
+            
+            resetEvaluation();
+        } catch (e) {
+            log("❌ 失敗: 再読込してください");
+            console.error(e);
+            startCamBtn.disabled = false;
+            startCamBtn.onclick = () => location.reload();
+        }
+    }
 
     function resetEvaluation() {
         ['MediaPipe', 'MoveNet'].forEach(m => {
             calib[m] = { state: 'waiting', countdownStart: 0, frames: 0, sumP: 0, baseP: 0, sumHipX: 0, sumHipY: 0, baseHipX: 0, baseHipY: 0, swayHistory: [] };
         });
     }
-    resetEvaluation();
+
+    startCamBtn.addEventListener('click', async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'environment' } 
+            });
+            video.srcObject = stream;
+            video.onloadeddata = () => {
+                canvasMP.width = canvasMN.width = video.videoWidth; 
+                canvasMP.height = canvasMN.height = video.videoHeight;
+                isCameraRunning = true;
+                startCamBtn.style.display = 'none';
+                document.getElementById('resetEvalBtn').style.display = 'inline-block';
+                document.getElementById('resetEvalBtn').disabled = false;
+                document.getElementById('statusMP').innerText = document.getElementById('statusMN').innerText = "⌛ スキャン中...";
+                document.getElementById('statusMP').className = document.getElementById('statusMN').className = "calib-status scanning";
+                processFrame();
+            };
+        } catch (e) { alert("カメラ起動失敗"); }
+    });
 
     function getHomography(pts) {
         let x0 = pts[0].x, y0 = pts[0].y, x1 = pts[1].x, y1 = pts[1].y;
@@ -90,48 +153,10 @@
         return [inv[0]*500, inv[1]*500, inv[2]*500, inv[3]*500, inv[4]*500, inv[5]*500, inv[6], inv[7], inv[8]];
     }
 
-    async function initModels() {
-        try {
-            await tf.ready();
-            detectorMP = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
-            detectorMN = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING });
-            startCamBtn.innerText = "📷 カメラ起動"; startCamBtn.disabled = false;
-        } catch (e) { startCamBtn.innerText = "❌ 読込失敗"; }
-    }
-
-    startCamBtn.addEventListener('click', async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'environment' } 
-            });
-            video.srcObject = stream;
-            video.onloadeddata = () => {
-                canvasMP.width = canvasMN.width = video.videoWidth; 
-                canvasMP.height = canvasMN.height = video.videoHeight;
-                isCameraRunning = true;
-                startCamBtn.disabled = true;
-                document.getElementById('resetEvalBtn').style.display = 'inline-block';
-                document.getElementById('statusMP').innerText = document.getElementById('statusMN').innerText = "⌛ スキャン中 (足元を映してください)...";
-                document.getElementById('statusMP').className = document.getElementById('statusMN').className = "calib-status scanning";
-                processFrame();
-            };
-        } catch (e) { alert("カメラの起動に失敗しました。"); }
-    });
-
     async function processFrame() {
         if (!isCameraRunning) return;
         ctxMP.drawImage(video, 0, 0, canvasMP.width, canvasMP.height);
         
-        // AIでまず位置を把握
-        const posesMN = await detectorMN.estimatePoses(video);
-        let ankleArea = null;
-        if (posesMN.length > 0) {
-            const lA = posesMN[0].keypoints.find(k => k.name === 'left_ankle');
-            const rA = posesMN[0].keypoints.find(k => k.name === 'right_ankle');
-            if (lA && rA) ankleArea = { x: (lA.x + rA.x)/2, y: (lA.y + rA.y)/2 };
-        }
-
-        // マーカー認識（全体の解像度が高いので、そのまま実行）
         let imageData = ctxMP.getImageData(0, 0, canvasMP.width, canvasMP.height);
         let markers = detectorAR.detect(imageData);
         
@@ -140,7 +165,6 @@
                 let center = { x: 0, y: 0 };
                 m.corners.forEach(c => { center.x += c.x; center.y += c.y; });
                 markerCoords[m.id] = { x: center.x / 4, y: center.y / 4 };
-                // 認識目印
                 ctxMP.fillStyle = "lime"; ctxMP.fillRect(center.x/4-5, center.y/4-5, 10, 10);
             }
         });
@@ -166,48 +190,41 @@
         const kps = poses[0].keypoints;
         const getK = (n) => kps.find(k => k.name === n && k.score > 0.3);
 
-        if (markerCoords[0]) {
-            ctx.strokeStyle = "rgba(0, 255, 0, 0.4)"; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(markerCoords[0].x, markerCoords[0].y);
-            [1, 2, 3].forEach(i => { if(markerCoords[i]) ctx.lineTo(markerCoords[i].x, markerCoords[i].y); });
-            ctx.closePath(); ctx.stroke();
-        }
-
-        if (modeSelect.value !== 'single_leg' || !homographyMatrix) return;
-
-        let lH = getK('left_hip'), rH = getK('right_hip');
-        if (!lH || !rH) return;
-
-        let m = homographyMatrix;
-        let hipX = (lH.x + rH.x) / 2, hipY = (lH.y + rH.y) / 2;
-        let w = m[6]*hipX + m[7]*hipY + m[8];
-        let nx = (m[0]*hipX + m[1]*hipY + m[2])/w, ny = (m[3]*hipX + m[4]*hipY + m[5])/w;
-        
-        let c = calib[modelName];
-        if (c.state === 'waiting') {
-            c.state = 'countdown'; c.countdownStart = performance.now();
-        } else if (c.state === 'countdown') {
-            let rem = Math.ceil(4 - (performance.now() - c.countdownStart)/1000);
-            ctx.fillStyle = "yellow"; ctx.font = "28px sans-serif"; ctx.fillText(`⏳ 静止してください... ${rem}`, 20, 100);
-            if (rem <= 0) c.state = 'calibrating';
-        } else if (c.state === 'calibrating') {
-            c.sumHipX += nx; c.sumHipY += ny;
-            if (++c.frames >= 20) {
-                c.baseHipX = c.sumHipX / 20; c.baseHipY = c.sumHipY / 20;
-                c.state = 'done';
+        if (modeSelect.value === 'single_leg' && homographyMatrix) {
+            let lH = getK('left_hip'), rH = getK('right_hip');
+            if (lH && rH) {
+                let m = homographyMatrix;
+                let hipX = (lH.x + rH.x) / 2, hipY = (lH.y + rH.y) / 2;
+                let w = m[6]*hipX + m[7]*hipY + m[8];
+                let nx = (m[0]*hipX + m[1]*hipY + m[2])/w, ny = (m[3]*hipX + m[4]*hipY + m[5])/w;
+                
+                let c = calib[modelName];
+                if (c.state === 'waiting') {
+                    c.state = 'countdown'; c.countdownStart = performance.now();
+                } else if (c.state === 'countdown') {
+                    let rem = Math.ceil(4 - (performance.now() - c.countdownStart)/1000);
+                    ctx.fillStyle = "yellow"; ctx.font = "28px sans-serif"; ctx.fillText(`⏳ 静止... ${rem}`, 20, 100);
+                    if (rem <= 0) c.state = 'calibrating';
+                } else if (c.state === 'calibrating') {
+                    c.sumHipX += nx; c.sumHipY += ny;
+                    if (++c.frames >= 20) {
+                        c.baseHipX = c.sumHipX / 20; c.baseHipY = c.sumHipY / 20;
+                        c.state = 'done';
+                    }
+                } else if (c.state === 'done') {
+                    const rSize = 250, rx = canvasObj.width - rSize - 20, ry = canvasObj.height - rSize - 20;
+                    ctx.fillStyle = "rgba(0,0,0,0.8)"; ctx.fillRect(rx, ry, rSize, rSize);
+                    let dx = (nx - c.baseHipX) * 2.5, dy = (ny - c.baseHipY) * 2.5;
+                    c.swayHistory.push({x: dx, y: dy}); if (c.swayHistory.length > 100) c.swayHistory.shift();
+                    ctx.beginPath(); ctx.strokeStyle = "#00ffff"; ctx.lineWidth = 3;
+                    c.swayHistory.forEach((p, i) => {
+                        let px = rx + rSize/2 + p.x, py = ry + rSize/2 + p.y;
+                        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                    });
+                    ctx.stroke();
+                    ctx.fillStyle = "red"; ctx.beginPath(); ctx.arc(rx+rSize/2+dx, ry+rSize/2+dy, 8, 0, 2*Math.PI); ctx.fill();
+                }
             }
-        } else if (c.state === 'done') {
-            const rSize = 250, rx = canvasObj.width - rSize - 20, ry = canvasObj.height - rSize - 20;
-            ctx.fillStyle = "rgba(0,0,0,0.8)"; ctx.fillRect(rx, ry, rSize, rSize);
-            let dx = (nx - c.baseHipX) * 2.0, dy = (ny - c.baseHipY) * 2.0;
-            c.swayHistory.push({x: dx, y: dy}); if (c.swayHistory.length > 100) c.swayHistory.shift();
-            ctx.beginPath(); ctx.strokeStyle = "#00ffff"; ctx.lineWidth = 3;
-            c.swayHistory.forEach((p, i) => {
-                let px = rx + rSize/2 + p.x, py = ry + rSize/2 + p.y;
-                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-            });
-            ctx.stroke();
-            ctx.fillStyle = "red"; ctx.beginPath(); ctx.arc(rx+rSize/2+dx, ry+rSize/2+dy, 8, 0, 2*Math.PI); ctx.fill();
         }
     }
     initModels();
