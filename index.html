@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro - 臨床完全対応版</title>
+    <title>姿勢検証ツール Pro - 統合アップデート版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -23,16 +23,17 @@
         .view-port { flex: 1; position: relative; border-right: 1px solid #444; overflow: hidden; background: #000; }
         video { display: none; }
         canvas { width: 100%; height: 100%; object-fit: contain; }
-        .status-badge { position: absolute; bottom: 10px; left: 10px; font-size: 11px; padding: 4px 10px; border-radius: 20px; z-index: 20; background: rgba(0,0,0,0.8); border: 1px solid #444; }
-        .active { color: #00ff00; border-color: #00ff00; }
+        .status-badge { position: absolute; bottom: 10px; left: 10px; font-size: 11px; padding: 4px 10px; border-radius: 20px; z-index: 20; background: rgba(0,0,0,0.8); }
+        .active { color: #00ff00; border: 1px solid #00ff00; }
     </style>
 </head>
 <body>
 
 <div class="controls">
-    <button id="startCamBtn" disabled>システム初期化中...</button>
-    <button id="resetEvalBtn">🔄 測定リセット</button>
+    <button id="startCamBtn" disabled>Initializing...</button>
+    <button id="resetEvalBtn">🔄 リセット</button>
     <select id="modeSelect">
+        <option value="none">可視化オフ</option>
         <option value="squat_side">スクワット側面 (モビリティ)</option>
         <option value="squat_front">スクワット正面 (スタビリティ)</option>
         <option value="single_leg" selected>片足立ち正面 (重心レーダー)</option>
@@ -67,7 +68,7 @@
     let isCameraRunning = false;
     let homographyMatrix = null;
     let tapPoints = [];
-    let lockedMatPoints = null; // 校正完了後の保存用
+    let lockedMatPoints = null;
     let calib = {};
 
     async function init() {
@@ -80,7 +81,7 @@
             startCamBtn.disabled = false;
             resetEvaluation();
         } catch (e) {
-            startCamBtn.innerText = "❌ 再読込してください";
+            startCamBtn.innerText = "❌ 読込エラー。リロードしてください";
         }
     }
 
@@ -98,7 +99,6 @@
         };
     });
 
-    // 高精度タップ計算
     canvasMP.addEventListener('pointerdown', (e) => {
         if (homographyMatrix || !isCameraRunning) return;
         const rect = canvasMP.getBoundingClientRect();
@@ -113,7 +113,7 @@
 
         tapPoints.push({x, y});
         if (tapPoints.length === 4) {
-            lockedMatPoints = [...tapPoints]; // 角を保存
+            lockedMatPoints = [...tapPoints];
             computeH(tapPoints);
             tapPoints = [];
         }
@@ -135,21 +135,18 @@
         ctxMP.drawImage(video, 0, 0, canvasMP.width, canvasMP.height);
         ctxMN.drawImage(video, 0, 0, canvasMN.width, canvasMN.height);
 
-        // --- 校正ガイドの描画 ---
+        // --- 校正情報の描画 ---
         if (!homographyMatrix) {
             ctxMP.fillStyle = "rgba(255, 255, 0, 0.9)"; ctxMP.font = "bold 26px sans-serif";
-            ctxMP.fillText(`🎯 マットの角を順にタップ (${tapPoints.length}/4)`, 30, 50);
+            ctxMP.fillText(`🎯 マットの角をタップ (${tapPoints.length}/4)`, 30, 50);
             tapPoints.forEach((p, i) => {
                 ctxMP.fillStyle = "#ff5252"; ctxMP.beginPath(); ctxMP.arc(p.x, p.y, 12, 0, 2*Math.PI); ctxMP.fill();
-                ctxMP.strokeStyle = "white"; ctxMP.lineWidth = 3; ctxMP.stroke();
                 ctxMP.fillStyle = "white"; ctxMP.font = "bold 18px sans-serif"; ctxMP.fillText(i+1, p.x - 5, p.y + 6);
             });
         } else if (lockedMatPoints) {
-            // 【重要】校正完了後の緑枠表示
-            ctxMP.strokeStyle = "#00ff00"; ctxMP.lineWidth = 4; ctxMP.setLineDash([10, 5]);
-            ctxMP.beginPath(); ctxMP.moveTo(lockedMatPoints[0].x, lockedMatPoints[0].y);
+            ctxMP.strokeStyle = "#00ff00"; ctxMP.lineWidth = 4; ctxMP.beginPath();
+            ctxMP.moveTo(lockedMatPoints[0].x, lockedMatPoints[0].y);
             lockedMatPoints.forEach(p => ctxMP.lineTo(p.x, p.y)); ctxMP.closePath(); ctxMP.stroke();
-            ctxMP.setLineDash([]);
             ctxMP.fillStyle = "#00ff00"; ctxMP.font = "bold 24px sans-serif";
             ctxMP.fillText("✅ マット校正完了", 30, 50);
         }
@@ -163,14 +160,15 @@
 
     function drawAndAnalyze(poses, ctx, color, modelName, canvasObj, badgeId) {
         const badge = document.getElementById(badgeId);
-        if (poses.length === 0) {
-            badge.innerText = `${modelName}: 待機中`; badge.classList.remove('active');
-            return;
-        }
-        badge.innerText = `${modelName}: 認識中`; badge.classList.add('active');
+        if (poses.length === 0) { badge.classList.remove('active'); return; }
+        badge.classList.add('active'); badge.innerText = `${modelName}: 認識中`;
         
         const kps = poses[0].keypoints;
-        const getK = (n) => kps.find(k => k.name === n && k.score > 0.25); // スコア判定を少し緩和
+        const getK = (n) => kps.find(k => k.name === n && k.score > 0.25);
+        const mode = modeSelect.value;
+
+        // 可視化オフならここで終了
+        if (mode === 'none') return;
 
         // 骨格描画
         ctx.strokeStyle = color; ctx.lineWidth = 3;
@@ -180,7 +178,6 @@
             }
         });
 
-        const mode = modeSelect.value;
         const rS = getK('right_shoulder'), rH = getK('right_hip'), rK = getK('right_knee'), rA = getK('right_ankle');
         const lS = getK('left_shoulder'), lH = getK('left_hip'), lK = getK('left_knee'), lA = getK('left_ankle');
 
@@ -199,19 +196,17 @@
             if (rAng < 165 || lAng < 165) { ctx.fillStyle = "#ff4444"; ctx.fillText("⚠️ ニーイン注意", 30, 90); }
         }
         else if (mode === 'single_leg' && lH && rH) {
-            // 重心座標の計算
             let hX = (lH.x + rH.x)/2, hY = (lH.y + rH.y)/2;
             let tx = hX, ty = hY;
             if (homographyMatrix) {
                 let m = homographyMatrix; let w = m[6]*hX + m[7]*hY + m[8];
                 tx = (m[0]*hX + m[1]*hY + m[2])/w; ty = (m[3]*hX + m[4]*hY + m[5])/w;
             }
-            
             const c = calib[modelName];
             if (c.state === 'waiting') { c.state = 'countdown'; c.countdownStart = performance.now(); }
             else if (c.state === 'countdown') {
                 let rem = Math.ceil(4 - (performance.now() - c.countdownStart)/1000);
-                ctx.fillStyle = "yellow"; ctx.font = "bold 30px sans-serif"; ctx.fillText(`⏳ 計測開始まで... ${rem}`, 30, 110);
+                ctx.fillStyle = "yellow"; ctx.font = "bold 30px sans-serif"; ctx.fillText(`⏳ 静止... ${rem}`, 30, 110);
                 if (rem <= 0) c.state = 'calibrating';
             } else if (c.state === 'calibrating') {
                 c.baseHipX = (c.baseHipX || 0) + tx; c.baseHipY = (c.baseHipY || 0) + ty;
@@ -219,15 +214,11 @@
             } else if (c.state === 'done') {
                 const rSiz = 280, rx = canvasObj.width - rSiz - 20, ry = canvasObj.height - rSiz - 20;
                 ctx.fillStyle = "rgba(0,0,0,0.85)"; ctx.fillRect(rx, ry, rSiz, rSiz);
-                ctx.strokeStyle = "white"; ctx.lineWidth = 1; ctx.strokeRect(rx, ry, rSiz, rSiz);
-                
                 let dx = (tx - c.baseHipX) * 3.5, dy = (ty - c.baseHipY) * 3.5;
                 c.swayHistory.push({x: dx, y: dy}); if (c.swayHistory.length > 100) c.swayHistory.shift();
-                
                 ctx.beginPath(); ctx.strokeStyle = "#00ffff"; ctx.lineWidth = 2.5;
                 c.swayHistory.forEach((p, i) => { if(i===0) ctx.moveTo(rx+rSiz/2+p.x, ry+rSiz/2+p.y); else ctx.lineTo(rx+rSiz/2+p.x, ry+rSiz/2+p.y); });
                 ctx.stroke();
-                
                 ctx.fillStyle = "#ff5252"; ctx.beginPath(); ctx.arc(rx+rSiz/2+dx, ry+rSiz/2+dy, 9, 0, 2*Math.PI); ctx.fill();
             }
         }
@@ -240,12 +231,6 @@
         let g=(sx*dy2-sy*dx2)/det, h=(dx1*sy-dy1*sx)/det, a=x1-x0+g*x1, b=x3-x0+h*x3, c=x0, d=y1-y0+g*y1, e=y3-y0+h*y3, f=y0, detH=a*(e-f*h)-b*(d-f*g)+c*(d*h-e*g), i=1/detH;
         let inv=[(e-f*h)*i, (c*h-b)*i, (b*f-c*e)*i, (g*f-d)*i, (a-c*g)*i, (d*c-a*f)*i, (d*h-e*g)*i, (b*g-a*h)*i, (a*e-b*d)*i];
         homographyMatrix = [inv[0]*500, inv[1]*500, inv[2]*500, inv[3]*500, inv[4]*500, inv[5]*500, inv[6], inv[7], inv[8]];
-    }
-
-    function resetEvaluation() {
-        ['MediaPipe', 'MoveNet'].forEach(m => {
-            calib[m] = { state: 'waiting', countdownStart: 0, frames: 0, baseHipX: null, baseHipY: null, swayHistory: [] };
-        });
     }
 
     init();
