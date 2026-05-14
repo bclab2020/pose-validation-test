@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro - 統合アップデート版</title>
+    <title>AI姿勢比較検証ツール - Core Tester</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -12,43 +12,42 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 
     <style>
-        body { margin: 0; font-family: sans-serif; background: #1a1a1a; color: white; overflow: hidden; touch-action: none; }
+        body { margin: 0; font-family: sans-serif; background: #1a1a1a; color: white; overflow: hidden; }
         .controls { padding: 10px; text-align: center; background: #333; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; align-items: center; }
         button, select { padding: 10px 14px; font-size: 14px; cursor: pointer; border-radius: 4px; border: none; font-weight: bold; }
-        #startCamBtn { background: #1976d2; color: white; min-width: 200px; }
-        #resetEvalBtn { background: #f57c00; color: white; display: none; }
-        #recordBtn { background: #d32f2f; color: white; }
-        button:disabled { opacity: 0.3; cursor: not-allowed; }
+        #startBtn { background: #1976d2; color: white; }
+        #recBtn { background: #d32f2f; color: white; }
+        #stopBtn { background: #424242; color: white; }
+        #downloadCsvBtn { background: #2e7d32; color: white; }
         .container { display: flex; width: 100vw; height: calc(100vh - 120px); }
         .view-port { flex: 1; position: relative; border-right: 1px solid #444; overflow: hidden; background: #000; }
         video { display: none; }
         canvas { width: 100%; height: 100%; object-fit: contain; }
-        .status-badge { position: absolute; bottom: 10px; left: 10px; font-size: 11px; padding: 4px 10px; border-radius: 20px; z-index: 20; background: rgba(0,0,0,0.8); }
-        .active { color: #00ff00; border: 1px solid #00ff00; }
+        .label { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 5px 10px; border-radius: 4px; font-size: 12px; }
     </style>
 </head>
 <body>
 
 <div class="controls">
-    <button id="startCamBtn" disabled>Initializing...</button>
-    <button id="resetEvalBtn">🔄 リセット</button>
-    <select id="modeSelect">
+    <button id="startBtn">📷 カメラ開始</button>
+    <select id="evalMode">
         <option value="none">可視化オフ</option>
-        <option value="squat_side">スクワット側面 (モビリティ)</option>
-        <option value="squat_front">スクワット正面 (スタビリティ)</option>
-        <option value="single_leg" selected>片足立ち正面 (重心レーダー)</option>
+        <option value="squat_side">スクワット側面 (平行性)</option>
+        <option value="squat_front" selected>スクワット正面 (アライメント)</option>
     </select>
-    <button id="recordBtn" disabled>🔴 計測開始</button>
+    <button id="recBtn" disabled>🔴 録画・計測開始</button>
+    <button id="stopBtn" disabled>⏹️ 停止・保存</button>
+    <button id="downloadCsvBtn" disabled>📊 CSV出力</button>
 </div>
 
 <div class="container">
     <div class="view-port">
         <canvas id="canvasMP"></canvas>
-        <div id="badgeMP" class="status-badge">MediaPipe: 待機中</div>
+        <div class="label">MediaPipe (BlazePose)</div>
     </div>
     <div class="view-port">
         <canvas id="canvasMN"></canvas>
-        <div id="badgeMN" class="status-badge">MoveNet: 待機中</div>
+        <div class="label">MoveNet (Lightning)</div>
     </div>
 </div>
 
@@ -56,185 +55,171 @@
 
 <script>
     const video = document.getElementById('video');
-    const canvasMP = document.getElementById('canvasMP');
-    const canvasMN = document.getElementById('canvasMN');
-    const ctxMP = canvasMP.getContext('2d');
-    const ctxMN = canvasMN.getContext('2d');
-    const modeSelect = document.getElementById('modeSelect');
-    const startCamBtn = document.getElementById('startCamBtn');
-    const recordBtn = document.getElementById('recordBtn');
-    
-    let detectorMP, detectorMN;
-    let isCameraRunning = false;
-    let homographyMatrix = null;
-    let tapPoints = [];
-    let lockedMatPoints = null;
-    let calib = {};
+    const canvases = [document.getElementById('canvasMP'), document.getElementById('canvasMN')];
+    const ctxs = canvases.map(c => c.getContext('2d'));
+    const startBtn = document.getElementById('startBtn');
+    const recBtn = document.getElementById('recBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+    const evalMode = document.getElementById('evalMode');
 
+    let detectors = [];
+    let isRunning = false;
+    let isRecording = false;
+    let recorder;
+    let recordedChunks = [];
+    let poseDataLog = [];
+
+    // --- 初期化 ---
     async function init() {
-        try {
-            await tf.setBackend('webgl');
-            await tf.ready();
-            detectorMP = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'lite' });
-            detectorMN = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING });
-            startCamBtn.innerText = "📷 カメラを起動";
-            startCamBtn.disabled = false;
-            resetEvaluation();
-        } catch (e) {
-            startCamBtn.innerText = "❌ 読込エラー。リロードしてください";
-        }
+        await tf.setBackend('webgl');
+        await tf.ready();
+        detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'lite' });
+        detectors[1] = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING });
+        startBtn.innerText = "📷 カメラ準備OK";
     }
 
-    startCamBtn.addEventListener('click', async () => {
+    startBtn.onclick = async () => {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: 'environment' } });
         video.srcObject = stream;
         video.onloadeddata = () => {
-            canvasMP.width = canvasMN.width = video.videoWidth; 
-            canvasMP.height = canvasMN.height = video.videoHeight;
-            isCameraRunning = true;
-            startCamBtn.style.display = 'none';
-            recordBtn.disabled = false;
-            document.getElementById('resetEvalBtn').style.display = 'inline-block';
-            processFrame();
+            canvases.forEach(c => { c.width = video.videoWidth; c.height = video.videoHeight; });
+            isRunning = true;
+            recBtn.disabled = false;
+            startBtn.style.display = 'none';
+            render();
         };
-    });
+    };
 
-    canvasMP.addEventListener('pointerdown', (e) => {
-        if (homographyMatrix || !isCameraRunning) return;
-        const rect = canvasMP.getBoundingClientRect();
-        const videoRatio = video.videoWidth / video.videoHeight;
-        const canvasRatio = rect.width / rect.height;
-        let dW, dH, oX = 0, oY = 0;
-        if (canvasRatio > videoRatio) { dH = rect.height; dW = rect.height * videoRatio; oX = (rect.width - dW) / 2; }
-        else { dW = rect.width; dH = rect.width / videoRatio; oY = (rect.height - dH) / 2; }
-        const x = (e.clientX - rect.left - oX) * (video.videoWidth / dW);
-        const y = (e.clientY - rect.top - oY) * (video.videoHeight / dH);
-        if (x < 0 || x > video.videoWidth || y < 0 || y > video.videoHeight) return;
+    // --- 録画・ロギング制御 ---
+    recBtn.onclick = () => {
+        isRecording = true;
+        recordedChunks = [];
+        poseDataLog = [];
+        const stream = canvases[0].captureStream(30); // MediaPipe側を代表として録画
+        recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+        recorder.onstop = saveVideo;
+        recorder.start();
+        recBtn.disabled = true;
+        stopBtn.disabled = false;
+    };
 
-        tapPoints.push({x, y});
-        if (tapPoints.length === 4) {
-            lockedMatPoints = [...tapPoints];
-            computeH(tapPoints);
-            tapPoints = [];
+    stopBtn.onclick = () => {
+        isRecording = false;
+        recorder.stop();
+        recBtn.disabled = false;
+        stopBtn.disabled = true;
+        downloadCsvBtn.disabled = false;
+    };
+
+    function saveVideo() {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `pose_capture_${Date.now()}.webm`;
+        a.click();
+    }
+
+    // --- メイン描画・解析ループ ---
+    async function render() {
+        if (!isRunning) return;
+        
+        for (let i = 0; i < 2; i++) {
+            const ctx = ctxs[i];
+            const canvas = canvases[i];
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const poses = await detectors[i].estimatePoses(video);
+            if (poses.length > 0) {
+                const kps = poses[i === 0 ? 0 : 0].keypoints; // detectors[i]のposes[0]
+                const modelName = i === 0 ? "MediaPipe" : "MoveNet";
+                
+                if (evalMode.value !== 'none') {
+                    drawSkeleton(ctx, kps, i === 0 ? 'red' : 'cyan');
+                    analyzePose(ctx, kps, evalMode.value);
+                }
+                
+                if (isRecording) {
+                    kps.forEach((kp, idx) => {
+                        poseDataLog.push({
+                            time: Date.now(),
+                            model: modelName,
+                            id: idx,
+                            name: kp.name,
+                            x: kp.x.toFixed(2),
+                            y: kp.y.toFixed(2),
+                            score: kp.score.toFixed(3)
+                        });
+                    });
+                }
+            }
         }
-    });
+        requestAnimationFrame(render);
+    }
+
+    // --- ポーズ解析・追従描画 ---
+    function analyzePose(ctx, kps, mode) {
+        const getK = (n) => kps.find(k => k.name === n && k.score > 0.3);
+        ctx.font = "bold 24px sans-serif";
+        ctx.fillStyle = "yellow";
+
+        if (mode === 'squat_side') {
+            const s = getK('right_shoulder'), h = getK('right_hip'), k = getK('right_knee'), a = getK('right_ankle');
+            if (s && h && k && a) {
+                const torso = Math.abs(Math.atan2(h.x-s.x, h.y-s.y)*180/Math.PI);
+                const tibia = Math.abs(Math.atan2(a.x-k.x, a.y-k.y)*180/Math.PI);
+                ctx.fillText(`${torso.toFixed(1)}°`, h.x + 20, h.y);
+                ctx.fillText(`${tibia.toFixed(1)}°`, k.x + 20, k.y);
+            }
+        } else if (mode === 'squat_front') {
+            const rh = getK('right_hip'), rk = getK('right_knee'), ra = getK('right_ankle');
+            const lh = getK('left_hip'), lk = getK('left_knee'), la = getK('left_ankle');
+            if (rh && rk && ra) {
+                const ang = calculateAngle(rh, rk, ra);
+                ctx.fillText(`${ang.toFixed(1)}°`, rk.x + 20, rk.y);
+            }
+            if (lh && lk && la) {
+                const ang = calculateAngle(lh, lk, la);
+                ctx.fillText(`${ang.toFixed(1)}°`, lk.x - 90, lk.y);
+            }
+        }
+    }
 
     function calculateAngle(A, B, C) {
-        if (!A || !B || !C) return null;
         let deg = Math.abs((Math.atan2(C.y-B.y, C.x-B.x) - Math.atan2(A.y-B.y, A.x-B.x)) * 180 / Math.PI);
         return deg > 180 ? 360 - deg : deg;
     }
 
-    function getAngleV(A, B) {
-        if (!A || !B) return null;
-        return Math.abs(Math.atan2(B.x - A.x, B.y - A.y) * 180 / Math.PI);
-    }
-
-    async function processFrame() {
-        if (!isCameraRunning) return;
-        ctxMP.drawImage(video, 0, 0, canvasMP.width, canvasMP.height);
-        ctxMN.drawImage(video, 0, 0, canvasMN.width, canvasMN.height);
-
-        // --- 校正情報の描画 ---
-        if (!homographyMatrix) {
-            ctxMP.fillStyle = "rgba(255, 255, 0, 0.9)"; ctxMP.font = "bold 26px sans-serif";
-            ctxMP.fillText(`🎯 マットの角をタップ (${tapPoints.length}/4)`, 30, 50);
-            tapPoints.forEach((p, i) => {
-                ctxMP.fillStyle = "#ff5252"; ctxMP.beginPath(); ctxMP.arc(p.x, p.y, 12, 0, 2*Math.PI); ctxMP.fill();
-                ctxMP.fillStyle = "white"; ctxMP.font = "bold 18px sans-serif"; ctxMP.fillText(i+1, p.x - 5, p.y + 6);
-            });
-        } else if (lockedMatPoints) {
-            ctxMP.strokeStyle = "#00ff00"; ctxMP.lineWidth = 4; ctxMP.beginPath();
-            ctxMP.moveTo(lockedMatPoints[0].x, lockedMatPoints[0].y);
-            lockedMatPoints.forEach(p => ctxMP.lineTo(p.x, p.y)); ctxMP.closePath(); ctxMP.stroke();
-            ctxMP.fillStyle = "#00ff00"; ctxMP.font = "bold 24px sans-serif";
-            ctxMP.fillText("✅ マット校正完了", 30, 50);
-        }
-
-        const posesMP = await detectorMP.estimatePoses(video);
-        const posesMN = await detectorMN.estimatePoses(video);
-        drawAndAnalyze(posesMP, ctxMP, 'red', 'MediaPipe', canvasMP, 'badgeMP');
-        drawAndAnalyze(posesMN, ctxMN, 'cyan', 'MoveNet', canvasMN, 'badgeMN');
-        requestAnimationFrame(processFrame);
-    }
-
-    function drawAndAnalyze(poses, ctx, color, modelName, canvasObj, badgeId) {
-        const badge = document.getElementById(badgeId);
-        if (poses.length === 0) { badge.classList.remove('active'); return; }
-        badge.classList.add('active'); badge.innerText = `${modelName}: 認識中`;
-        
-        const kps = poses[0].keypoints;
-        const getK = (n) => kps.find(k => k.name === n && k.score > 0.25);
-        const mode = modeSelect.value;
-
-        // 可視化オフならここで終了
-        if (mode === 'none') return;
-
-        // 骨格描画
+    function drawSkeleton(ctx, kps, color) {
         ctx.strokeStyle = color; ctx.lineWidth = 3;
-        [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]].forEach(([s, e]) => {
-            if (kps[s] && kps[e] && kps[s].score > 0.25 && kps[e].score > 0.25) {
-                ctx.beginPath(); ctx.moveTo(kps[s].x, kps[s].y); ctx.lineTo(kps[e].x, kps[e].y); ctx.stroke();
+        const pairs = [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]]; // MediaPipe基準
+        const pairsMN = [[5,6],[5,11],[6,12],[11,12],[5,7],[7,9],[6,8],[8,10],[11,13],[13,15],[12,14],[14,16]]; // MoveNet基準
+        const activePairs = kps.length > 20 ? pairs : pairsMN;
+
+        activePairs.forEach(([s, e]) => {
+            const p1 = kps[s], p2 = kps[e];
+            if (p1 && p2 && p1.score > 0.3 && p2.score > 0.3) {
+                ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
             }
         });
-
-        const rS = getK('right_shoulder'), rH = getK('right_hip'), rK = getK('right_knee'), rA = getK('right_ankle');
-        const lS = getK('left_shoulder'), lH = getK('left_hip'), lK = getK('left_knee'), lA = getK('left_ankle');
-
-        ctx.font = "bold 24px sans-serif";
-        
-        if (mode === 'squat_side' && rS && rH && rK && rA) {
-            const tAngle = getAngleV(rS, rH), bAngle = getAngleV(rK, rA);
-            ctx.fillStyle = "yellow"; ctx.fillText(`${tAngle.toFixed(1)}°`, rH.x + 20, rH.y);
-            ctx.fillText(`${bAngle.toFixed(1)}°`, rK.x + 20, rK.y);
-            ctx.fillStyle = Math.abs(tAngle - bAngle) < 15 ? "#00ff00" : "#ff4444";
-            ctx.fillText(Math.abs(tAngle - bAngle) < 15 ? "✅ 平行良好" : "⚠️ 要改善", 30, 90);
-        } 
-        else if (mode === 'squat_front' && rH && rK && rA && lH && lK && lA) {
-            const rAng = calculateAngle(rH, rK, rA), lAng = calculateAngle(lH, lK, lA);
-            ctx.fillStyle = "#00ffff"; ctx.fillText(`${lAng.toFixed(1)}°`, lK.x - 90, lK.y); ctx.fillText(`${rAng.toFixed(1)}°`, rK.x + 20, rK.y);
-            if (rAng < 165 || lAng < 165) { ctx.fillStyle = "#ff4444"; ctx.fillText("⚠️ ニーイン注意", 30, 90); }
-        }
-        else if (mode === 'single_leg' && lH && rH) {
-            let hX = (lH.x + rH.x)/2, hY = (lH.y + rH.y)/2;
-            let tx = hX, ty = hY;
-            if (homographyMatrix) {
-                let m = homographyMatrix; let w = m[6]*hX + m[7]*hY + m[8];
-                tx = (m[0]*hX + m[1]*hY + m[2])/w; ty = (m[3]*hX + m[4]*hY + m[5])/w;
-            }
-            const c = calib[modelName];
-            if (c.state === 'waiting') { c.state = 'countdown'; c.countdownStart = performance.now(); }
-            else if (c.state === 'countdown') {
-                let rem = Math.ceil(4 - (performance.now() - c.countdownStart)/1000);
-                ctx.fillStyle = "yellow"; ctx.font = "bold 30px sans-serif"; ctx.fillText(`⏳ 静止... ${rem}`, 30, 110);
-                if (rem <= 0) c.state = 'calibrating';
-            } else if (c.state === 'calibrating') {
-                c.baseHipX = (c.baseHipX || 0) + tx; c.baseHipY = (c.baseHipY || 0) + ty;
-                if (++c.frames >= 20) { c.baseHipX /= 20; c.baseHipY /= 20; c.state = 'done'; }
-            } else if (c.state === 'done') {
-                const rSiz = 280, rx = canvasObj.width - rSiz - 20, ry = canvasObj.height - rSiz - 20;
-                ctx.fillStyle = "rgba(0,0,0,0.85)"; ctx.fillRect(rx, ry, rSiz, rSiz);
-                let dx = (tx - c.baseHipX) * 3.5, dy = (ty - c.baseHipY) * 3.5;
-                c.swayHistory.push({x: dx, y: dy}); if (c.swayHistory.length > 100) c.swayHistory.shift();
-                ctx.beginPath(); ctx.strokeStyle = "#00ffff"; ctx.lineWidth = 2.5;
-                c.swayHistory.forEach((p, i) => { if(i===0) ctx.moveTo(rx+rSiz/2+p.x, ry+rSiz/2+p.y); else ctx.lineTo(rx+rSiz/2+p.x, ry+rSiz/2+p.y); });
-                ctx.stroke();
-                ctx.fillStyle = "#ff5252"; ctx.beginPath(); ctx.arc(rx+rSiz/2+dx, ry+rSiz/2+dy, 9, 0, 2*Math.PI); ctx.fill();
-            }
-        }
+        kps.forEach(k => { if(k.score > 0.3) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(k.x, k.y, 4, 0, 2*Math.PI); ctx.fill(); }});
     }
 
-    function computeH(p) {
-        let x0=p[0].x, y0=p[0].y, x1=p[1].x, y1=p[1].y, x2=p[2].x, y2=p[2].y, x3=p[3].x, y3=p[3].y;
-        let dx1=x1-x2, dx2=x3-x2, sx=x0-x1+x2-x3, dy1=y1-y2, dy2=y3-y2, sy=y0-y1+y2-y3, det=dx1*dy2-dy1*dx2;
-        if (Math.abs(det) < 0.1) return;
-        let g=(sx*dy2-sy*dx2)/det, h=(dx1*sy-dy1*sx)/det, a=x1-x0+g*x1, b=x3-x0+h*x3, c=x0, d=y1-y0+g*y1, e=y3-y0+h*y3, f=y0, detH=a*(e-f*h)-b*(d-f*g)+c*(d*h-e*g), i=1/detH;
-        let inv=[(e-f*h)*i, (c*h-b)*i, (b*f-c*e)*i, (g*f-d)*i, (a-c*g)*i, (d*c-a*f)*i, (d*h-e*g)*i, (b*g-a*h)*i, (a*e-b*d)*i];
-        homographyMatrix = [inv[0]*500, inv[1]*500, inv[2]*500, inv[3]*500, inv[4]*500, inv[5]*500, inv[6], inv[7], inv[8]];
-    }
+    // --- CSV出力 ---
+    downloadCsvBtn.onclick = () => {
+        let csv = "Timestamp,Model,PointID,PointName,X,Y,Score\n";
+        poseDataLog.forEach(d => {
+            csv += `${d.time},${d.model},${d.id},${d.name},${d.x},${d.y},${d.score}\n`;
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `pose_data_${Date.now()}.csv`;
+        a.click();
+    };
 
     init();
-    document.getElementById('resetEvalBtn').onclick = () => { resetEvaluation(); homographyMatrix = null; tapPoints = []; lockedMatPoints = null; };
 </script>
 </body>
 </html>
