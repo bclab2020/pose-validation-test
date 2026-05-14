@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI姿勢比較検証ツール - Core Tester</title>
+    <title>AI姿勢比較ツール - Split-Screen Recorder</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -24,20 +24,22 @@
         video { display: none; }
         canvas { width: 100%; height: 100%; object-fit: contain; }
         .label { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 5px 10px; border-radius: 4px; font-size: 12px; }
+        #recIndicator { color: #ff5252; font-weight: bold; margin-left: 10px; display: none; }
     </style>
 </head>
 <body>
 
 <div class="controls">
-    <button id="startBtn">📷 カメラ開始</button>
+    <button id="startBtn">📷 システム開始</button>
     <select id="evalMode">
         <option value="none">可視化オフ</option>
         <option value="squat_side">スクワット側面 (平行性)</option>
         <option value="squat_front" selected>スクワット正面 (アライメント)</option>
     </select>
-    <button id="recBtn" disabled>🔴 録画・計測開始</button>
+    <button id="recBtn" disabled>🔴 2画面録画・計測開始</button>
     <button id="stopBtn" disabled>⏹️ 停止・保存</button>
     <button id="downloadCsvBtn" disabled>📊 CSV出力</button>
+    <span id="recIndicator">● REC</span>
 </div>
 
 <div class="container">
@@ -51,16 +53,22 @@
     </div>
 </div>
 
+<!-- 録画用の隠し統合キャンバス -->
+<canvas id="canvasCombined" style="display:none;"></canvas>
 <video id="video" autoplay playsinline muted></video>
 
 <script>
     const video = document.getElementById('video');
     const canvases = [document.getElementById('canvasMP'), document.getElementById('canvasMN')];
     const ctxs = canvases.map(c => c.getContext('2d'));
+    const canvasComb = document.getElementById('canvasCombined');
+    const ctxComb = canvasComb.getContext('2d');
+    
     const startBtn = document.getElementById('startBtn');
     const recBtn = document.getElementById('recBtn');
     const stopBtn = document.getElementById('stopBtn');
     const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+    const recIndicator = document.getElementById('recIndicator');
     const evalMode = document.getElementById('evalMode');
 
     let detectors = [];
@@ -70,7 +78,6 @@
     let recordedChunks = [];
     let poseDataLog = [];
 
-    // --- 初期化 ---
     async function init() {
         await tf.setBackend('webgl');
         await tf.ready();
@@ -84,6 +91,10 @@
         video.srcObject = stream;
         video.onloadeddata = () => {
             canvases.forEach(c => { c.width = video.videoWidth; c.height = video.videoHeight; });
+            // 統合キャンバスのサイズ設定 (横に2枚並べる)
+            canvasComb.width = video.videoWidth * 2;
+            canvasComb.height = video.videoHeight;
+            
             isRunning = true;
             recBtn.disabled = false;
             startBtn.style.display = 'none';
@@ -91,15 +102,22 @@
         };
     };
 
-    // --- 録画・ロギング制御 ---
     recBtn.onclick = () => {
         isRecording = true;
         recordedChunks = [];
         poseDataLog = [];
-        const stream = canvases[0].captureStream(30); // MediaPipe側を代表として録画
-        recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+        recIndicator.style.display = 'inline';
+        
+        const stream = canvasComb.captureStream(30);
+        recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
         recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
-        recorder.onstop = saveVideo;
+        recorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `comparison_capture_${Date.now()}.webm`;
+            a.click();
+        };
         recorder.start();
         recBtn.disabled = true;
         stopBtn.disabled = false;
@@ -107,21 +125,13 @@
 
     stopBtn.onclick = () => {
         isRecording = false;
+        recIndicator.style.display = 'none';
         recorder.stop();
         recBtn.disabled = false;
         stopBtn.disabled = true;
         downloadCsvBtn.disabled = false;
     };
 
-    function saveVideo() {
-        const blob = new Blob(recordedChunks, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = `pose_capture_${Date.now()}.webm`;
-        a.click();
-    }
-
-    // --- メイン描画・解析ループ ---
     async function render() {
         if (!isRunning) return;
         
@@ -132,56 +142,55 @@
             
             const poses = await detectors[i].estimatePoses(video);
             if (poses.length > 0) {
-                const kps = poses[i === 0 ? 0 : 0].keypoints; // detectors[i]のposes[0]
+                const kps = poses[0].keypoints;
                 const modelName = i === 0 ? "MediaPipe" : "MoveNet";
                 
                 if (evalMode.value !== 'none') {
-                    drawSkeleton(ctx, kps, i === 0 ? 'red' : 'cyan');
+                    drawSkeleton(ctx, kps, i === 0 ? '#ff5252' : '#00ffff');
                     analyzePose(ctx, kps, evalMode.value);
                 }
                 
                 if (isRecording) {
                     kps.forEach((kp, idx) => {
-                        poseDataLog.push({
-                            time: Date.now(),
-                            model: modelName,
-                            id: idx,
-                            name: kp.name,
-                            x: kp.x.toFixed(2),
-                            y: kp.y.toFixed(2),
-                            score: kp.score.toFixed(3)
-                        });
+                        poseDataLog.push({ time: Date.now(), model: modelName, id: idx, name: kp.name, x: kp.x.toFixed(1), y: kp.y.toFixed(1), score: kp.score.toFixed(2) });
                     });
                 }
             }
+            // 統合キャンバスにコピー
+            ctxComb.drawImage(canvas, i * video.videoWidth, 0);
         }
         requestAnimationFrame(render);
     }
 
-    // --- ポーズ解析・追従描画 ---
     function analyzePose(ctx, kps, mode) {
         const getK = (n) => kps.find(k => k.name === n && k.score > 0.3);
-        ctx.font = "bold 24px sans-serif";
-        ctx.fillStyle = "yellow";
+        ctx.font = "bold 26px sans-serif";
+        ctx.shadowColor = "black"; ctx.shadowBlur = 4;
 
         if (mode === 'squat_side') {
             const s = getK('right_shoulder'), h = getK('right_hip'), k = getK('right_knee'), a = getK('right_ankle');
             if (s && h && k && a) {
                 const torso = Math.abs(Math.atan2(h.x-s.x, h.y-s.y)*180/Math.PI);
                 const tibia = Math.abs(Math.atan2(a.x-k.x, a.y-k.y)*180/Math.PI);
-                ctx.fillText(`${torso.toFixed(1)}°`, h.x + 20, h.y);
-                ctx.fillText(`${tibia.toFixed(1)}°`, k.x + 20, k.y);
+                ctx.fillStyle = "#ffff00";
+                ctx.fillText(`${torso.toFixed(1)}°`, h.x + 30, h.y);
+                ctx.fillText(`${tibia.toFixed(1)}°`, k.x + 30, k.y);
             }
         } else if (mode === 'squat_front') {
             const rh = getK('right_hip'), rk = getK('right_knee'), ra = getK('right_ankle');
             const lh = getK('left_hip'), lk = getK('left_knee'), la = getK('left_ankle');
+            
             if (rh && rk && ra) {
                 const ang = calculateAngle(rh, rk, ra);
-                ctx.fillText(`${ang.toFixed(1)}°`, rk.x + 20, rk.y);
+                ctx.fillStyle = "#00ff00";
+                // 右膝の外側（右方向）に表示
+                ctx.fillText(`${ang.toFixed(1)}°`, rk.x + 40, rk.y);
             }
             if (lh && lk && la) {
                 const ang = calculateAngle(lh, lk, la);
-                ctx.fillText(`${ang.toFixed(1)}°`, lk.x - 90, lk.y);
+                ctx.fillStyle = "#00ff00";
+                // 左膝の外側（左方向）に表示
+                ctx.fillText(`${ang.toFixed(1)}°`, lk.x - 110, lk.y);
             }
         }
     }
@@ -192,31 +201,27 @@
     }
 
     function drawSkeleton(ctx, kps, color) {
-        ctx.strokeStyle = color; ctx.lineWidth = 3;
-        const pairs = [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]]; // MediaPipe基準
-        const pairsMN = [[5,6],[5,11],[6,12],[11,12],[5,7],[7,9],[6,8],[8,10],[11,13],[13,15],[12,14],[14,16]]; // MoveNet基準
-        const activePairs = kps.length > 20 ? pairs : pairsMN;
+        ctx.strokeStyle = color; ctx.lineWidth = 4;
+        const pairs = kps.length > 20 ? 
+            [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]] : 
+            [[5,6],[5,11],[6,12],[11,12],[5,7],[7,9],[6,8],[8,10],[11,13],[13,15],[12,14],[14,16]];
 
-        activePairs.forEach(([s, e]) => {
+        pairs.forEach(([s, e]) => {
             const p1 = kps[s], p2 = kps[e];
             if (p1 && p2 && p1.score > 0.3 && p2.score > 0.3) {
                 ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
             }
         });
-        kps.forEach(k => { if(k.score > 0.3) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(k.x, k.y, 4, 0, 2*Math.PI); ctx.fill(); }});
+        kps.forEach(k => { if(k.score > 0.3) { ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(k.x, k.y, 5, 0, 2*Math.PI); ctx.fill(); }});
     }
 
-    // --- CSV出力 ---
     downloadCsvBtn.onclick = () => {
         let csv = "Timestamp,Model,PointID,PointName,X,Y,Score\n";
-        poseDataLog.forEach(d => {
-            csv += `${d.time},${d.model},${d.id},${d.name},${d.x},${d.y},${d.score}\n`;
-        });
+        poseDataLog.forEach(d => { csv += `${d.time},${d.model},${d.id},${d.name},${d.x},${d.y},${d.score}\n`; });
         const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = `pose_data_${Date.now()}.csv`;
-        a.click();
+        a.href = url; a.download = `biomet_data_${Date.now()}.csv`; a.click();
     };
 
     init();
