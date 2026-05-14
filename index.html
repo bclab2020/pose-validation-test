@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>姿勢検証ツール Pro - 高精度手動校正版</title>
+    <title>姿勢検証ツール Pro - 臨床完全対応版</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -23,13 +23,14 @@
         .view-port { flex: 1; position: relative; border-right: 1px solid #444; overflow: hidden; background: #000; }
         video { display: none; }
         canvas { width: 100%; height: 100%; object-fit: contain; }
-        .status-badge { position: absolute; bottom: 10px; left: 10px; font-size: 11px; padding: 4px 10px; border-radius: 20px; z-index: 20; background: rgba(0,0,0,0.7); }
+        .status-badge { position: absolute; bottom: 10px; left: 10px; font-size: 11px; padding: 4px 10px; border-radius: 20px; z-index: 20; background: rgba(0,0,0,0.8); border: 1px solid #444; }
+        .active { color: #00ff00; border-color: #00ff00; }
     </style>
 </head>
 <body>
 
 <div class="controls">
-    <button id="startCamBtn" disabled>Initializing...</button>
+    <button id="startCamBtn" disabled>システム初期化中...</button>
     <button id="resetEvalBtn">🔄 測定リセット</button>
     <select id="modeSelect">
         <option value="squat_side">スクワット側面 (モビリティ)</option>
@@ -66,6 +67,7 @@
     let isCameraRunning = false;
     let homographyMatrix = null;
     let tapPoints = [];
+    let lockedMatPoints = null; // 校正完了後の保存用
     let calib = {};
 
     async function init() {
@@ -96,36 +98,22 @@
         };
     });
 
-    // --- 【修正】高精度タップ計算ロジック ---
+    // 高精度タップ計算
     canvasMP.addEventListener('pointerdown', (e) => {
         if (homographyMatrix || !isCameraRunning) return;
-        
         const rect = canvasMP.getBoundingClientRect();
-        
-        // 実際の画像表示エリアの計算 (contain対応)
         const videoRatio = video.videoWidth / video.videoHeight;
         const canvasRatio = rect.width / rect.height;
         let dW, dH, oX = 0, oY = 0;
-
-        if (canvasRatio > videoRatio) {
-            dH = rect.height;
-            dW = rect.height * videoRatio;
-            oX = (rect.width - dW) / 2;
-        } else {
-            dW = rect.width;
-            dH = rect.width / videoRatio;
-            oY = (rect.height - dH) / 2;
-        }
-
-        // タップされた座標を画像座標系に変換
+        if (canvasRatio > videoRatio) { dH = rect.height; dW = rect.height * videoRatio; oX = (rect.width - dW) / 2; }
+        else { dW = rect.width; dH = rect.width / videoRatio; oY = (rect.height - dH) / 2; }
         const x = (e.clientX - rect.left - oX) * (video.videoWidth / dW);
         const y = (e.clientY - rect.top - oY) * (video.videoHeight / dH);
-
-        // 画像範囲外のタップを無視
         if (x < 0 || x > video.videoWidth || y < 0 || y > video.videoHeight) return;
 
         tapPoints.push({x, y});
         if (tapPoints.length === 4) {
+            lockedMatPoints = [...tapPoints]; // 角を保存
             computeH(tapPoints);
             tapPoints = [];
         }
@@ -147,33 +135,47 @@
         ctxMP.drawImage(video, 0, 0, canvasMP.width, canvasMP.height);
         ctxMN.drawImage(video, 0, 0, canvasMN.width, canvasMN.height);
 
-        // タップガイドの描画
+        // --- 校正ガイドの描画 ---
         if (!homographyMatrix) {
-            ctxMP.fillStyle = "rgba(255, 255, 0, 0.7)"; ctxMP.font = "bold 24px sans-serif";
-            ctxMP.fillText(`🎯 マットの角をタップ (${tapPoints.length}/4)`, 20, 50);
+            ctxMP.fillStyle = "rgba(255, 255, 0, 0.9)"; ctxMP.font = "bold 26px sans-serif";
+            ctxMP.fillText(`🎯 マットの角を順にタップ (${tapPoints.length}/4)`, 30, 50);
             tapPoints.forEach((p, i) => {
-                ctxMP.fillStyle = "#ff5252"; ctxMP.beginPath(); ctxMP.arc(p.x, p.y, 10, 0, 2*Math.PI); ctxMP.fill();
-                ctxMP.strokeStyle = "white"; ctxMP.lineWidth = 2; ctxMP.stroke();
-                ctxMP.fillStyle = "white"; ctxMP.fillText(i+1, p.x + 12, p.y - 12);
+                ctxMP.fillStyle = "#ff5252"; ctxMP.beginPath(); ctxMP.arc(p.x, p.y, 12, 0, 2*Math.PI); ctxMP.fill();
+                ctxMP.strokeStyle = "white"; ctxMP.lineWidth = 3; ctxMP.stroke();
+                ctxMP.fillStyle = "white"; ctxMP.font = "bold 18px sans-serif"; ctxMP.fillText(i+1, p.x - 5, p.y + 6);
             });
+        } else if (lockedMatPoints) {
+            // 【重要】校正完了後の緑枠表示
+            ctxMP.strokeStyle = "#00ff00"; ctxMP.lineWidth = 4; ctxMP.setLineDash([10, 5]);
+            ctxMP.beginPath(); ctxMP.moveTo(lockedMatPoints[0].x, lockedMatPoints[0].y);
+            lockedMatPoints.forEach(p => ctxMP.lineTo(p.x, p.y)); ctxMP.closePath(); ctxMP.stroke();
+            ctxMP.setLineDash([]);
+            ctxMP.fillStyle = "#00ff00"; ctxMP.font = "bold 24px sans-serif";
+            ctxMP.fillText("✅ マット校正完了", 30, 50);
         }
 
         const posesMP = await detectorMP.estimatePoses(video);
         const posesMN = await detectorMN.estimatePoses(video);
-        drawAndAnalyze(posesMP, ctxMP, 'red', 'MediaPipe', canvasMP);
-        drawAndAnalyze(posesMN, ctxMN, 'cyan', 'MoveNet', canvasMN);
+        drawAndAnalyze(posesMP, ctxMP, 'red', 'MediaPipe', canvasMP, 'badgeMP');
+        drawAndAnalyze(posesMN, ctxMN, 'cyan', 'MoveNet', canvasMN, 'badgeMN');
         requestAnimationFrame(processFrame);
     }
 
-    function drawAndAnalyze(poses, ctx, color, modelName, canvasObj) {
-        if (poses.length === 0) return;
+    function drawAndAnalyze(poses, ctx, color, modelName, canvasObj, badgeId) {
+        const badge = document.getElementById(badgeId);
+        if (poses.length === 0) {
+            badge.innerText = `${modelName}: 待機中`; badge.classList.remove('active');
+            return;
+        }
+        badge.innerText = `${modelName}: 認識中`; badge.classList.add('active');
+        
         const kps = poses[0].keypoints;
-        const getK = (n) => kps.find(k => k.name === n && k.score > 0.3);
+        const getK = (n) => kps.find(k => k.name === n && k.score > 0.25); // スコア判定を少し緩和
 
         // 骨格描画
         ctx.strokeStyle = color; ctx.lineWidth = 3;
         [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]].forEach(([s, e]) => {
-            if (kps[s] && kps[e] && kps[s].score > 0.3 && kps[e].score > 0.3) {
+            if (kps[s] && kps[e] && kps[s].score > 0.25 && kps[e].score > 0.25) {
                 ctx.beginPath(); ctx.moveTo(kps[s].x, kps[s].y); ctx.lineTo(kps[e].x, kps[e].y); ctx.stroke();
             }
         });
@@ -186,44 +188,47 @@
         
         if (mode === 'squat_side' && rS && rH && rK && rA) {
             const tAngle = getAngleV(rS, rH), bAngle = getAngleV(rK, rA);
-            ctx.fillStyle = "yellow";
-            ctx.fillText(`${tAngle.toFixed(1)}°`, rH.x + 15, rH.y);
-            ctx.fillText(`${bAngle.toFixed(1)}°`, rK.x + 15, rK.y);
+            ctx.fillStyle = "yellow"; ctx.fillText(`${tAngle.toFixed(1)}°`, rH.x + 20, rH.y);
+            ctx.fillText(`${bAngle.toFixed(1)}°`, rK.x + 20, rK.y);
             ctx.fillStyle = Math.abs(tAngle - bAngle) < 15 ? "#00ff00" : "#ff4444";
-            ctx.fillText(Math.abs(tAngle - bAngle) < 15 ? "✅ 平行良好" : "⚠️ 要改善", 20, 90);
+            ctx.fillText(Math.abs(tAngle - bAngle) < 15 ? "✅ 平行良好" : "⚠️ 要改善", 30, 90);
         } 
         else if (mode === 'squat_front' && rH && rK && rA && lH && lK && lA) {
             const rAng = calculateAngle(rH, rK, rA), lAng = calculateAngle(lH, lK, lA);
-            ctx.fillStyle = "#00ffff";
-            ctx.fillText(`${lAng.toFixed(1)}°`, lK.x - 80, lK.y);
-            ctx.fillText(`${rAng.toFixed(1)}°`, rK.x + 20, rK.y);
-            if (rAng < 165 || lAng < 165) { ctx.fillStyle = "#ff4444"; ctx.fillText("⚠️ ニーイン注意", 20, 90); }
+            ctx.fillStyle = "#00ffff"; ctx.fillText(`${lAng.toFixed(1)}°`, lK.x - 90, lK.y); ctx.fillText(`${rAng.toFixed(1)}°`, rK.x + 20, rK.y);
+            if (rAng < 165 || lAng < 165) { ctx.fillStyle = "#ff4444"; ctx.fillText("⚠️ ニーイン注意", 30, 90); }
         }
         else if (mode === 'single_leg' && lH && rH) {
+            // 重心座標の計算
             let hX = (lH.x + rH.x)/2, hY = (lH.y + rH.y)/2;
             let tx = hX, ty = hY;
             if (homographyMatrix) {
                 let m = homographyMatrix; let w = m[6]*hX + m[7]*hY + m[8];
                 tx = (m[0]*hX + m[1]*hY + m[2])/w; ty = (m[3]*hX + m[4]*hY + m[5])/w;
             }
+            
             const c = calib[modelName];
             if (c.state === 'waiting') { c.state = 'countdown'; c.countdownStart = performance.now(); }
             else if (c.state === 'countdown') {
                 let rem = Math.ceil(4 - (performance.now() - c.countdownStart)/1000);
-                ctx.fillStyle = "yellow"; ctx.fillText(`⏳ 静止... ${rem}`, 20, 90);
+                ctx.fillStyle = "yellow"; ctx.font = "bold 30px sans-serif"; ctx.fillText(`⏳ 計測開始まで... ${rem}`, 30, 110);
                 if (rem <= 0) c.state = 'calibrating';
             } else if (c.state === 'calibrating') {
                 c.baseHipX = (c.baseHipX || 0) + tx; c.baseHipY = (c.baseHipY || 0) + ty;
                 if (++c.frames >= 20) { c.baseHipX /= 20; c.baseHipY /= 20; c.state = 'done'; }
             } else if (c.state === 'done') {
-                const rSiz = 250, rx = canvasObj.width - rSiz - 20, ry = canvasObj.height - rSiz - 20;
+                const rSiz = 280, rx = canvasObj.width - rSiz - 20, ry = canvasObj.height - rSiz - 20;
                 ctx.fillStyle = "rgba(0,0,0,0.85)"; ctx.fillRect(rx, ry, rSiz, rSiz);
-                let dx = (tx - c.baseHipX) * 3, dy = (ty - c.baseHipY) * 3;
+                ctx.strokeStyle = "white"; ctx.lineWidth = 1; ctx.strokeRect(rx, ry, rSiz, rSiz);
+                
+                let dx = (tx - c.baseHipX) * 3.5, dy = (ty - c.baseHipY) * 3.5;
                 c.swayHistory.push({x: dx, y: dy}); if (c.swayHistory.length > 100) c.swayHistory.shift();
-                ctx.beginPath(); ctx.strokeStyle = "#00ffff"; ctx.lineWidth = 2;
+                
+                ctx.beginPath(); ctx.strokeStyle = "#00ffff"; ctx.lineWidth = 2.5;
                 c.swayHistory.forEach((p, i) => { if(i===0) ctx.moveTo(rx+rSiz/2+p.x, ry+rSiz/2+p.y); else ctx.lineTo(rx+rSiz/2+p.x, ry+rSiz/2+p.y); });
                 ctx.stroke();
-                ctx.fillStyle = "red"; ctx.beginPath(); ctx.arc(rx+rSiz/2+dx, ry+rSiz/2+dy, 8, 0, 2*Math.PI); ctx.fill();
+                
+                ctx.fillStyle = "#ff5252"; ctx.beginPath(); ctx.arc(rx+rSiz/2+dx, ry+rSiz/2+dy, 9, 0, 2*Math.PI); ctx.fill();
             }
         }
     }
@@ -244,7 +249,7 @@
     }
 
     init();
-    document.getElementById('resetEvalBtn').onclick = () => { resetEvaluation(); homographyMatrix = null; tapPoints = []; };
+    document.getElementById('resetEvalBtn').onclick = () => { resetEvaluation(); homographyMatrix = null; tapPoints = []; lockedMatPoints = null; };
 </script>
 </body>
 </html>
