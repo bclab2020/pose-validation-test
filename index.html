@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI姿勢比較ツール - Device Selector Pro</title>
+    <title>AI姿勢比較ツール - Universal Camera Tester</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -81,7 +81,6 @@
     let poseDataLog = [];
     let currentStream = null;
 
-    // --- 初期化 & カメラデバイス一覧の取得 ---
     async function init() {
         try {
             await tf.setBackend('webgl');
@@ -89,7 +88,6 @@
             detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
             detectors[1] = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING });
             
-            // 権限要求のために一度空で呼び出し、その後リストを取得
             await navigator.mediaDevices.getUserMedia({ video: true });
             const devices = await navigator.mediaDevices.enumerateDevices();
             videoSource.innerHTML = '';
@@ -110,28 +108,28 @@
         }
     }
 
-    // カメラ切り替えおよび起動ロジック
     startBtn.onclick = async () => {
         if (currentStream) {
             currentStream.getTracks().forEach(track => track.stop());
         }
 
         const videoSelect = videoSource.value;
+        // 【修正】エラー回避のため解像度の強制指定をなくし、デバイス依存に変更
         const constraints = {
-            video: {
-                deviceId: videoSelect ? { exact: videoSelect } : undefined,
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            }
+            video: videoSelect ? { deviceId: { exact: videoSelect } } : true
         };
 
         try {
             currentStream = await navigator.mediaDevices.getUserMedia(constraints);
             video.srcObject = currentStream;
             video.onloadeddata = () => {
-                canvases.forEach(c => { c.width = video.videoWidth; c.height = video.videoHeight; });
-                canvasComb.width = video.videoWidth * 2;
-                canvasComb.height = video.videoHeight;
+                // カメラから実際に取得できた映像サイズを基準にする
+                const w = video.videoWidth;
+                const h = video.videoHeight;
+                
+                canvases.forEach(c => { c.width = w; c.height = h; });
+                canvasComb.width = w * 2;
+                canvasComb.height = h;
                 
                 if (!isRunning) {
                     isRunning = true;
@@ -141,12 +139,16 @@
                 startBtn.innerText = "🔄 カメラを切り替え";
             };
         } catch (error) {
-            alert("選択したカメラの起動に失敗しました。画質設定または接続を確認してください。");
-            console.error(error);
+            // 万が一のセーフティリトライ（完全初期設定で再試行）
+            try {
+                currentStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = currentStream;
+            } catch(e) {
+                alert("カメラを起動できませんでした。機器の接続やブラウザの権限設定を確認してください。");
+            }
         }
     };
 
-    // 録画制御
     recBtn.onclick = () => {
         isRecording = true;
         recordedChunks = [];
@@ -180,6 +182,9 @@
     async function render() {
         if (!isRunning) return;
         
+        const w = video.videoWidth;
+        const h = video.videoHeight;
+        
         for (let i = 0; i < 2; i++) {
             const ctx = ctxs[i];
             const canvas = canvases[i];
@@ -203,7 +208,7 @@
                     });
                 }
             }
-            ctxComb.drawImage(canvas, i * video.videoWidth, 0);
+            ctxComb.drawImage(canvas, i * w, 0);
         }
         requestAnimationFrame(render);
     }
@@ -265,15 +270,6 @@
         });
         kps.forEach(k => { if(k.score > 0.3) { ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(k.x, k.y, 5, 0, 2*Math.PI); ctx.fill(); }});
     }
-
-    downloadCsvBtn.onclick = () => {
-        let csv = "Timestamp,Model,PointID,PointName,X,Y,Score\n";
-        poseDataLog.forEach(d => { csv += `${d.time},${d.model},${d.id},${d.name},${d.x},${d.y},${d.score}\n`; });
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = `biomet_data_${Date.now()}.csv`; a.click();
-    };
 
     init();
 </script>
