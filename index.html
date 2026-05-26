@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI姿勢比較ツール - Grid & Analytics Pro</title>
+    <title>AI姿勢比較ツール - Device Selector Pro</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -19,6 +19,7 @@
         #recBtn { background: #d32f2f; color: white; }
         #stopBtn { background: #424242; color: white; }
         #downloadCsvBtn { background: #2e7d32; color: white; }
+        #videoSource { background: #fff; color: #000; max-width: 200px; }
         .container { display: flex; width: 100vw; height: calc(100vh - 120px); }
         .view-port { flex: 1; position: relative; border-right: 1px solid #444; overflow: hidden; background: #000; }
         video { display: none; }
@@ -30,6 +31,7 @@
 <body>
 
 <div class="controls">
+    <select id="videoSource"><option value="">カメラを読み込み中...</option></select>
     <button id="startBtn">📷 システム開始</button>
     <select id="evalMode">
         <option value="none">可視化オフ</option>
@@ -63,6 +65,7 @@
     const canvasComb = document.getElementById('canvasCombined');
     const ctxComb = canvasComb.getContext('2d');
     
+    const videoSource = document.getElementById('videoSource');
     const startBtn = document.getElementById('startBtn');
     const recBtn = document.getElementById('recBtn');
     const stopBtn = document.getElementById('stopBtn');
@@ -76,30 +79,74 @@
     let recorder;
     let recordedChunks = [];
     let poseDataLog = [];
+    let currentStream = null;
 
+    // --- 初期化 & カメラデバイス一覧の取得 ---
     async function init() {
-        await tf.setBackend('webgl');
-        await tf.ready();
-        detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
-        detectors[1] = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING });
-        startBtn.innerText = "📷 カメラ準備OK";
+        try {
+            await tf.setBackend('webgl');
+            await tf.ready();
+            detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
+            detectors[1] = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING });
+            
+            // 権限要求のために一度空で呼び出し、その後リストを取得
+            await navigator.mediaDevices.getUserMedia({ video: true });
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            videoSource.innerHTML = '';
+            
+            let camCount = 0;
+            devices.forEach(device => {
+                if (device.kind === 'videoinput') {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `Camera ${++camCount}`;
+                    videoSource.appendChild(option);
+                }
+            });
+            startBtn.innerText = "📷 カメラを起動";
+        } catch (e) {
+            startBtn.innerText = "❌ カメラのアクセスを許可してください";
+            console.error(e);
+        }
     }
 
+    // カメラ切り替えおよび起動ロジック
     startBtn.onclick = async () => {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: 'environment' } });
-        video.srcObject = stream;
-        video.onloadeddata = () => {
-            canvases.forEach(c => { c.width = video.videoWidth; c.height = video.videoHeight; });
-            canvasComb.width = video.videoWidth * 2;
-            canvasComb.height = video.videoHeight;
-            
-            isRunning = true;
-            recBtn.disabled = false;
-            startBtn.style.display = 'none';
-            render();
+        if (currentStream) {
+            currentStream.getTracks().forEach(track => track.stop());
+        }
+
+        const videoSelect = videoSource.value;
+        const constraints = {
+            video: {
+                deviceId: videoSelect ? { exact: videoSelect } : undefined,
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            }
         };
+
+        try {
+            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+            video.srcObject = currentStream;
+            video.onloadeddata = () => {
+                canvases.forEach(c => { c.width = video.videoWidth; c.height = video.videoHeight; });
+                canvasComb.width = video.videoWidth * 2;
+                canvasComb.height = video.videoHeight;
+                
+                if (!isRunning) {
+                    isRunning = true;
+                    render();
+                }
+                recBtn.disabled = false;
+                startBtn.innerText = "🔄 カメラを切り替え";
+            };
+        } catch (error) {
+            alert("選択したカメラの起動に失敗しました。画質設定または接続を確認してください。");
+            console.error(error);
+        }
     };
 
+    // 録画制御
     recBtn.onclick = () => {
         isRecording = true;
         recordedChunks = [];
@@ -138,7 +185,6 @@
             const canvas = canvases[i];
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
-            // 【新規追加】画面中央の十字グリッドライン（半透明ホワイト）
             drawGridLines(ctx, canvas);
 
             const poses = await detectors[i].estimatePoses(video);
@@ -162,24 +208,12 @@
         requestAnimationFrame(render);
     }
 
-    // グリッドライン描画関数
     function drawGridLines(ctx, canvas) {
         ctx.save();
         ctx.strokeStyle = "rgba(255, 255, 255, 0.4)"; 
         ctx.lineWidth = 2;
-        
-        // 垂直センターライン
-        ctx.beginPath();
-        ctx.moveTo(canvas.width / 2, 0);
-        ctx.lineTo(canvas.width / 2, canvas.height);
-        ctx.stroke();
-
-        // 水平センターライン
-        ctx.beginPath();
-        ctx.moveTo(0, canvas.height / 2);
-        ctx.lineTo(canvas.width, canvas.height / 2);
-        ctx.stroke();
-        
+        ctx.beginPath(); ctx.moveTo(canvas.width / 2, 0); ctx.lineTo(canvas.width / 2, canvas.height); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, canvas.height / 2); ctx.lineTo(canvas.width, canvas.height / 2); ctx.stroke();
         ctx.restore();
     }
 
@@ -203,13 +237,11 @@
             
             if (rh && rk && ra) {
                 const ang = calculateAngle(rh, rk, ra);
-                ctx.fillStyle = "#00ff00";
-                ctx.fillText(`${ang.toFixed(1)}°`, rk.x + 40, rk.y);
+                ctx.fillStyle = "#00ff00"; ctx.fillText(`${ang.toFixed(1)}°`, rk.x + 40, rk.y);
             }
             if (lh && lk && la) {
                 const ang = calculateAngle(lh, lk, la);
-                ctx.fillStyle = "#00ff00";
-                ctx.fillText(`${ang.toFixed(1)}°`, lk.x - 110, lk.y);
+                ctx.fillStyle = "#00ff00"; ctx.fillText(`${ang.toFixed(1)}°`, lk.x - 110, lk.y);
             }
         }
     }
