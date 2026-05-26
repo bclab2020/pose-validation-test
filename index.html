@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI姿勢比較ツール - Split-Screen Recorder</title>
+    <title>AI姿勢比較ツール - Grid & Analytics Pro</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -53,7 +53,6 @@
     </div>
 </div>
 
-<!-- 録画用の隠し統合キャンバス -->
 <canvas id="canvasCombined" style="display:none;"></canvas>
 <video id="video" autoplay playsinline muted></video>
 
@@ -81,7 +80,7 @@
     async function init() {
         await tf.setBackend('webgl');
         await tf.ready();
-        detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'lite' });
+        detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
         detectors[1] = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING });
         startBtn.innerText = "📷 カメラ準備OK";
     }
@@ -91,7 +90,6 @@
         video.srcObject = stream;
         video.onloadeddata = () => {
             canvases.forEach(c => { c.width = video.videoWidth; c.height = video.videoHeight; });
-            // 統合キャンバスのサイズ設定 (横に2枚並べる)
             canvasComb.width = video.videoWidth * 2;
             canvasComb.height = video.videoHeight;
             
@@ -115,7 +113,7 @@
             const blob = new Blob(recordedChunks, { type: 'video/webm' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = `comparison_capture_${Date.now()}.webm`;
+            a.href = url; a.download = `biomet_grid_capture_${Date.now()}.webm`;
             a.click();
         };
         recorder.start();
@@ -140,6 +138,9 @@
             const canvas = canvases[i];
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
+            // 【新規追加】画面中央の十字グリッドライン（半透明ホワイト）
+            drawGridLines(ctx, canvas);
+
             const poses = await detectors[i].estimatePoses(video);
             if (poses.length > 0) {
                 const kps = poses[0].keypoints;
@@ -156,10 +157,30 @@
                     });
                 }
             }
-            // 統合キャンバスにコピー
             ctxComb.drawImage(canvas, i * video.videoWidth, 0);
         }
         requestAnimationFrame(render);
+    }
+
+    // グリッドライン描画関数
+    function drawGridLines(ctx, canvas) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)"; 
+        ctx.lineWidth = 2;
+        
+        // 垂直センターライン
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2, 0);
+        ctx.lineTo(canvas.width / 2, canvas.height);
+        ctx.stroke();
+
+        // 水平センターライン
+        ctx.beginPath();
+        ctx.moveTo(0, canvas.height / 2);
+        ctx.lineTo(canvas.width, canvas.height / 2);
+        ctx.stroke();
+        
+        ctx.restore();
     }
 
     function analyzePose(ctx, kps, mode) {
@@ -183,13 +204,11 @@
             if (rh && rk && ra) {
                 const ang = calculateAngle(rh, rk, ra);
                 ctx.fillStyle = "#00ff00";
-                // 右膝の外側（右方向）に表示
                 ctx.fillText(`${ang.toFixed(1)}°`, rk.x + 40, rk.y);
             }
             if (lh && lk && la) {
                 const ang = calculateAngle(lh, lk, la);
                 ctx.fillStyle = "#00ff00";
-                // 左膝の外側（左方向）に表示
                 ctx.fillText(`${ang.toFixed(1)}°`, lk.x - 110, lk.y);
             }
         }
