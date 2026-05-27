@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V3</title>
+    <title>CONNECT AI - Master Evaluation Engine V4</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -48,7 +48,7 @@
     
     <div class="sub-settings">
         <select id="staticItemSelect">
-            <option value="alignment_front">前面: 重心動揺・頭部傾斜</option>
+            <option value="alignment_front">前面: 重心動揺・頭部傾斜（解剖学的左右）</option>
             <option value="alignment_side">側面: 矢状面アライメント</option>
         </select>
         
@@ -80,7 +80,6 @@
 <video id="video" autoplay playsinline muted></video>
 
 <script>
-    // 基本要素の取得
     const video = document.getElementById('video');
     const canvases = [document.getElementById('canvasMP'), document.getElementById('canvasMN')];
     const ctxs = canvases.map(c => c.getContext('2d'));
@@ -101,72 +100,71 @@
     let poseDataLog = [];
     let currentStream = null;
 
-    // UIモード切り替えロジック
     btnStaticMode.onclick = () => { currentAppMode = "static"; btnStaticMode.classList.add('active-mode'); btnDynamicMode.classList.remove('active-mode'); staticItemSelect.style.display = "inline-block"; dynamicItemSelect.style.display = "none"; };
     btnDynamicMode.onclick = () => { currentAppMode = "dynamic"; btnDynamicMode.classList.add('active-mode'); btnStaticMode.classList.remove('active-mode'); staticItemSelect.style.display = "none"; dynamicItemSelect.style.display = "inline-block"; };
 
-    // 【重要設計】測定ロジックの定義
+    // 【重要設計】測定ロジックの定義（V4：鏡像から臨床解剖学的左右への反転ロジック）
     const EVAL_MODULES = {
-        // --- 🧍 静止姿勢測定モード：頭部傾斜・重心動揺の計算ロジック ---
         alignment_front: (ctx, getK, isMP) => {
             ctx.fillStyle = "#deff9a"; ctx.font = "bold 22px sans-serif";
-            ctx.fillText("🧍 解析中: 静止姿勢（アライメント・動揺）", 30, 45);
+            ctx.fillText("🧍 解析中: 静止姿勢（解剖学的アライメント判定）", 30, 45);
             
             const rS = getK('right_shoulder'), lS = getK('left_shoulder');
             const rA = getK('right_ankle'), lA = getK('left_ankle');
             const nose = getK('nose');
 
-            // 1. 肩の傾斜角 (Shoulder Tilt)
+            // 1. 解剖学的な肩の傾斜角 (被験者自身の左右基準)
             if (rS && lS) {
-                const tilt = ((lS.y - rS.y) / (lS.x - rS.x) * 180 / Math.PI);
-                ctx.fillStyle = "#ffffff"; ctx.fillText(`肩傾斜度: ${tilt.toFixed(1)}°`, 30, 85);
+                // 鏡映像の引き算を補正し、(rS.y - lS.y) で計算することで生体の左右に完全一致
+                const tilt = ((rS.y - lS.y) / (lS.x - rS.x) * 180 / Math.PI);
+                ctx.fillStyle = "#ffffff"; 
+                ctx.fillText(`解剖学的 肩傾斜: ${tilt > 0 ? "左肩上がり" : "右肩上がり"} ${Math.abs(tilt).toFixed(1)}°`, 30, 85);
             }
 
-            // 2. 頭部偏位 (Head Sway in mm) - 正中線との相対距離
+            // 2. 解剖学的な頭部偏位 (Head Sway in mm)
             if (rA && lA && nose) {
                 const midAnkleX = (lA.x + rA.x) / 2;
-                const headSwayX = (nose.x - midAnkleX) * 4; // 簡易mm換算係数
-                ctx.fillStyle = headSwayX < 0 ? "#ff5252" : "#00ff88";
-                ctx.fillText(`頭部偏位: ${headSwayX > 0 ? "右" : "左"} ${Math.abs(headSwayX).toFixed(1)} mm`, 30, 125);
+                const headSwayX = (nose.x - midAnkleX) * 4; 
                 
-                // 動揺追従の黄色インジケーター描画
+                // 鏡映像の特性上、noseが中心より右側（画面の右）にある時は、被験者自身の「左側」へ流れている
+                const bodySide = headSwayX > 0 ? "左" : "右";
+                
+                ctx.fillStyle = bodySide === "左" ? "#ff5252" : "#00ff88";
+                ctx.fillText(`頭部解剖偏位: ${bodySide}へ ${Math.abs(headSwayX).toFixed(1)} mm`, 30, 125);
+                
                 ctx.strokeStyle = "rgba(255, 255, 0, 0.6)"; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
                 ctx.beginPath(); ctx.moveTo(midAnkleX, nose.y); ctx.lineTo(nose.x, nose.y); ctx.stroke(); ctx.setLineDash([]);
             }
 
-            // 3. 【今回追加】頭部傾斜角 (Head Tilt) - 目元のインデックス(2番, 5番)を利用
-            // 注: MoveNetとMediaPipeでインデックスが異なるため、MediaPipe側のみで詳細表示
+            // 3. 解剖学的な頭部傾斜角 (Head Tilt)
             if (isMP) {
-                // MediaPipe Pose Keypoints: 2=LeftEye, 5=RightEye
                 const kps = window.currentKpsMP;
                 const lEye = kps[2], rEye = kps[5];
                 if (lEye && rEye && lEye.score > 0.4 && rEye.score > 0.4) {
-                    const headTilt = Math.atan2(lEye.y - rEye.y, lEye.x - rEye.x) * 180 / Math.PI;
-                    ctx.fillStyle = "#deff9a"; ctx.fillText(`頭部傾斜角: ${headTilt.toFixed(1)}°`, 30, 165);
+                    // 右目から左目を引くアークタンジェントにより、解剖学的な「左側屈・右側屈」を正しく判別
+                    const headTilt = Math.atan2(rEye.y - lEye.y, lEye.x - rEye.x) * 180 / Math.PI;
+                    ctx.fillStyle = "#deff9a"; 
+                    ctx.fillText(`頭部解剖傾斜: ${headTilt > 0 ? "左側屈" : "右側屈"} ${Math.abs(headTilt).toFixed(1)}°`, 30, 165);
                     
-                    // 両目を結ぶ水平基準ガイドラインの描画
                     ctx.strokeStyle = "#deff9a"; ctx.lineWidth = 1;
                     ctx.beginPath(); ctx.moveTo(rEye.x, rEye.y); ctx.lineTo(lEye.x, lEye.y); ctx.stroke();
                 }
             }
         },
 
-        // --- 🏃 動的動作測定モード：片足立ち評価（支持脚・体幹傾斜） ---
         single_leg_front: (ctx, getK) => {
             ctx.fillStyle = "#00ff88"; ctx.fillText("🏃 解析中: 片足立ちバランス評価", 30, 45);
             const lA = getK('left_ankle'), rA = getK('right_ankle');
             const rS = getK('right_shoulder'), lS = getK('left_shoulder');
             
-            // 体幹の側方傾斜角（代償動作）
             if (rS && lS) {
-                const shoulderTilt = ((lS.y - rS.y) / (lS.x - rS.x) * 180 / Math.PI);
+                const shoulderTilt = ((rS.y - lS.y) / (lS.x - rS.x) * 180 / Math.PI);
                 ctx.fillStyle = "#ffff00";
-                ctx.fillText(`体幹代償: ${Math.abs(shoulderTilt).toFixed(1)}°`, (lS.x + rS.x)/2 - 50, ((lS.y + rS.y)/2) - 40);
+                ctx.fillText(`体幹傾斜: ${Math.abs(shoulderTilt).toFixed(1)}°`, (lS.x + rS.x)/2 - 50, ((lS.y + rS.y)/2) - 40);
             }
 
-            // 支持脚（軸足）の自動判定と膝のアライメント評価
             if (lA && rA) {
-                const isLeftStance = lA.y > rA.y; // 足首が低い方を支持脚とする
+                const isLeftStance = lA.y > rA.y; 
                 const h = isLeftStance ? getK('left_hip') : getK('right_hip');
                 const k = isLeftStance ? getK('left_knee') : getK('right_knee');
                 const a = isLeftStance ? lA : rA;
@@ -178,13 +176,12 @@
             }
         },
 
-        // 側面・スクワットなどの他項目（拡張用構造を維持）
         alignment_side: (ctx) => { ctx.fillStyle = "#ffffff"; ctx.fillText("側面アライメント解析: 準備中", 30, 45); },
-        squat_front: (ctx, getK) => { /* 既存のスクワット正面ロジック */ },
-        squat_side: (ctx, getK) => { /* 既存のスクワット側面ロジック */ }
+        squat_front: (ctx, getK) => {},
+        squat_side: (ctx, getK) => {}
     };
 
-    // --- 以降、システムコアコード（変更なし） ---
+    // --- コアエンジン処理 ---
     async function init() {
         try {
             await tf.setBackend('webgl'); await tf.ready();
@@ -221,7 +218,7 @@
             const poses = await detectors[i].estimatePoses(video);
             if(poses.length > 0){
                 const kps = poses[0].keypoints;
-                if(i===0) window.currentKpsMP = kps; // MediaPipeの座標をグローバルに保持
+                if(i===0) window.currentKpsMP = kps; 
                 drawSkeleton(ctx, kps, i===0?'#ff5252':'#00ffff');
                 const mode = currentAppMode==="static" ? staticItemSelect.value : dynamicItemSelect.value;
                 if(EVAL_MODULES[mode]) EVAL_MODULES[mode](ctx, (n)=>kps.find(k=>k.name===n&&k.score>0.3), i===0);
@@ -252,10 +249,9 @@
 
     function calculateAngle(A,B,C) { let d=Math.abs((Math.atan2(C.y-B.y,C.x-B.x)-Math.atan2(A.y-B.y,A.x-B.x))*180/Math.PI); return d>180?360-d:d; }
     
-    // 録画・CSV出力ボタン設定
-    recBtn.onclick = () => { isRecording=true; recordedChunks=[]; poseDataLog=[]; recIndicator.style.display='inline'; recorder=new MediaRecorder(canvasComb.captureStream(30),{mimeType:'video/webm;codecs=vp8'}); recorder.ondataavailable=(e)=>{if(e.data.size>0)recordedChunks.push(e.data);}; recorder.onstop=()=>{const b=new Blob(recordedChunks,{type:'video/webm'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=`biomet_v3_${Date.now()}.webm`; a.click();}; recorder.start(); recBtn.disabled=true; stopBtn.disabled=false; };
+    recBtn.onclick = () => { isRecording=true; recordedChunks=[]; poseDataLog=[]; recIndicator.style.display='inline'; recorder=new MediaRecorder(canvasComb.captureStream(30),{mimeType:'video/webm;codecs=vp8'}); recorder.ondataavailable=(e)=>{if(e.data.size>0)recordedChunks.push(e.data);}; recorder.onstop=()=>{const b=new Blob(recordedChunks,{type:'video/webm'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=`biomet_v4_${Date.now()}.webm`; a.click();}; recorder.start(); recBtn.disabled=true; stopBtn.disabled=false; };
     stopBtn.onclick = () => { isRecording=false; recIndicator.style.display='none'; recorder.stop(); recBtn.disabled=false; stopBtn.disabled=true; downloadCsvBtn.disabled=false; };
-    downloadCsvBtn.onclick = () => { let c="Timestamp,Model,Mode,ID,Name,X,Y,Score\n"; poseDataLog.forEach(d=>{c+=`${d.time},${d.model},${d.mode},${d.id},${d.name},${d.x},${d.y},${d.score}\n`;}); const b=new Blob([c],{type:'text/csv'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=`data_v3_${Date.now()}.csv`; a.click(); };
+    downloadCsvBtn.onclick = () => { let c="Timestamp,Model,Mode,ID,Name,X,Y,Score\n"; poseDataLog.forEach(d=>{c+=`${d.time},${d.model},${d.mode},${d.id},${d.name},${d.x},${d.y},${d.score}\n`;}); const b=new Blob([c],{type:'text/csv'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=`data_v4_${Date.now()}.csv`; a.click(); };
 
     init();
 </script>
