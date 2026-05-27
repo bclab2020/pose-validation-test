@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Extensible Evaluation Engine</title>
+    <title>CONNECT AI - Master Evaluation Engine V2</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -45,7 +45,7 @@
     
     <div class="sub-settings">
         <select id="staticItemSelect">
-            <option value="alignment_front">前面アライメント (左右対称性)</option>
+            <option value="alignment_front">前面アライメント (左右対称性・重心動揺)</option>
             <option value="alignment_side">側面アライメント (矢状面バランス)</option>
         </select>
         
@@ -53,7 +53,7 @@
             <option value="single_leg_front" selected>片足立ち正面 (体幹代償・支持脚評価)</option>
             <option value="squat_front">スクワット正面 (下肢アライメント)</option>
             <option value="squat_side">スクワット側面 (体幹・脛平行性)</option>
-            </select>
+        </select>
     </div>
 
     <button id="recBtn" disabled>🔴 2画面録画開始</button>
@@ -104,7 +104,7 @@
     let poseDataLog = [];
     let currentStream = null;
 
-    // --- UI分離切り替えロジック ---
+    // --- 以前のコードから変わらないUI分離排他ロジック ---
     btnStaticMode.onclick = () => {
         currentAppMode = "static";
         btnStaticMode.classList.add('active-mode');
@@ -121,49 +121,64 @@
         dynamicItemSelect.style.display = "inline-block";
     };
 
-    // --- 【設計の核心】測定項目別判定モジュール群 (拡張・プラグイン構造) ---
-    // 今後、追加項目が増えた場合はこのオブジェクト配下に処理を追加する設計です
+    // --- アップデート：動作項目別判定オブジェクト（プラグイン駆動構造） ---
     const EVAL_MODULES = {
-        // 1. 静止：前面アライメント
+        // 1. 静止：前面アライメント（重心動揺解析を追加アップデート）
         alignment_front: (ctx, getK) => {
-            ctx.fillStyle = "#deff9a"; ctx.fillText("🧍 静止姿勢: 前面項目", 30, 45);
+            ctx.fillStyle = "#deff9a"; ctx.fillText("🧍 静止姿勢: 前面（重心動揺解析）", 30, 45);
+            
             const rS = getK('right_shoulder'), lS = getK('left_shoulder');
+            const rA = getK('right_ankle'), lA = getK('left_ankle');
+            const nose = getK('nose');
+            
             if (rS && lS) {
                 const tilt = ((lS.y - rS.y) / (lS.x - rS.x) * 180 / Math.PI);
                 ctx.fillStyle = "#ffffff"; ctx.fillText(`肩傾斜度: ${tilt.toFixed(1)}°`, 30, 85);
             }
+            
+            // 静止時動画から読み取れる頭部側方変位をミリメートル換算して描画
+            if (rA && lA && nose) {
+                const midAnkleX = (lA.x + rA.x) / 2;
+                const headSwayX = (nose.x - midAnkleX) * 4; // ピクセルからmmへの簡易スケーリング
+                
+                ctx.fillStyle = headSwayX < 0 ? "#ff5252" : "#00ff88";
+                ctx.fillText(`頭部偏位: ${headSwayX > 0 ? "右" : "左"} ${Math.abs(headSwayX).toFixed(1)} mm`, 30, 125);
+                
+                // 動揺追従インジケーターラインの可視化
+                ctx.strokeStyle = "rgba(255, 255, 0, 0.6)"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+                ctx.beginPath(); ctx.moveTo(midAnkleX, nose.y); ctx.lineTo(nose.x, nose.y); ctx.stroke(); ctx.setLineDash([]);
+                
+                ctx.fillStyle = "yellow"; ctx.beginPath(); ctx.arc(nose.x, nose.y, 4, 0, 2*Math.PI); ctx.fill();
+            }
         },
-        // 2. 静止：側面アライメント (拡張用ダミー設定)
+        // 2. 静止：側面アライメント（後から項目追加可能な枠組みを維持）
         alignment_side: (ctx, getK) => {
             ctx.fillStyle = "#deff9a"; ctx.fillText("🧍 静止姿勢: 側面項目", 30, 45);
         },
-        // 3. 動的：片足立ち正面（自動軸足判定・体幹傾斜・支持脚なす角）
+        // 3. 動的：片足立ち正面（自動支持脚識別・体幹傾斜・膝アライメント）
         single_leg_front: (ctx, getK) => {
             ctx.fillStyle = "#00ff88"; ctx.fillText("🏃 動的動作: 片足立ち評価", 30, 45);
             
             const lAnkle = getK('left_ankle'), rAnkle = getK('right_ankle');
             const rS = getK('right_shoulder'), lS = getK('left_shoulder');
             
-            // 肩の傾き（体幹代償）の描画
             if (rS && lS) {
                 const shoulderTilt = ((lS.y - rS.y) / (lS.x - rS.x) * 180 / Math.PI);
                 ctx.fillStyle = "#ffff00";
                 ctx.fillText(`体幹傾斜: ${Math.abs(shoulderTilt).toFixed(1)}°`, (lS.x + rS.x)/2 - 50, ((lS.y + rS.y)/2) - 40);
             }
 
-            // 左右足首の高さ(Y座標)を比較して自動で軸足を判定
+            // 支持脚の自動判定とそれに応じた排他表示ロジック
             if (lAnkle && rAnkle) {
-                const isLeftStance = lAnkle.y > rAnkle.y; // Y座標が大きい（画面下部にある）方が軸足
+                const isLeftStance = lAnkle.y > rAnkle.y; 
                 
                 if (isLeftStance) {
-                    // 左足が軸足の場合：左膝のなす角を計算して左外側に表示
                     const lh = getK('left_hip'), lk = getK('left_knee');
                     if (lh && lk) {
                         const ang = calculateAngle(lh, lk, lAnkle);
                         ctx.fillStyle = "#00ff00"; ctx.fillText(`軸足(左)膝: ${ang.toFixed(1)}°`, lk.x - 140, lk.y);
                     }
                 } else {
-                    // 右足が軸足の場合：右膝のなす角を計算して右外側に表示
                     const rh = getK('right_hip'), rk = getK('right_knee');
                     if (rh && rk) {
                         const ang = calculateAngle(rh, rk, rAnkle);
@@ -247,6 +262,7 @@
 
     async function render() {
         if (!isRunning) return;
+        const w = video.videoWidth; const h = video.videoHeight;
         
         for (let i = 0; i < 2; i++) {
             const ctx = ctxs[i]; const canvas = canvases[i];
@@ -257,14 +273,12 @@
             if (poses.length > 0) {
                 const kps = poses[0].keypoints;
                 const modelName = i === 0 ? "MediaPipe" : "MoveNet";
-                
-                // 現在選択されているプルダウンのバリューを取得
                 const selectedItem = currentAppMode === "static" ? staticItemSelect.value : dynamicItemSelect.value;
                 
-                // 基本の描画（点5px / 線2px / 足点線正中線）
+                // 骨格描画・点線正中線（以前の仕様通り）
                 drawSkeletonAndAlignment(ctx, kps, i === 0 ? '#ff5252' : '#00ffff');
                 
-                // 【コア処理】オブジェクトから選択項目に応じた判定アルゴリズムを呼び出し実行
+                // モジュール駆動型アルゴリズムの実行
                 if (EVAL_MODULES[selectedItem]) {
                     const getK = (n) => kps.find(k => k.name === n && k.score > 0.3);
                     EVAL_MODULES[selectedItem](ctx, getK);
@@ -276,7 +290,7 @@
                     });
                 }
             }
-            ctxComb.drawImage(canvas, i * video.videoWidth, 0);
+            ctxComb.drawImage(canvas, i * w, 0);
         }
         requestAnimationFrame(render);
     }
