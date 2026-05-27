@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V8</title>
+    <title>CONNECT AI - Master Evaluation Engine V8 (Fixed)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -20,23 +20,23 @@
         .tab-btn { background: #333; color: #aaa; padding: 10px 20px; font-weight: bold; border-radius: 4px; border: none; cursor: pointer; }
         .tab-btn.active-tab { background: #deff9a; color: #000; box-shadow: 0 0 8px rgba(222, 255, 154, 0.3); }
 
-        #startBtn { background: #2e7d32; color: white; }
+        #startBtn { background: #1976d2; color: white; }
         #recBtn { background: #d32f2f; color: white; }
+        #downloadCsvBtn { background: #2e7d32; color: white; }
+        #videoSource { background: #fff; color: #000; }
+        .sub-settings { display: inline-block; margin: 0 10px; }
         
         .container { display: flex; width: 100vw; height: 520px; position: relative; }
         .view-port { flex: 1; position: relative; border-right: 1px solid #333; overflow: hidden; background: #000; }
         video { display: none; }
         canvas { width: 100%; height: 100%; object-fit: contain; }
         
-        /* UIパーツ配置 */
         .label { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 12px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; }
-        
-        /* タイマーUI */
         .timer-display { position: absolute; top: 10px; right: 10px; background: rgba(211, 47, 47, 0.85); color: white; padding: 8px 16px; font-size: 18px; font-weight: bold; border-radius: 4px; border: 1px solid #ff5252; display: none; z-index: 100; }
         
-        /* 重心動揺レーダー（右下配置） */
+        /* レーダー配置用CSS */
         .radar-box { position: absolute; bottom: 15px; right: 15px; width: 140px; height: 140px; background: rgba(0, 0, 0, 0.8); border: 2px solid #00ff88; border-radius: 50%; z-index: 50; box-shadow: 0 0 15px rgba(0,255,136,0.3); pointer-events: none; }
-        .radar-title { position: absolute; bottom: 160px; right: 25px; font-size: 11px; background: rgba(0,0,0,0.7); padding: 2px 6px; border-radius: 3px; color: #00ff88; border: 1px solid #00ff88; font-weight: bold; }
+        .radar-title { position: absolute; bottom: 160px; right: 25px; font-size: 11px; background: rgba(0,0,0,0.7); padding: 2px 6px; border-radius: 3px; color: #00ff88; border: 1px solid #00ff88; font-weight: bold; z-index: 55; }
 
         .report-section { background: #151515; padding: 25px; border-top: 2px solid #444; margin: 15px; border-radius: 8px; }
         .report-title { font-size: 18px; color: #deff9a; font-weight: bold; margin-bottom: 15px; border-left: 4px solid #deff9a; padding-left: 10px; }
@@ -48,8 +48,8 @@
 
 <div class="controls">
     <select id="videoSource"><option value="">デバイス検索中...</option></select>
-    <button id="startBtn">📷 ライブ測定開始</button>
-    <button id="recBtn" disabled>⏱️ 10秒/3秒 自動計測スタート</button>
+    <button id="startBtn">📷 カメラ起動</button>
+    <button id="recBtn" disabled>⏱️ 自動計測スタート</button>
     <button id="downloadCsvBtn" disabled>📊 最終CSV出力</button>
 </div>
 
@@ -94,7 +94,6 @@
     const canvasComb = document.getElementById('canvasCombined');
     const ctxComb = canvasComb.getContext('2d');
     
-    // レーダー用要素
     const canvasRadar = document.getElementById('canvasRadar');
     const ctxRadar = canvasRadar.getContext('2d');
     
@@ -112,11 +111,10 @@
     let currentStream = null;
     let poseDataLog = [];
 
-    // タイマー・サンプリングバッファ用変数
     let recordingStartTime = 0;
-    let recordingDuration = 10000; // デフォルト10秒
-    let coordinateBuffer = []; // 座標蓄積用配列
-    let swayHistory = []; // レーダーに描画する軌跡履歴
+    let recordingDuration = 10000; 
+    let coordinateBuffer = []; 
+    let swayHistory = []; 
 
     let dragTarget = null;
     const CLICK_THRESHOLD = 20;
@@ -126,27 +124,25 @@
     };
 
     function switchReportTab(tabName) {
-        if (isRecording) return; // 計測中はタブ切り替え不可
+        if (isRecording) return; 
         currentTab = tabName;
         document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active-tab'));
         document.getElementById(`tab-${tabName}`).classList.add('active-tab');
         
-        // レーダー軌跡の初期化
         swayHistory = [];
         clearRadar();
-        
         refreshReportView();
     }
 
     function clearRadar() {
+        if (!ctxRadar) return; // エラーセーフプロテクション
         ctxRadar.clearRect(0, 0, 140, 140);
-        ctxRadar.strokeStyle = "rgba(0, 255, 136, 0.2)"; ctx.lineWidth = 1;
-        ctxRadar.beginPath(); ctxRadar.arc(70, 70, 35, 0, 2*Math.PI); ctxRadar.stroke(); // 照準同心円
+        ctxRadar.strokeStyle = "rgba(0, 255, 136, 0.2)"; ctxRadar.lineWidth = 1;
+        ctxRadar.beginPath(); ctxRadar.arc(70, 70, 35, 0, 2*Math.PI); ctxRadar.stroke(); 
         ctxRadar.beginPath(); ctxRadar.arc(70, 70, 55, 0, 2*Math.PI); ctxRadar.stroke();
-        ctxRadar.beginPath(); ctxRadar.moveTo(70, 5); ctxRadar.lineTo(70, 135); ctxRadar.moveTo(5, 70); ctxRadar.lineTo(135, 70); ctxRadar.stroke(); // 十字線
+        ctxRadar.beginPath(); ctxRadar.moveTo(70, 5); ctxRadar.lineTo(70, 135); ctxRadar.moveTo(5, 70); ctxRadar.lineTo(135, 70); ctxRadar.stroke(); 
     }
 
-    // ハルシネーション防止・生体力学レビューマッピング
     function runReviewLogic(ctx, getK, isMP) {
         ctx.fillStyle = "#deff9a"; ctx.font = "bold 20px sans-serif";
         
@@ -165,12 +161,10 @@
                 ctx.fillStyle = headSwayX > 0 ? "#ff5252" : "#00ff88";
                 ctx.fillText(`頭部解剖偏位: ${headSwayX > 0 ? "左" : "右"}へ ${Math.abs(headSwayX).toFixed(1)} mm`, 30, 125);
                 
-                // 【リアルタイム重心動揺レーダーへのマッピングプロトコル】
                 if (isRecording && isMP) {
-                    // 基準点（足首中点）からのズレをレーダーのXYとして追記(Z軸の疑似遠近法として肩幅変化をダミー挿入)
                     const shoulderDist = Math.hypot(lS.x - rS.x, lS.y - rS.y);
                     if (!window.initialShoulderWidth) window.initialShoulderWidth = shoulderDist;
-                    const deltaZ = (shoulderDist - window.initialShoulderWidth) * 8; // 前後ブレの推測
+                    const deltaZ = (shoulderDist - window.initialShoulderWidth) * 8; 
                     
                     swayHistory.push({ x: headSwayX, y: deltaZ });
                     drawSwayRadar();
@@ -199,7 +193,6 @@
                 ctx.fillStyle = "#ffffff"; ctx.fillText(`頭部前傾角 (耳-肩): ${forwardLean.toFixed(1)}°`, 30, 85);
                 
                 if (isRecording && isMP) {
-                    // 側面時は前後の揺れをレーダーの縦軸（Y）にマッピング
                     const baselineY = (shoulder.x - ear.x) * 4;
                     swayHistory.push({ x: 0, y: baselineY });
                     drawSwayRadar();
@@ -226,17 +219,14 @@
         }
     }
 
-    // 重心動揺レーダー（Lissajous軌跡マップ）の実システム描画関数
     function drawSwayRadar() {
+        if (!ctxRadar) return;
         clearRadar();
         if (swayHistory.length < 2) return;
         ctxRadar.save();
         ctxRadar.strokeStyle = "#00ff88"; ctxRadar.lineWidth = 1.5;
         ctxRadar.beginPath();
-        
-        // 配列内の座標履歴をレーダーの中心（70,70）をゼロ点にしてキャンバスに焼き付ける
         swayHistory.forEach((pt, idx) => {
-            // マップのスケーリング（1mm＝0.8ピクセルに圧縮してマッピング）
             const radarX = 70 + (pt.x * 0.8);
             const radarY = 70 + (pt.y * 0.8);
             if (idx === 0) ctxRadar.moveTo(radarX, radarY);
@@ -244,25 +234,21 @@
         });
         ctxRadar.stroke();
         
-        // 現在の最新の重心位置を赤ドットでマーク
         const lastPt = swayHistory[swayHistory.length - 1];
         ctxRadar.fillStyle = "#ff5252"; ctxRadar.beginPath();
         ctxRadar.arc(70 + (lastPt.x * 0.8), 70 + (lastPt.y * 0.8), 3, 0, 2*Math.PI); ctxRadar.fill();
         ctxRadar.restore();
     }
 
-    // --- ⏱️ 推奨プランに基づくカウントダウンタイマー制御 ＆ 座標平均化マトリクス回路 ---
     recBtn.onclick = () => {
         isPausedForEdit = false; isRecording = true;
         coordinateBuffer = []; swayHistory = []; window.initialShoulderWidth = null;
         recordingStartTime = Date.now();
         
-        // 方向の要件に合わせてタイマー秒数を動的に決定（前・後面は10秒、側面・動作は3秒）
         recordingDuration = (currentTab === "front" || currentTab === "back") ? 10000 : 3000;
         timerDisplay.style.display = "block";
         recBtn.disabled = true; downloadCsvBtn.disabled = true;
 
-        // 指定秒数後に自動ストップさせるタイマーイベント
         const timerInterval = setInterval(() => {
             const elapsed = Date.now() - recordingStartTime;
             const remaining = Math.max(0, (recordingDuration - elapsed) / 1000);
@@ -270,23 +256,20 @@
 
             if (elapsed >= recordingDuration) {
                 clearInterval(timerInterval);
-                executePostProcessingStop(); // 自動測定完了・一元平均化処理へ
+                executePostProcessingStop(); 
             }
         }, 100);
     };
 
     function executePostProcessingStop() {
         isRecording = false; timerDisplay.style.display = "none";
-        isPausedForEdit = true; // ライブをフリーズさせ評価画面へ
+        isPausedForEdit = true; 
 
-        // 【核心設計】溜まった数百フレームの全座標を足し算して平均化（移動平均カット生成）
         for (let mIdx = 0; mIdx < 2; mIdx++) {
             if (coordinateBuffer[mIdx] && coordinateBuffer[mIdx].length > 0) {
                 const totalFrames = coordinateBuffer[mIdx].length;
-                // 最初フレームのキーポイント構造をディープコピーして器を作成
                 let avgKeypoints = JSON.parse(JSON.stringify(coordinateBuffer[mIdx][0]));
                 
-                // すべての点の X, Y 座標の合計をフレーム数で割る
                 avgKeypoints.forEach((kp, kpIdx) => {
                     let sumX = 0, sumY = 0;
                     for (let f = 0; f < totalFrames; f++) {
@@ -294,17 +277,15 @@
                         sumY += coordinateBuffer[mIdx][f][kpIdx].y;
                     }
                     kp.x = sumX / totalFrames; kp.y = sumY / totalFrames;
-                    kp.score = 1.00; // 平均値としての信頼性を固定
+                    kp.score = 1.00; 
                 });
-                // 10秒（または3秒）の動揺ノイズを消し去った「真の1カット」を該当の方向データストアへ上書き完全ロック
                 window.reportDataStore[currentTab][mIdx] = avgKeypoints;
             }
         }
-        refreshReportView(); // 補正可能な静的レポート画面を起動
+        refreshReportView(); 
         recBtn.disabled = false; downloadCsvBtn.disabled = false;
     }
 
-    // ドラッグ＆ドロップ補正イベント（補正した瞬間に数値とレビューが連動して一瞬で書き換わる）
     canvases.forEach((canvas, modelIdx) => {
         canvas.addEventListener('mousedown', (e) => {
             if (!isPausedForEdit || !window.reportDataStore[currentTab][modelIdx]) return;
@@ -343,16 +324,24 @@
         }
     }
 
+    // 【修正箇所】エラー回避のため、すべてのDOMおよびAIロード完了後に安全に初期化を回す
     async function init() {
         try {
             await tf.setBackend('webgl'); await tf.ready();
             detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
             detectors[1] = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING });
+            
+            // レーダーの安全な初期描画
+            clearRadar();
+
             const devices = await navigator.mediaDevices.enumerateDevices();
             videoSource.innerHTML = '';
             devices.forEach(d => { if(d.kind==='videoinput'){ const o=document.createElement('option'); o.value=d.deviceId; o.text=d.label||'Camera'; videoSource.appendChild(o); }});
-            startBtn.innerText = "📷 ライブ測定開始"; clearRadar();
-        } catch (e) { alert("初期化エラー"); }
+            startBtn.innerText = "📷 カメラを起動";
+        } catch (e) { 
+            console.error(e);
+            startBtn.innerText = "❌ 起動エラー"; 
+        }
     }
 
     startBtn.onclick = async () => {
@@ -379,12 +368,9 @@
                 const kps = poses[0].keypoints;
                 window.reportDataStore[currentTab][i] = kps;
                 
-                // 自動タイマー計測中：時系列バッファに全座標を連続プッシュ
                 if (isRecording) {
                     if (!coordinateBuffer[i]) coordinateBuffer[i] = [];
                     coordinateBuffer[i].push(kps);
-                    
-                    // CSV書き出し用配列へのリアルタイム同期
                     poseDataLog.push({ time: Date.now(), model: i===0?"MediaPipe":"MoveNet", mode: currentTab, keypoints: kps });
                 }
 
@@ -433,7 +419,8 @@
         const b=new Blob([c],{type:'text/csv'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=`connect_ai_final_v8_${Date.now()}.csv`; a.click();
     };
 
-    init();
+    // ページの読み込み完了後に安全に初期化をキック（エラープロテクション）
+    window.addEventListener('DOMContentLoaded', init);
 </script>
 </body>
 </html>
