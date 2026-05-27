@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI姿勢比較ツール - Precision Grid Pro</title>
+    <title>CONNECT AI - Core Tester (UI Separation Engine)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -15,11 +15,20 @@
         body { margin: 0; font-family: sans-serif; background: #1a1a1a; color: white; overflow: hidden; }
         .controls { padding: 10px; text-align: center; background: #333; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; align-items: center; }
         button, select { padding: 10px 14px; font-size: 14px; cursor: pointer; border-radius: 4px; border: none; font-weight: bold; }
+        
+        /* モード切り替えボタン制御 */
+        .mode-btn { background: #424242; color: #aaa; border: 1px solid #555; }
+        .mode-btn.active-mode { background: #deff9a; color: #000; border-color: #deff9a; }
+        
         #startBtn { background: #1976d2; color: white; }
         #recBtn { background: #d32f2f; color: white; }
-        #stopBtn { background: #424242; color: white; }
+        #stopBtn { background: #525252; color: white; }
         #downloadCsvBtn { background: #2e7d32; color: white; }
-        #videoSource { background: #fff; color: #000; max-width: 200px; }
+        #videoSource { background: #fff; color: #000; max-width: 180px; }
+        
+        /* サブメニュー項目設定の表示エリア */
+        .sub-settings { display: inline-block; margin: 0 5px; }
+        
         .container { display: flex; width: 100vw; height: calc(100vh - 120px); }
         .view-port { flex: 1; position: relative; border-right: 1px solid #444; overflow: hidden; background: #000; }
         video { display: none; }
@@ -31,14 +40,26 @@
 <body>
 
 <div class="controls">
-    <select id="videoSource"><option value="">カメラを読み込み中...</option></select>
+    <select id="videoSource"><option value="">カメラ読み込み中...</option></select>
     <button id="startBtn">📷 システム開始</button>
-    <select id="evalMode">
-        <option value="none">可視化オフ</option>
-        <option value="squat_side">スクワット側面 (平行性)</option>
-        <option value="squat_front" selected>スクワット正面 (アライメント)</option>
-    </select>
-    <button id="recBtn" disabled>🔴 2画面録画・計測開始</button>
+    
+    <button id="btnStaticMode" class="mode-btn active-mode">🧍 静止姿勢測定</button>
+    <button id="btnDynamicMode" class="mode-btn">🏃 動的動作測定</button>
+    
+    <div class="sub-settings">
+        <select id="staticItemSelect">
+            <option value="alignment_front">前面アライメント (左右対称性)</option>
+            <option value="alignment_side">側面アライメント (矢状面バランス)</option>
+        </select>
+        
+        <select id="dynamicItemSelect" style="display: none;">
+            <option value="squat_front">スクワット正面 (下肢アライメント)</option>
+            <option value="squat_side">スクワット側面 (体幹・脛平行性)</option>
+            <option value="single_leg_front">片足立ち正面 (骨盤スタビリティ)</option>
+        </select>
+    </div>
+
+    <button id="recBtn" disabled>🔴 2画面録画開始</button>
     <button id="stopBtn" disabled>⏹️ 停止・保存</button>
     <button id="downloadCsvBtn" disabled>📊 CSV出力</button>
     <span id="recIndicator">● REC</span>
@@ -71,15 +92,38 @@
     const stopBtn = document.getElementById('stopBtn');
     const downloadCsvBtn = document.getElementById('downloadCsvBtn');
     const recIndicator = document.getElementById('recIndicator');
-    const evalMode = document.getElementById('evalMode');
+    
+    // UI分離コントロール
+    const btnStaticMode = document.getElementById('btnStaticMode');
+    const btnDynamicMode = document.getElementById('btnDynamicMode');
+    const staticItemSelect = document.getElementById('staticItemSelect');
+    const dynamicItemSelect = document.getElementById('dynamicItemSelect');
 
     let detectors = [];
     let isRunning = false;
     let isRecording = false;
+    let currentAppMode = "static"; // "static" or "dynamic"
     let recorder;
     let recordedChunks = [];
     let poseDataLog = [];
     let currentStream = null;
+
+    // --- UI分離ロジック：項目設定の排他表示制御 ---
+    btnStaticMode.onclick = () => {
+        currentAppMode = "static";
+        btnStaticMode.classList.add('active-mode');
+        btnDynamicMode.classList.remove('active-mode');
+        staticItemSelect.style.display = "inline-block";
+        dynamicItemSelect.style.display = "none";
+    };
+
+    btnDynamicMode.onclick = () => {
+        currentAppMode = "dynamic";
+        btnDynamicMode.classList.add('active-mode');
+        btnStaticMode.classList.remove('active-mode');
+        staticItemSelect.style.display = "none";
+        dynamicItemSelect.style.display = "inline-block";
+    };
 
     async function init() {
         try {
@@ -91,19 +135,17 @@
             await navigator.mediaDevices.getUserMedia({ video: true });
             const devices = await navigator.mediaDevices.enumerateDevices();
             videoSource.innerHTML = '';
-            
-            let camCount = 0;
             devices.forEach(device => {
                 if (device.kind === 'videoinput') {
                     const option = document.createElement('option');
                     option.value = device.deviceId;
-                    option.text = device.label || `Camera ${++camCount}`;
+                    option.text = device.label || `Camera`;
                     videoSource.appendChild(option);
                 }
             });
             startBtn.innerText = "📷 カメラを起動";
         } catch (e) {
-            startBtn.innerText = "❌ カメラのアクセスを許可してください";
+            startBtn.innerText = "❌ デバイスエラー";
         }
     }
 
@@ -121,11 +163,9 @@
                 canvasComb.width = w * 2; canvasComb.height = h;
                 if (!isRunning) { isRunning = true; render(); }
                 recBtn.disabled = false;
-                startBtn.innerText = "🔄 カメラを切り替え";
+                startBtn.innerText = "🔄 切り替え";
             };
-        } catch (error) {
-            alert("カメラの起動に失敗しました。");
-        }
+        } catch (error) { alert("カメラ起動失敗"); }
     };
 
     recBtn.onclick = () => {
@@ -138,7 +178,7 @@
             const blob = new Blob(recordedChunks, { type: 'video/webm' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = `biomet_precision_capture_${Date.now()}.webm`; a.click();
+            a.href = url; a.download = `connect_ai_split_capture_${Date.now()}.webm`; a.click();
         };
         recorder.start(); recBtn.disabled = true; stopBtn.disabled = false;
     };
@@ -156,23 +196,34 @@
             const ctx = ctxs[i]; const canvas = canvases[i];
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
-            // 画面中央の十字固定グリッド
+            // 固定の十字センターグリッド
             drawGridLines(ctx, canvas);
 
             const poses = await detectors[i].estimatePoses(video);
             if (poses.length > 0) {
                 const kps = poses[0].keypoints;
                 const modelName = i === 0 ? "MediaPipe" : "MoveNet";
+                const selectedSubMode = currentAppMode === "static" ? staticItemSelect.value : dynamicItemSelect.value;
                 
-                if (evalMode.value !== 'none') {
-                    // 骨格および独自アライメント正中線の描画
-                    drawSkeletonAndAlignment(ctx, kps, i === 0 ? '#ff5252' : '#00ffff');
-                    analyzePose(ctx, kps, evalMode.value);
-                }
+                // 点5px / 線2px / 足関節起点正中線の自動描画
+                drawSkeletonAndAlignment(ctx, kps, i === 0 ? '#ff5252' : '#00ffff');
+                
+                // 切り替えたモード設定に応じた数値解析・テキスト配置の実行
+                executeBiometAnalysis(ctx, kps, currentAppMode, selectedSubMode);
                 
                 if (isRecording) {
                     kps.forEach((kp, idx) => {
-                        poseDataLog.push({ time: Date.now(), model: modelName, id: idx, name: kp.name, x: kp.x.toFixed(1), y: kp.y.toFixed(1), score: kp.score.toFixed(2) });
+                        poseDataLog.push({ 
+                            time: Date.now(), 
+                            model: modelName, 
+                            mainMode: currentAppMode, 
+                            subMode: selectedSubMode,
+                            id: idx, 
+                            name: kp.name, 
+                            x: kp.x.toFixed(1), 
+                            y: kp.y.toFixed(1), 
+                            score: kp.score.toFixed(2) 
+                        });
                     });
                 }
             }
@@ -189,11 +240,8 @@
         ctx.restore();
     }
 
-    // --- 【変更】新描画仕様（点5px / 線2px / 足中心の点線正中線） ---
     function drawSkeletonAndAlignment(ctx, kps, color) {
         ctx.save();
-        
-        // 1. 骨格線の描画（太さ2pxに変更）
         ctx.strokeStyle = color; ctx.lineWidth = 2;
         const pairs = kps.length > 20 ? 
             [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]] : 
@@ -206,60 +254,65 @@
             }
         });
 
-        // 2. 足関節センターを起点とする垂直正中線（点線）の描画
         const isMP = kps.length > 20;
-        const lAnkle = kps[isMP ? 27 : 15];
-        const rAnkle = kps[isMP ? 28 : 16];
-
+        const lAnkle = kps[isMP ? 27 : 15]; const rAnkle = kps[isMP ? 28 : 16];
         if (lAnkle && rAnkle && lAnkle.score > 0.3 && rAnkle.score > 0.3) {
             const midAnkleX = (lAnkle.x + rAnkle.x) / 2;
             const midAnkleY = (lAnkle.y + rAnkle.y) / 2;
-
-            ctx.strokeStyle = color; ctx.lineWidth = 2;
-            ctx.setLineDash([6, 4]); // 点線仕様設定
-            ctx.beginPath();
-            ctx.moveTo(midAnkleX, midAnkleY);
-            ctx.lineTo(midAnkleX, 0); // 起点から画面最上部まで垂直に引く
-            ctx.stroke();
-            ctx.setLineDash([]); // 点線リセット
-            
-            // 起点（センター）を視覚化
-            ctx.fillStyle = "#ffff00"; ctx.beginPath();
-            ctx.arc(midAnkleX, midAnkleY, 4, 0, 2*Math.PI); ctx.fill();
+            ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+            ctx.beginPath(); ctx.moveTo(midAnkleX, midAnkleY); ctx.lineTo(midAnkleX, 0); ctx.stroke();
+            ctx.setLineDash([]);
         }
 
-        // 3. 関節ポイントの描画（直径5px ＝ 半径2.5pxに変更）
         kps.forEach(k => {
             if(k.score > 0.3) {
-                ctx.fillStyle = "white"; ctx.beginPath();
-                ctx.arc(k.x, k.y, 2.5, 0, 2*Math.PI); ctx.fill();
+                ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(k.x, k.y, 2.5, 0, 2*Math.PI); ctx.fill();
             }
         });
-        
         ctx.restore();
     }
 
-    function analyzePose(ctx, kps, mode) {
+    // --- 各モードの項目設定に基づくリアルタイム評価ロジック ---
+    function executeBiometAnalysis(ctx, kps, mainMode, subMode) {
         const getK = (n) => kps.find(k => k.name === n && k.score > 0.3);
         ctx.font = "bold 24px sans-serif"; ctx.shadowColor = "black"; ctx.shadowBlur = 4;
 
-        if (mode === 'squat_side') {
-            const s = getK('right_shoulder'), h = getK('right_hip'), k = getK('right_knee'), a = getK('right_ankle');
-            if (s && h && k && a) {
-                const torso = Math.abs(Math.atan2(h.x-s.x, h.y-s.y)*180/Math.PI);
-                const tibia = Math.abs(Math.atan2(a.x-k.x, a.y-k.y)*180/Math.PI);
-                ctx.fillStyle = "#ffff00"; ctx.fillText(`${torso.toFixed(1)}°`, h.x + 25, h.y); ctx.fillText(`${tibia.toFixed(1)}°`, k.x + 25, k.y);
+        if (mainMode === "static") {
+            ctx.fillStyle = "#deff9a";
+            ctx.fillText(subMode === "alignment_front" ? "🧍 静止姿勢: 前面項目" : "🧍 静止姿勢: 側面項目", 30, 45);
+            
+            if (subMode === "alignment_front") {
+                const rS = getK('right_shoulder'), lS = getK('left_shoulder');
+                if (rS && lS) {
+                    const tilt = ((lS.y - rS.y) / (lS.x - rS.x) * 180 / Math.PI);
+                    ctx.fillStyle = "#ffffff"; ctx.fillText(`肩傾斜度: ${tilt.toFixed(1)}°`, 30, 85);
+                }
             }
-        } else if (mode === 'squat_front') {
-            const rh = getK('right_hip'), rk = getK('right_knee'), ra = getK('right_ankle');
-            const lh = getK('left_hip'), lk = getK('left_knee'), la = getK('left_ankle');
-            if (rh && rk && ra) {
-                const ang = calculateAngle(rh, rk, ra);
-                ctx.fillStyle = "#00ff00"; ctx.fillText(`${ang.toFixed(1)}°`, rk.x + 35, rk.y);
-            }
-            if (lh && lk && la) {
-                const ang = calculateAngle(lh, lk, la);
-                ctx.fillStyle = "#00ff00"; ctx.fillText(`${ang.toFixed(1)}°`, lk.x - 105, lk.y);
+        } 
+        else if (mainMode === "dynamic") {
+            ctx.fillStyle = "#00ff88";
+            ctx.fillText("🏃 動的動作測定アクティブ", 30, 45);
+
+            if (subMode === 'squat_side') {
+                const s = getK('right_shoulder'), h = getK('right_hip'), k = getK('right_knee'), a = getK('right_ankle');
+                if (s && h && k && a) {
+                    const torso = Math.abs(Math.atan2(h.x-s.x, h.y-s.y)*180/Math.PI);
+                    const tibia = Math.abs(Math.atan2(a.x-k.x, a.y-k.y)*180/Math.PI);
+                    ctx.fillStyle = "#ffff00";
+                    ctx.fillText(`${torso.toFixed(1)}°`, h.x + 25, h.y);
+                    ctx.fillText(`${tibia.toFixed(1)}°`, k.x + 25, k.y);
+                }
+            } else if (subMode === 'squat_front' || subMode === 'single_leg_front') {
+                const rh = getK('right_hip'), rk = getK('right_knee'), ra = getK('right_ankle');
+                const lh = getK('left_hip'), lk = getK('left_knee'), la = getK('left_ankle');
+                if (rh && rk && ra) {
+                    const ang = calculateAngle(rh, rk, ra);
+                    ctx.fillStyle = "#00ff00"; ctx.fillText(`${ang.toFixed(1)}°`, rk.x + 35, rk.y);
+                }
+                if (lh && lk && la) {
+                    const ang = calculateAngle(lh, lk, la);
+                    ctx.fillStyle = "#00ff00"; ctx.fillText(`${ang.toFixed(1)}°`, lk.x - 105, lk.y);
+                }
             }
         }
     }
@@ -270,12 +323,14 @@
     }
 
     downloadCsvBtn.onclick = () => {
-        let csv = "Timestamp,Model,PointID,PointName,X,Y,Score\n";
-        poseDataLog.forEach(d => { csv += `${d.time},${d.model},${d.id},${d.name},${d.x},${d.y},${d.score}\n`; });
+        let csv = "Timestamp,Model,MainMode,SubMode,PointID,PointName,X,Y,Score\n";
+        poseDataLog.forEach(d => { 
+            csv += `${d.time},${d.model},${d.mainMode},${d.subMode},${d.id},${d.name},${d.x},${d.y},${d.score}\n`; 
+        });
         const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = `biomet_precision_data_${Date.now()}.csv`; a.click();
+        a.href = url; a.download = `connect_ai_eval_data_${Date.now()}.csv`; a.click();
     };
 
     init();
