@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V12</title>
+    <title>CONNECT AI - Master Evaluation Engine V13 (Video Rec Restored)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -25,8 +25,6 @@
         #printReportBtn { background: #ff9100; color: #000; box-shadow: 0 0 12px rgba(255,145,0,0.4); }
         
         .container { display: flex; width: 100vw; height: calc(100vh - 115px); position: relative; background: #000; }
-        
-        /* 各ビューポートを相対配置の基準に設定 */
         .view-port { flex: 1; position: relative; border-right: 1px solid #333; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; }
         video { display: none; }
         canvas { width: 100%; height: 100%; object-fit: contain; }
@@ -34,11 +32,9 @@
         .label { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 12px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; }
         .timer-display { position: absolute; top: 10px; right: 10px; background: rgba(211, 47, 47, 0.85); color: white; padding: 8px 16px; font-size: 18px; font-weight: bold; border-radius: 4px; display: none; z-index: 100; }
         
-        /* 🛠️ 【UI設計】左右それぞれの映像内に完全に独立配置されるレーダースタイル */
         .radar-wrapper { position: absolute; bottom: 20px; right: 20px; width: 130px; height: 130px; z-index: 200; pointer-events: none; }
         .radar-box { width: 130px; height: 130px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 12px rgba(0,255,136,0.4); }
         
-        /* 左右モデル識別用カラーリング */
         #radarWrapperMP .radar-box { border: 2px solid #ff5252; box-shadow: 0 0 12px rgba(255,82,82,0.4); }
         #radarWrapperMN .radar-box { border: 2px solid #00ffff; box-shadow: 0 0 12px rgba(0,255,255,0.4); }
         
@@ -46,7 +42,7 @@
         #radarWrapperMP .radar-title { color: #ff5252; border: 1px solid #ff5252; }
         #radarWrapperMN .radar-title { color: #00ffff; border: 1px solid #00ffff; }
 
-        /* 印刷・PDF出力用プレミアム・スタイリング */
+        /* 印刷・PDF出力用スタイル */
         #printReportView { display: none; background: white; color: black; padding: 40px; }
         .print-page { page-break-after: always; color: black; }
         .print-header { border-bottom: 3px solid #111; padding-bottom: 10px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; }
@@ -73,7 +69,8 @@
 <div class="controls">
     <select id="videoSource"><option value="">デバイス検索中...</option></select>
     <button id="startBtn">📷 カメラ起動</button>
-    <button id="recBtn" disabled>⏱️ 自動計測スタート</button>
+    <button id="recBtn" disabled>⏱️ 録画・自動計測スタート</button>
+    <button id="downloadCsvBtn" disabled>📊 最終CSV出力</button>
     <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 レポート印刷・PDF出力</button>
 </div>
 
@@ -91,21 +88,13 @@
     <div class="view-port">
         <canvas id="canvasMP"></canvas>
         <div class="label">MediaPipe (高精度評価ビュー)</div>
-        
-        <div id="radarWrapperMP" class="radar-wrapper">
-            <div class="radar-title">MP COP RADAR</div>
-            <canvas id="canvasRadarMP" class="radar-box" width="130" height="130"></canvas>
-        </div>
+        <div id="radarWrapperMP" class="radar-wrapper"><div class="radar-title">MP COP RADAR</div><canvas id="canvasRadarMP" class="radar-box" width="130" height="130"></canvas></div>
     </div>
     
     <div class="view-port">
         <canvas id="canvasMN"></canvas>
         <div class="label">MoveNet (高速クロスチェック)</div>
-        
-        <div id="radarWrapperMN" class="radar-wrapper">
-            <div class="radar-title">MN COP RADAR</div>
-            <canvas id="canvasRadarMN" class="radar-box" width="130" height="130"></canvas>
-        </div>
+        <div id="radarWrapperMN" class="radar-wrapper"><div class="radar-title">MN COP RADAR</div><canvas id="canvasRadarMN" class="radar-box" width="130" height="130"></canvas></div>
     </div>
 </div>
 
@@ -113,7 +102,7 @@
     <div class="print-page">
         <div class="print-header">
             <div class="print-title">CONNECT AI 臨床姿勢アライメント診断書</div>
-            <div class="print-meta"><strong>測定施設:</strong> B.C Lab 運動解析室<br><strong>発行日:</strong> 2026年5月27日<br><strong>解析システム:</strong> Master Engine V12</div>
+            <div class="print-meta"><strong>測定施設:</strong> B.C Lab 運動解析室<br><strong>発行日:</strong> 2026年5月27日<br><strong>解析システム:</strong> Master Engine V13</div>
         </div>
         <div class="print-grid">
             <div class="print-card"><h3>1. 前面アライメント (Front)</h3><img id="p-img-front" class="print-img-placeholder" alt="前面"><div id="p-txt-front" style="font-size:12px; margin-top:8px; font-weight:bold; color:#111;"></div></div>
@@ -141,7 +130,6 @@
     const canvasComb = document.getElementById('canvasCombined');
     const ctxComb = canvasComb.getContext('2d');
     
-    // 🛠️ 左右それぞれの独立したレーダーContextを取得
     const ctxRadarMP = document.getElementById('canvasRadarMP').getContext('2d');
     const ctxRadarMN = document.getElementById('canvasRadarMN').getContext('2d');
     const wrappers = [document.getElementById('radarWrapperMP'), document.getElementById('radarWrapperMN')];
@@ -149,6 +137,7 @@
     const startBtn = document.getElementById('startBtn');
     const recBtn = document.getElementById('recBtn');
     const timerDisplay = document.getElementById('timerDisplay');
+    const downloadCsvBtn = document.getElementById('downloadCsvBtn');
 
     let detectors = [];
     let isRunning = false;
@@ -160,8 +149,12 @@
     let recordingStartTime = 0;
     let recordingDuration = 10000; 
     let coordinateBuffer = []; 
+    let poseDataLog = [];
     
-    // 🛠️ 左右の軌跡履歴配列を完全に分離
+    // 🎥 録画機能用変数
+    let recorder;
+    let recordedChunks = [];
+
     let swayHistoryMP = [];
     let swayHistoryMN = [];
 
@@ -182,17 +175,15 @@
         refreshReportView();
     }
 
-    // 🛠️ カラー指定対応型のクリア関数
     function clearRadar(ctx, color) {
         if (!ctx) return; 
         ctx.clearRect(0, 0, 130, 130);
-        ctx.strokeStyle = color + "33"; ctx.lineWidth = 1; // 透過度20%
+        ctx.strokeStyle = color + "33"; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(65, 65, 30, 0, 2*Math.PI); ctx.stroke(); 
         ctx.beginPath(); ctx.arc(65, 65, 50, 0, 2*Math.PI); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(65, 5); ctx.lineTo(65, 125); ctx.moveTo(5, 65); ctx.lineTo(125, 65); ctx.stroke(); 
     }
 
-    // 独立判定・レビュー処理
     function runReviewLogic(ctx, getK, isMP) {
         ctx.fillStyle = "#deff9a"; ctx.font = "bold 20px sans-serif";
         const rS = getK('right_shoulder'), lS = getK('left_shoulder');
@@ -208,7 +199,6 @@
                 const midAnkleX = (lA.x + rA.x) / 2; headSwayX = (nose.x - midAnkleX) * 4;
                 ctx.fillStyle = headSwayX > 0 ? "#ff5252" : "#00ffff"; ctx.fillText(`頭部解剖偏位: ${headSwayX > 0 ? "左" : "右"}へ ${Math.abs(headSwayX).toFixed(1)} mm`, 30, 125);
                 
-                // 🛠️ 録画中、MediaPipe(左)とMoveNet(右)がそれぞれの基準で弾いた動揺データを別々にプロット
                 if (isRecording) {
                     if (isMP) { swayHistoryMP.push({ x: headSwayX, y: 0 }); drawSpecificRadar(ctxRadarMP, swayHistoryMP, "#ff5252"); }
                     else { swayHistoryMN.push({ x: headSwayX, y: 0 }); drawSpecificRadar(ctxRadarMN, swayHistoryMN, "#00ffff"); }
@@ -250,7 +240,6 @@
         }
     }
 
-    // 🛠️ 指定されたレーダーへ専用軌跡を描画する共通関数
     function drawSpecificRadar(ctx, history, color) {
         clearRadar(ctx, color);
         if (history.length < 2) return;
@@ -260,33 +249,42 @@
         const lastPt = history[history.length - 1]; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(65 + (lastPt.x * 0.7), 65 + (lastPt.y * 0.7), 3, 0, 2*Math.PI); ctx.fill(); ctx.restore();
     }
 
-    // 🛠️ デバイス画角に対応し、左右それぞれのカメラ映像右下隅にレーダーをジャストフィットさせるロジック
     function adjustAllRadarPositions() {
         for (let i = 0; i < 2; i++) {
             const canvas = canvases[i]; const wrapper = wrappers[i];
             if (!canvas || !video.videoWidth) continue;
-            
-            const rect = canvas.getBoundingClientRect();
-            const videoRatio = video.videoWidth / video.videoHeight;
-            const containerRatio = rect.width / rect.height;
+            const rect = canvas.getBoundingClientRect(); const videoRatio = video.videoWidth / video.videoHeight; const containerRatio = rect.width / rect.height;
             let actualWidth, actualHeight, offsetX, offsetY;
-            
-            if (containerRatio > videoRatio) {
-                actualHeight = rect.height; actualWidth = rect.height * videoRatio;
-                offsetX = (rect.width - actualWidth) / 2; offsetY = 0;
-            } else {
-                actualWidth = rect.width; actualHeight = rect.width / videoRatio;
-                offsetX = 0; offsetY = (rect.height - actualHeight) / 2;
-            }
+            if (containerRatio > videoRatio) { actualHeight = rect.height; actualWidth = rect.height * videoRatio; offsetX = (rect.width - actualWidth) / 2; offsetY = 0; } 
+            else { actualWidth = rect.width; actualHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - actualHeight) / 2; }
             wrapper.style.right = `${offsetX + 20}px`; wrapper.style.bottom = `${offsetY + 20}px`;
         }
     }
 
+    // 🎥 録画スタート処理の統合
     recBtn.onclick = () => {
         isPausedForEdit = false; isRecording = true; coordinateBuffer = []; swayHistoryMP = []; swayHistoryMN = [];
         recordingStartTime = Date.now();
         recordingDuration = (currentTab === "front" || currentTab === "back") ? 10000 : 3000;
-        timerDisplay.style.display = "block"; recBtn.disabled = true;
+        timerDisplay.style.display = "block"; recBtn.disabled = true; downloadCsvBtn.disabled = true;
+
+        // 🎥 MediaRecorderの初期化とキャプチャ開始（30fps設定）
+        recordedChunks = [];
+        try {
+            const stream = canvasComb.captureStream(30);
+            recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+            recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+            
+            // 録画ストップ時に自動的に動画ファイル（.webm）としてダウンロードさせる処理
+            recorder.onstop = () => {
+                const b = new Blob(recordedChunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(b);
+                const a = document.createElement('a'); a.href = url;
+                a.download = `connect_ai_${currentTab}_${Date.now()}.webm`;
+                a.click();
+            };
+            recorder.start();
+        } catch (e) { console.error("映像録画機能の初期化に失敗しました。お使いのブラウザが対応していない可能性があります。", e); }
 
         const timerInterval = setInterval(() => {
             const elapsed = Date.now() - recordingStartTime;
@@ -295,8 +293,13 @@
         }, 100);
     };
 
+    // 🎥 録画ストップ処理の統合
     function executePostProcessingStop() {
         isRecording = false; timerDisplay.style.display = "none"; isPausedForEdit = true; 
+        
+        // 録画ストップ＆自動ダウンロードのトリガー
+        if (recorder && recorder.state !== "inactive") { recorder.stop(); }
+
         for (let mIdx = 0; mIdx < 2; mIdx++) {
             if (coordinateBuffer[mIdx] && coordinateBuffer[mIdx].length > 0) {
                 const totalFrames = coordinateBuffer[mIdx].length;
@@ -311,7 +314,7 @@
         }
         const activeCanvas = canvases[0]; const imgElement = document.getElementById(`p-img-${currentTab}`);
         if(imgElement) imgElement.src = activeCanvas.toDataURL("image/png");
-        refreshReportView(); recBtn.disabled = false;
+        refreshReportView(); recBtn.disabled = false; downloadCsvBtn.disabled = false;
     }
 
     canvases.forEach((canvas, modelIdx) => {
@@ -347,6 +350,8 @@
                 const kps = window.reportDataStore[currentTab][i]; drawSkeleton(ctx, kps, i === 0 ? '#ff5252' : '#00ffff');
                 runReviewLogic(ctx, (n) => kps.find(k => k.name === n), i === 0);
             }
+            // 🎥 隠しキャンバス（録画用）への転写を復活
+            ctxComb.drawImage(canvas, i * w, 0);
         }
         adjustAllRadarPositions(); 
     }
@@ -378,7 +383,8 @@
             currentStream = await navigator.mediaDevices.getUserMedia({ video: videoSource.value ? { deviceId: { exact: videoSource.value } } : true });
             video.srcObject = currentStream;
             video.onloadeddata = () => {
-                canvases.forEach(c=>{c.width=video.videoWidth;c.height=video.videoHeight;}); canvasComb.width=video.videoWidth*2; canvasComb.height=video.videoHeight;
+                canvases.forEach(c=>{c.width=video.videoWidth;c.height=video.videoHeight;}); 
+                canvasComb.width=video.videoWidth*2; canvasComb.height=video.videoHeight;
                 isPausedForEdit = false; isRunning=true; render(); recBtn.disabled=false;
             };
         } catch(e){ alert("カメラ起動失敗"); }
@@ -392,10 +398,16 @@
             const poses = await detectors[i].estimatePoses(video);
             if (poses.length > 0) {
                 const kps = poses[0].keypoints; window.reportDataStore[currentTab][i] = kps;
-                if (isRecording) { if (!coordinateBuffer[i]) coordinateBuffer[i] = []; coordinateBuffer[i].push(kps); }
+                if (isRecording) { 
+                    if (!coordinateBuffer[i]) coordinateBuffer[i] = []; 
+                    coordinateBuffer[i].push(kps); 
+                    poseDataLog.push({ time: Date.now(), model: i===0?"MediaPipe":"MoveNet", mode: currentTab, keypoints: JSON.parse(JSON.stringify(kps)) });
+                }
                 drawSkeleton(ctx, kps, i === 0 ? '#ff5252' : '#00ffff');
                 runReviewLogic(ctx, (n) => kps.find(k => k.name === n && k.score > 0.1), i === 0);
             }
+            // 🎥 録画用の結合キャンバスへの転写を復活
+            ctxComb.drawImage(canvas, i * w, 0);
         }
         adjustAllRadarPositions(); 
         requestAnimationFrame(render);
@@ -416,6 +428,13 @@
         }
         kps.forEach(k=>{ if(k && k.score > 0.0){ ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(k.x,k.y,2.5,0,2*Math.PI); ctx.fill(); }}); ctx.restore();
     }
+
+    // CSV書き出しロジックの補修
+    downloadCsvBtn.onclick = () => {
+        let c="Timestamp,Model,Mode,PointID,PointName,X,Y\n";
+        poseDataLog.forEach(d=>{ d.keypoints.forEach((kp, idx)=>{ if(kp) c+=`${d.time},${d.model},${d.mode},${idx},${kp.name},${kp.x.toFixed(1)},${kp.y.toFixed(1)}\n`; }); });
+        const b=new Blob([c],{type:'text/csv'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=`connect_ai_data_${Date.now()}.csv`; a.click();
+    };
 
     window.addEventListener('DOMContentLoaded', init);
     window.addEventListener('resize', adjustAllRadarPositions);
