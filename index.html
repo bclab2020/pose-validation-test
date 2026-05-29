@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V15 (Dynamic Full Suite)</title>
+    <title>CONNECT AI - Master Evaluation Engine V16</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -15,53 +15,54 @@
 
     <style>
         body { margin: 0; font-family: sans-serif; background: #0a0a0a; color: white; overflow: hidden; }
-        .controls { padding: 10px; text-align: center; background: #222; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; align-items: center; border-bottom: 1px solid #444; }
-        button, select { padding: 8px 14px; font-size: 13px; cursor: pointer; border-radius: 6px; border: none; font-weight: bold; transition: 0.2s; }
         
-        /* 🛠️ UI最適化：タブを「静止」と「動的」の2段構えに整理 */
-        .menu-section { background: #111; padding: 5px 0 10px 0; border-bottom: 1px solid #333; text-align: center; }
-        .category-title { font-size: 12px; color: #888; font-weight: bold; margin: 5px 0; letter-spacing: 1px; }
-        .tab-container { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; margin-bottom: 5px; }
-        .tab-btn { background: #333; color: #aaa; padding: 8px 16px; font-weight: bold; border-radius: 4px; border: none; cursor: pointer; font-size: 12px; }
-        .tab-btn.active-tab { background: #deff9a; color: #000; box-shadow: 0 0 8px rgba(222, 255, 154, 0.4); }
+        /* 🛠️ UI最適化：プルダウンを中心としたコンパクトなヘッダー */
+        .controls { padding: 12px 15px; background: #1a1a1a; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; align-items: center; border-bottom: 2px solid #333; }
+        button, select { padding: 10px 16px; font-size: 14px; cursor: pointer; border-radius: 6px; border: none; font-weight: bold; transition: 0.2s; }
+        
+        .mode-dropdown { background: #333; color: #deff9a; border: 1px solid #555; padding: 10px; font-size: 15px; outline: none; }
+        .mode-dropdown optgroup { color: #aaa; font-style: normal; font-weight: bold; background: #222; }
+        .mode-dropdown option { color: #fff; }
 
         #startBtn { background: #1976d2; color: white; }
-        #recBtn { background: #d32f2f; color: white; }
-        #printReportBtn { background: #ff9100; color: #000; box-shadow: 0 0 12px rgba(255,145,0,0.4); }
+        #recBtn { background: #d32f2f; color: white; min-width: 220px; }
+        #downloadCsvBtn { background: #2e7d32; color: white; }
+        #printReportBtn { background: #ff9100; color: #000; box-shadow: 0 0 10px rgba(255,145,0,0.3); }
         
-        /* 画面高さをメニュー2段分に合わせて再計算 */
-        .container { display: flex; width: 100vw; height: calc(100vh - 165px); position: relative; background: #000; }
+        /* 画面高さを拡張（タブ排除によりキャンバスが広がり、レーダー見切れ解消） */
+        .container { display: flex; width: 100vw; height: calc(100vh - 70px); position: relative; background: #000; }
         .view-port { flex: 1; position: relative; border-right: 1px solid #333; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; }
         video { display: none; }
         canvas { width: 100%; height: 100%; object-fit: contain; }
         
-        .label { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 12px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; }
-        .timer-display { position: absolute; top: 10px; right: 10px; background: rgba(211, 47, 47, 0.85); color: white; padding: 8px 16px; font-size: 18px; font-weight: bold; border-radius: 4px; display: none; z-index: 100; }
+        .label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 12px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; }
+        .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; border: 2px solid #ff5252; display: none; z-index: 100; box-shadow: 0 0 15px rgba(211,47,47,0.5); }
         
-        .radar-wrapper { position: absolute; bottom: 20px; right: 20px; width: 130px; height: 130px; z-index: 200; pointer-events: none; }
-        .radar-box { width: 130px; height: 130px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 12px rgba(0,255,136,0.4); }
-        #radarWrapperMP .radar-box { border: 2px solid #ff5252; box-shadow: 0 0 12px rgba(255,82,82,0.4); }
-        #radarWrapperMN .radar-box { border: 2px solid #00ffff; box-shadow: 0 0 12px rgba(0,255,255,0.4); }
-        .radar-title { position: absolute; top: -22px; left: 12px; font-size: 10px; background: rgba(0,0,0,0.8); padding: 2px 6px; border-radius: 3px; font-weight: bold; white-space: nowrap; }
+        /* レーダー位置の微調整 */
+        .radar-wrapper { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 120px; z-index: 200; pointer-events: none; }
+        .radar-box { width: 120px; height: 120px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 12px rgba(0,255,136,0.4); }
+        #radarWrapperMP .radar-box { border: 2px solid #ff5252; box-shadow: 0 0 10px rgba(255,82,82,0.4); }
+        #radarWrapperMN .radar-box { border: 2px solid #00ffff; box-shadow: 0 0 10px rgba(0,255,255,0.4); }
+        .radar-title { position: absolute; top: -20px; left: 8px; font-size: 10px; background: rgba(0,0,0,0.8); padding: 2px 6px; border-radius: 3px; font-weight: bold; white-space: nowrap; }
         #radarWrapperMP .radar-title { color: #ff5252; border: 1px solid #ff5252; }
         #radarWrapperMN .radar-title { color: #00ffff; border: 1px solid #00ffff; }
 
-        /* 🖨️ 印刷用スタイル（2枚目もグリッド化） */
-        #printReportView { display: none; background: white; color: black; padding: 40px; }
+        /* 🖨️ 印刷用スタイル（全11項目 3ページ構成） */
+        #printReportView { display: none; background: white; color: black; padding: 30px 40px; }
         .print-page { page-break-after: always; color: black; }
-        .print-header { border-bottom: 3px solid #111; padding-bottom: 10px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; }
-        .print-title { font-size: 26px; font-weight: bold; color: #111; letter-spacing: 1px; }
-        .print-meta { font-size: 13px; text-align: right; color: #555; line-height: 1.5; }
-        .print-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; }
-        .print-card { border: 1px solid #ccc; padding: 12px; background: #fafafa; border-radius: 6px; }
-        .print-card h3 { margin: 0 0 10px 0; font-size: 14px; border-bottom: 2px solid #333; padding-bottom: 4px; color: #111; }
-        .print-img-placeholder { width: 100%; height: 200px; background: #000; border-radius: 4px; object-fit: contain; display: block; }
-        .print-full-review { background: #f5f5f5; border: 1px solid #ddd; padding: 18px; border-radius: 6px; font-size: 13.5px; line-height: 1.6; color: #111; margin-top: 15px; }
-        .print-section-title { font-size: 18px; font-weight: bold; border-left: 5px solid #1976d2; padding-left: 10px; margin: 30px 0 15px 0; }
+        .print-header { border-bottom: 3px solid #111; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+        .print-title { font-size: 24px; font-weight: bold; color: #111; }
+        .print-meta { font-size: 12px; text-align: right; color: #555; line-height: 1.4; }
+        .print-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .print-card { border: 1px solid #ccc; padding: 10px; background: #fafafa; border-radius: 4px; }
+        .print-card h3 { margin: 0 0 8px 0; font-size: 13px; border-bottom: 2px solid #333; padding-bottom: 3px; color: #111; }
+        .print-img-placeholder { width: 100%; height: 190px; background: #000; border-radius: 4px; object-fit: contain; display: block; }
+        .print-full-review { background: #f9f9f9; border: 1px solid #ddd; padding: 15px; border-radius: 4px; font-size: 13px; line-height: 1.6; color: #111; margin-top: 10px; }
+        .print-section-title { font-size: 16px; font-weight: bold; border-left: 5px solid #1976d2; padding-left: 8px; margin: 20px 0 10px 0; }
 
         @media print {
-            body { background: white; color: black; }
-            .controls, .menu-section, .container, .radar-wrapper { display: none !important; } 
+            body { background: white; color: black; overflow: visible; }
+            .controls, .container { display: none !important; } 
             #printReportView { display: block !important; } 
         }
     </style>
@@ -69,57 +70,55 @@
 <body>
 
 <div class="controls">
-    <select id="videoSource"><option value="">デバイス検索中...</option></select>
-    <button id="startBtn">📷 カメラ起動 (フルHD)</button>
-    <button id="recBtn" disabled>⏱️ 録画・自動計測 (3秒/10秒)</button>
-    <button id="downloadCsvBtn" disabled>📊 最終CSV出力</button>
-    <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 レポート印刷・PDF出力</button>
-</div>
+    <select id="videoSource" style="background:#fff; color:#000;"><option value="">カメラ検索中...</option></select>
+    <button id="startBtn">📷 フルHD起動</button>
+    
+    <select id="modeSelect" class="mode-dropdown" onchange="switchReportTab(this.value)">
+        <optgroup label="■ 静止姿勢アライメント">
+            <option value="front" selected>🧍 前面 (10秒)</option>
+            <option value="back">🧍 後面 (5秒)</option>
+            <option value="l_side">🧍 左側面 (5秒)</option>
+            <option value="r_side">🧍 右側面 (5秒)</option>
+        </optgroup>
+        <optgroup label="■ 動的機能評価 (キネマティックチェーン)">
+            <option value="dyn_overhead">🏋️ オーバーヘッドスクワット (15秒)</option>
+            <option value="dyn_single_r">🦵 片脚バランス/浅スクワット [右軸足] (15秒)</option>
+            <option value="dyn_single_l">🦵 片脚バランス/浅スクワット [左軸足] (15秒)</option>
+            <option value="dyn_flex_fwd">🙇 立位体前屈 (10秒)</option>
+            <option value="dyn_flex_bwd">🤸 立位体後屈 (10秒)</option>
+            <option value="dyn_shoulder_r">👐 肩複合可動性 [右手上] (10秒)</option>
+            <option value="dyn_shoulder_l">👐 肩複合可動性 [左手上] (10秒)</option>
+        </optgroup>
+    </select>
 
-<div class="menu-section">
-    <div class="category-title">■ 静止姿勢アライメント (Static Posture)</div>
-    <div class="tab-container">
-        <button id="tab-front" class="tab-btn active-tab" onclick="switchReportTab('front')">🧍 前面</button>
-        <button id="tab-back" class="tab-btn" onclick="switchReportTab('back')">🧍 後面</button>
-        <button id="tab-l_side" class="tab-btn" onclick="switchReportTab('l_side')">🧍 左側面</button>
-        <button id="tab-r_side" class="tab-btn" onclick="switchReportTab('r_side')">🧍 右側面</button>
-    </div>
-    <div class="category-title" style="margin-top: 8px;">■ 動的機能評価 (Kinematic Chain & Stability)</div>
-    <div class="tab-container">
-        <button id="tab-dyn_overhead" class="tab-btn" onclick="switchReportTab('dyn_overhead')">🏋️ オーバーヘッドスクワット</button>
-        <button id="tab-dyn_single" class="tab-btn" onclick="switchReportTab('dyn_single')">🦵 片脚バランス/浅スクワット</button>
-        <button id="tab-dyn_flex" class="tab-btn" onclick="switchReportTab('dyn_flex')">🙇 立位体前屈/後屈</button>
-        <button id="tab-dyn_shoulder" class="tab-btn" onclick="switchReportTab('dyn_shoulder')">👐 肩複合可動性 (背中タッチ)</button>
-    </div>
+    <button id="recBtn" disabled>⏱️ 録画・自動計測スタート</button>
+    <button id="downloadCsvBtn" disabled>📊 CSV出力</button>
+    <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 PDFレポート出力</button>
 </div>
 
 <div class="container">
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
-    
     <div class="view-port">
-        <canvas id="canvasMP"></canvas>
-        <div class="label">MediaPipe (高精度評価 + 顎ゆがみ解析)</div>
-        <div id="radarWrapperMP" class="radar-wrapper"><div class="radar-title">MP COP RADAR</div><canvas id="canvasRadarMP" class="radar-box" width="130" height="130"></canvas></div>
+        <canvas id="canvasMP"></canvas><div class="label">MediaPipe (高精度評価 + 顎ゆがみ解析)</div>
+        <div id="radarWrapperMP" class="radar-wrapper"><div class="radar-title">MP COP RADAR</div><canvas id="canvasRadarMP" class="radar-box" width="120" height="120"></canvas></div>
     </div>
-    
     <div class="view-port">
-        <canvas id="canvasMN"></canvas>
-        <div class="label">MoveNet (高速クロスチェック)</div>
-        <div id="radarWrapperMN" class="radar-wrapper"><div class="radar-title">MN COP RADAR</div><canvas id="canvasRadarMN" class="radar-box" width="130" height="130"></canvas></div>
+        <canvas id="canvasMN"></canvas><div class="label">MoveNet (高速クロスチェック)</div>
+        <div id="radarWrapperMN" class="radar-wrapper"><div class="radar-title">MN COP RADAR</div><canvas id="canvasRadarMN" class="radar-box" width="120" height="120"></canvas></div>
     </div>
 </div>
 
 <div id="printReportView">
     <div class="print-page">
         <div class="print-header">
-            <div class="print-title">CONNECT AI 臨床姿勢アライメント診断書</div>
-            <div class="print-meta"><strong>測定施設:</strong> B.C Lab 運動解析室<br><strong>発行日:</strong> <span id="printDate1"></span><br><strong>解析システム:</strong> Master Engine V15</div>
+            <div class="print-title">CONNECT AI 臨床アライメント診断書 [静止]</div>
+            <div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V16</div>
         </div>
         <div class="print-grid">
-            <div class="print-card"><h3>1. 前面アライメント</h3><img id="p-img-front" class="print-img-placeholder" alt="前面"><div id="p-txt-front" style="font-size:12px; margin-top:8px; font-weight:bold; color:#111;"></div></div>
-            <div class="print-card"><h3>2. 後面アライメント</h3><img id="p-img-back" class="print-img-placeholder" alt="後面"><div id="p-txt-back" style="font-size:12px; margin-top:8px; font-weight:bold; color:#111;"></div></div>
-            <div class="print-card"><h3>3. 左側面アライメント</h3><img id="p-img-l_side" class="print-img-placeholder" alt="左側面"><div id="p-txt-l_side" style="font-size:12px; margin-top:8px; font-weight:bold; color:#111;"></div></div>
-            <div class="print-card"><h3>4. 右側面アライメント</h3><img id="p-img-r_side" class="print-img-placeholder" alt="右側面"><div id="p-txt-r_side" style="font-size:12px; margin-top:8px; font-weight:bold; color:#111;"></div></div>
+            <div class="print-card"><h3>1. 前面</h3><img id="p-img-front" class="print-img-placeholder"><div id="p-txt-front" style="font-size:11px; margin-top:5px; font-weight:bold;"></div></div>
+            <div class="print-card"><h3>2. 後面</h3><img id="p-img-back" class="print-img-placeholder"><div id="p-txt-back" style="font-size:11px; margin-top:5px; font-weight:bold;"></div></div>
+            <div class="print-card"><h3>3. 左側面</h3><img id="p-img-l_side" class="print-img-placeholder"><div id="p-txt-l_side" style="font-size:11px; margin-top:5px; font-weight:bold;"></div></div>
+            <div class="print-card"><h3>4. 右側面</h3><img id="p-img-r_side" class="print-img-placeholder"><div id="p-txt-r_side" style="font-size:11px; margin-top:5px; font-weight:bold;"></div></div>
         </div>
         <div class="print-section-title">■ 静止姿勢バイオメカニクス 総評</div>
         <div id="p-review-static" class="print-full-review">測定完了後、自動出力されます。</div>
@@ -127,16 +126,28 @@
     
     <div class="print-page">
         <div class="print-header">
-            <div class="print-title">CONNECT AI 動的運動機能・代償制御評価書</div>
-            <div class="print-meta"><strong>発行日:</strong> <span id="printDate2"></span></div>
+            <div class="print-title">CONNECT AI 動的機能評価書 [連鎖・支持力]</div>
+            <div class="print-meta">発行日: <span class="printDate"></span></div>
         </div>
         <div class="print-grid">
-            <div class="print-card"><h3>1. オーバーヘッド・スクワット</h3><img id="p-img-dyn_overhead" class="print-img-placeholder" alt="OHS"><div id="p-txt-dyn_overhead" style="font-size:12px; margin-top:8px; font-weight:bold; color:#1976d2;"></div></div>
-            <div class="print-card"><h3>2. 片脚バランス / 浅スクワット</h3><img id="p-img-dyn_single" class="print-img-placeholder" alt="Single"><div id="p-txt-dyn_single" style="font-size:12px; margin-top:8px; font-weight:bold; color:#1976d2;"></div></div>
-            <div class="print-card"><h3>3. 立位体前屈・後屈</h3><img id="p-img-dyn_flex" class="print-img-placeholder" alt="Flex"><div id="p-txt-dyn_flex" style="font-size:12px; margin-top:8px; font-weight:bold; color:#1976d2;"></div></div>
-            <div class="print-card"><h3>4. 肩関節複合可動性 (背中タッチ)</h3><img id="p-img-dyn_shoulder" class="print-img-placeholder" alt="Shoulder"><div id="p-txt-dyn_shoulder" style="font-size:12px; margin-top:8px; font-weight:bold; color:#1976d2;"></div></div>
+            <div class="print-card"><h3>5. オーバーヘッド・スクワット</h3><img id="p-img-dyn_overhead" class="print-img-placeholder"><div id="p-txt-dyn_overhead" style="font-size:11px; margin-top:5px; font-weight:bold; color:#1976d2;"></div></div>
+            <div class="print-card"><h3>6. 片脚バランス [右軸足]</h3><img id="p-img-dyn_single_r" class="print-img-placeholder"><div id="p-txt-dyn_single_r" style="font-size:11px; margin-top:5px; font-weight:bold; color:#1976d2;"></div></div>
+            <div class="print-card"><h3>7. 片脚バランス [左軸足]</h3><img id="p-img-dyn_single_l" class="print-img-placeholder"><div id="p-txt-dyn_single_l" style="font-size:11px; margin-top:5px; font-weight:bold; color:#1976d2;"></div></div>
+            <div class="print-card"><h3>8. 立位体前屈</h3><img id="p-img-dyn_flex_fwd" class="print-img-placeholder"><div id="p-txt-dyn_flex_fwd" style="font-size:11px; margin-top:5px; font-weight:bold; color:#1976d2;"></div></div>
         </div>
-        <div class="print-section-title">■ 動的機能・キネマティックチェーン 総評</div>
+    </div>
+
+    <div class="print-page">
+        <div class="print-header">
+            <div class="print-title">CONNECT AI 動的機能評価書 [可動性]</div>
+            <div class="print-meta">発行日: <span class="printDate"></span></div>
+        </div>
+        <div class="print-grid">
+            <div class="print-card"><h3>9. 立位体後屈</h3><img id="p-img-dyn_flex_bwd" class="print-img-placeholder"><div id="p-txt-dyn_flex_bwd" style="font-size:11px; margin-top:5px; font-weight:bold; color:#1976d2;"></div></div>
+            <div class="print-card"><h3>10. 肩複合可動性 [右手上]</h3><img id="p-img-dyn_shoulder_r" class="print-img-placeholder"><div id="p-txt-dyn_shoulder_r" style="font-size:11px; margin-top:5px; font-weight:bold; color:#1976d2;"></div></div>
+            <div class="print-card"><h3>11. 肩複合可動性 [左手上]</h3><img id="p-img-dyn_shoulder_l" class="print-img-placeholder"><div id="p-txt-dyn_shoulder_l" style="font-size:11px; margin-top:5px; font-weight:bold; color:#1976d2;"></div></div>
+        </div>
+        <div class="print-section-title">■ キネマティックチェーン機能 総評</div>
         <div id="p-review-dynamic" class="print-full-review">運動測定完了後、学術基準レビューがここに印刷されます。</div>
     </div>
 </div>
@@ -181,34 +192,53 @@
 
     window.latestFaceData = null; 
 
-    // 🛠️ 全8項目のデータ保存領域を確保
-    const directionsList = ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_single', 'dyn_flex', 'dyn_shoulder'];
+    // 🛠️ 全11項目のデータ管理リスト
+    const directionsList = [
+        'front', 'back', 'l_side', 'r_side', 
+        'dyn_overhead', 'dyn_single_r', 'dyn_single_l', 
+        'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'
+    ];
+    
+    // ⏱️ 指定された秒数マッピングルール (ミリ秒)
+    const DURATION_MAP = {
+        'front': 10000,
+        'back': 5000,
+        'l_side': 5000,
+        'r_side': 5000,
+        'dyn_overhead': 15000,
+        'dyn_single_r': 15000,
+        'dyn_single_l': 15000,
+        'dyn_flex_fwd': 10000,
+        'dyn_flex_bwd': 10000,
+        'dyn_shoulder_r': 10000,
+        'dyn_shoulder_l': 10000
+    };
+
     window.reportDataStore = {}; window.savedMetrics = {};
     directionsList.forEach(dir => { window.reportDataStore[dir] = [null, null]; window.savedMetrics[dir] = ""; });
-    
     window.savedReviews = { staticCombined: "未測定", dynamicCombined: "" };
 
-    // 画面ロード時に日付セット
     document.addEventListener('DOMContentLoaded', () => {
         const d = new Date(); const dStr = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
-        document.getElementById('printDate1').innerText = dStr; document.getElementById('printDate2').innerText = dStr;
+        document.querySelectorAll('.printDate').forEach(el => el.innerText = dStr);
     });
 
+    // プルダウン変更時の処理
     function switchReportTab(tabName) {
         if (isRecording) return; 
         currentTab = tabName;
-        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active-tab'));
-        document.getElementById(`tab-${tabName}`).classList.add('active-tab');
         swayHistoryMP = []; swayHistoryMN = []; window.latestFaceData = null;
         clearRadar(ctxRadarMP, "#ff5252"); clearRadar(ctxRadarMN, "#00ffff"); 
+        // 録画ボタンのテキストを秒数に合わせて動的変更
+        recBtn.innerText = `⏱️ 録画・計測スタート (${DURATION_MAP[tabName]/1000}秒)`;
         refreshReportView();
     }
 
     function clearRadar(ctx, color) {
-        if (!ctx) return; ctx.clearRect(0, 0, 130, 130); ctx.strokeStyle = color + "33"; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(65, 65, 30, 0, 2*Math.PI); ctx.stroke(); 
-        ctx.beginPath(); ctx.arc(65, 65, 50, 0, 2*Math.PI); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(65, 5); ctx.lineTo(65, 125); ctx.moveTo(5, 65); ctx.lineTo(125, 65); ctx.stroke(); 
+        if (!ctx) return; ctx.clearRect(0, 0, 120, 120); ctx.strokeStyle = color + "33"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(60, 60, 25, 0, 2*Math.PI); ctx.stroke(); 
+        ctx.beginPath(); ctx.arc(60, 60, 45, 0, 2*Math.PI); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(60, 5); ctx.lineTo(60, 115); ctx.moveTo(5, 60); ctx.lineTo(115, 60); ctx.stroke(); 
     }
 
     function drawFaceAndCalculateJawShift(ctx, faceKps) {
@@ -227,7 +257,6 @@
         return null;
     }
 
-    // 🤖 AI評価ロジック（新動的4項目追加）
     function runReviewLogic(ctx, getK, isMP) {
         ctx.fillStyle = "#deff9a"; ctx.font = "bold 20px sans-serif";
         const rS = getK('right_shoulder'), lS = getK('left_shoulder');
@@ -237,106 +266,80 @@
         const rW = getK('right_wrist'), lW = getK('left_wrist');
         const nose = getK('nose');
 
-        // ==== 静止アライメント ====
+        // ==== 1. 静止アライメント ====
         if (currentTab === "front" || currentTab === "back") {
-            ctx.fillText(currentTab === "front" ? "🧍 前面アライメント評価" : "🧍 後面アライメント評価", 30, 45);
+            ctx.fillText(currentTab === "front" ? "🧍 前面アライメント" : "🧍 後面アライメント", 30, 45);
             let tilt = 0, headSwayX = 0;
-            if (rS && lS) { tilt = ((rS.y - lS.y) / (lS.x - rS.x) * 180 / Math.PI); ctx.fillStyle = "#ffffff"; ctx.fillText(`肩傾斜: ${tilt > 0 ? "左肩上がり" : "右肩上がり"} ${Math.abs(tilt).toFixed(1)}°`, 30, 85); }
+            if (rS && lS) { tilt = ((rS.y - lS.y) / (lS.x - rS.x) * 180 / Math.PI); ctx.fillStyle = "#ffffff"; ctx.fillText(`肩傾斜: ${tilt > 0 ? "左高" : "右高"} ${Math.abs(tilt).toFixed(1)}°`, 30, 85); }
             if (rA && lA && nose) {
                 const midAnkleX = (lA.x + rA.x) / 2; headSwayX = (nose.x - midAnkleX) * 4;
                 ctx.fillStyle = headSwayX > 0 ? "#ff5252" : "#00ffff"; ctx.fillText(`頭部偏位: ${headSwayX > 0 ? "左" : "右"}へ ${Math.abs(headSwayX).toFixed(1)} mm`, 30, 125);
                 if (isRecording) { if (isMP) { swayHistoryMP.push({ x: headSwayX, y: 0 }); drawSpecificRadar(ctxRadarMP, swayHistoryMP, "#ff5252"); } else { swayHistoryMN.push({ x: headSwayX, y: 0 }); drawSpecificRadar(ctxRadarMN, swayHistoryMN, "#00ffff"); } }
             }
-            
             let jawData = null;
             if (isMP && currentTab === "front" && window.latestFaceData) { jawData = drawFaceAndCalculateJawShift(ctx, window.latestFaceData); }
-
             if (isMP) {
-                window.savedMetrics[currentTab] = `肩傾斜: ${Math.abs(tilt).toFixed(1)}° (${tilt > 0 ? "左高" : "右高"}) / 偏位: ${headSwayX > 0 ? "左" : "右"}${Math.abs(headSwayX).toFixed(1)}mm`;
-                let reviewTxt = `【前面/後面】 肩甲帯傾斜は ${Math.abs(tilt).toFixed(1)}°、正中線偏位は ${Math.abs(headSwayX).toFixed(1)} mm。`;
-                if (jawData && Math.abs(jawData.shiftMm) > 2.0) { reviewTxt += ` ⚠️オトガイが${Math.abs(jawData.shiftMm).toFixed(1)}mm ${jawData.dir}へ偏位。顎関節・前庭代償の疑い。`; }
-                window.savedReviews.staticCombined = reviewTxt;
+                window.savedMetrics[currentTab] = `肩傾斜: ${Math.abs(tilt).toFixed(1)}° (${tilt > 0 ? "左高" : "右高"}) / 頭部偏位: ${headSwayX > 0 ? "左" : "右"}${Math.abs(headSwayX).toFixed(1)}mm`;
+                if(currentTab === "front") {
+                    window.savedReviews.staticCombined = `【前面】 肩傾斜 ${Math.abs(tilt).toFixed(1)}°、正中線偏位 ${Math.abs(headSwayX).toFixed(1)} mm。`;
+                    if (jawData && Math.abs(jawData.shiftMm) > 2.0) window.savedReviews.staticCombined += `オトガイ偏位(${Math.abs(jawData.shiftMm).toFixed(1)}mm)あり。`;
+                }
             }
         } 
         else if (currentTab === "l_side" || currentTab === "r_side") {
-            ctx.fillText(currentTab === "l_side" ? "🧍 左側面アライメント評価" : "🧍 右側面アライメント評価", 30, 45);
+            ctx.fillText(currentTab === "l_side" ? "🧍 左側面アライメント" : "🧍 右側面アライメント", 30, 45);
             const ear = currentTab === "l_side" ? getK('left_ear') : getK('right_ear');
             const shoulder = currentTab === "l_side" ? lS : rS;
             if (ear && shoulder) {
                 const forwardLean = Math.abs(Math.atan2(shoulder.x - ear.x, shoulder.y - ear.y) * 180 / Math.PI);
                 ctx.fillStyle = "#ffffff"; ctx.fillText(`頭部前傾角: ${forwardLean.toFixed(1)}°`, 30, 85);
-                if (isMP) {
-                    window.savedMetrics[currentTab] = `頭部前傾角: ${forwardLean.toFixed(1)}°`;
-                    if(forwardLean > 15.0) window.savedReviews.staticCombined += `<br>【側面】 頭部前傾角 ${forwardLean.toFixed(1)}°。フォワードヘッドポスチャーによる上位交差症候群の兆候あり。`;
-                }
+                if (isMP) window.savedMetrics[currentTab] = `頭部前傾角: ${forwardLean.toFixed(1)}°`;
             }
         }
         
-        // ==== 動的機能評価 (Kinematic Chain) ====
+        // ==== 2. 動的機能評価 ====
         else if (currentTab === "dyn_overhead") {
             ctx.fillText("🏋️ オーバーヘッドスクワット", 30, 45);
             if (rK && lK && rA && lA && rW && lW && rS && lS) {
-                const kneeDist = Math.abs(rK.x - lK.x); const ankleDist = Math.abs(rA.x - lA.x);
-                const valgusRatio = kneeDist / ankleDist; // 1以下ならKnee Valgus（内反・外反評価）
-                
-                // 腕の落下（肩より手首が下がっていないか）
-                const avgWristY = (rW.y + lW.y)/2; const avgShoulderY = (rS.y + lS.y)/2;
-                const armDropped = avgWristY > avgShoulderY;
-
-                ctx.fillStyle = valgusRatio < 0.8 ? "#ff5252" : "#ffffff";
-                ctx.fillText(`Knee Valgus 評価比: ${valgusRatio.toFixed(2)}`, 30, 85);
-                
+                const valgusRatio = Math.abs(rK.x - lK.x) / Math.abs(rA.x - lA.x);
+                const armDropped = ((rW.y + lW.y)/2) > ((rS.y + lS.y)/2);
+                ctx.fillStyle = valgusRatio < 0.8 ? "#ff5252" : "#ffffff"; ctx.fillText(`Knee Valgus 比: ${valgusRatio.toFixed(2)}`, 30, 85);
                 if (isMP) {
-                    window.savedMetrics[currentTab] = `膝/足首幅比: ${valgusRatio.toFixed(2)} | 腕落下: ${armDropped ? "あり" : "なし"}`;
-                    let r = `【OHS】全身運動連鎖評価：`;
-                    if (valgusRatio < 0.8) r += `⚠️ Knee Valgus（ニーイン）を検出。足関節背屈制限または股関節外旋筋群の機能不全。 `;
-                    if (armDropped) r += `⚠️ 腕の落下を検出。胸椎伸展制限および広背筋のタイトネスの疑い。 `;
-                    if (valgusRatio >= 0.8 && !armDropped) r += `✅ 下肢・体幹のモビリティとスタビリティの協調性良好。 `;
-                    window.savedReviews.dynamicCombined = r + "<br>";
+                    window.savedMetrics[currentTab] = `膝幅/足幅比: ${valgusRatio.toFixed(2)} | 腕落下: ${armDropped ? "有" : "無"}`;
+                    window.savedReviews.dynamicCombined = `【OHS】 Knee Valgus比: ${valgusRatio.toFixed(2)}。${valgusRatio < 0.8 ? "足関節背屈制限・ニーイン代償あり。" : ""} ${armDropped ? "胸椎伸展制限あり。" : ""}<br>`;
                 }
             }
         }
-        else if (currentTab === "dyn_single") {
-            ctx.fillText("🦵 片脚バランス / 浅スクワット", 30, 45);
+        else if (currentTab.startsWith("dyn_single")) {
+            ctx.fillText(currentTab === "dyn_single_r" ? "🦵 片脚バランス [右軸足]" : "🦵 片脚バランス [左軸足]", 30, 45);
             if (rH && lH && rS && lS) {
                 const hipTilt = ((rH.y - lH.y) / (lH.x - rH.x) * 180 / Math.PI);
                 const shoulderTilt = ((rS.y - lS.y) / (lS.x - rS.x) * 180 / Math.PI);
                 ctx.fillStyle = Math.abs(hipTilt) > 5 ? "#ff5252" : "#ffffff";
-                ctx.fillText(`骨盤側方傾斜: ${Math.abs(hipTilt).toFixed(1)}°`, 30, 85);
-                ctx.fillText(`体幹代償傾斜: ${Math.abs(shoulderTilt).toFixed(1)}°`, 30, 125);
-                
+                ctx.fillText(`骨盤傾斜: ${Math.abs(hipTilt).toFixed(1)}°`, 30, 85);
+                ctx.fillText(`体幹傾斜: ${Math.abs(shoulderTilt).toFixed(1)}°`, 30, 125);
                 if (isMP) {
                     window.savedMetrics[currentTab] = `骨盤傾斜: ${Math.abs(hipTilt).toFixed(1)}° | 体幹ブレ: ${Math.abs(shoulderTilt).toFixed(1)}°`;
-                    let r = `【片脚バランス】歩行立脚期制御：`;
-                    if (Math.abs(hipTilt) > 5.0 || Math.abs(shoulderTilt) > 5.0) r += `⚠️ トレンデレンブルグまたはデュシェンヌ様代償を検出。中殿筋など股関節外転筋群の弱化。 `;
-                    else r += `✅ 前額面における骨盤・体幹の動的安定性（モーターコントロール）良好。 `;
-                    window.savedReviews.dynamicCombined += r + "<br>";
+                    if(Math.abs(hipTilt)>5 || Math.abs(shoulderTilt)>5) window.savedReviews.dynamicCombined += `【片脚(${currentTab==='dyn_single_r'?'右':'左'})】 骨盤制御エラー（トレンデレンブルグ代償等）検出。<br>`;
                 }
             }
         }
-        else if (currentTab === "dyn_flex") {
-            ctx.fillText("🙇 立位体前屈/後屈", 30, 45);
-            // 矢状面の体幹屈曲角度（肩と股関節）
+        else if (currentTab.startsWith("dyn_flex")) {
+            ctx.fillText(currentTab === "dyn_flex_fwd" ? "🙇 立位体前屈" : "🤸 立位体後屈", 30, 45);
             const shoulder = getK('left_shoulder') || getK('right_shoulder');
             const hip = getK('left_hip') || getK('right_hip');
             if (shoulder && hip) {
                 const flexAngle = Math.abs(Math.atan2(shoulder.x - hip.x, hip.y - shoulder.y) * 180 / Math.PI);
-                ctx.fillStyle = "#ffffff"; ctx.fillText(`体幹屈曲/伸展角: ${flexAngle.toFixed(1)}°`, 30, 85);
-                if (isMP) {
-                    window.savedMetrics[currentTab] = `体幹可動角: ${flexAngle.toFixed(1)}°`;
-                    window.savedReviews.dynamicCombined += `【前後屈】矢状面可動性：体幹角度 ${flexAngle.toFixed(1)}°。脊柱および骨盤帯（Lumbo-pelvic rhythm）の連動性を評価。<br>`;
-                }
+                ctx.fillStyle = "#ffffff"; ctx.fillText(`体幹角度: ${flexAngle.toFixed(1)}°`, 30, 85);
+                if (isMP) window.savedMetrics[currentTab] = `可動角: ${flexAngle.toFixed(1)}°`;
             }
         }
-        else if (currentTab === "dyn_shoulder") {
-            ctx.fillText("👐 肩関節複合可動性 (背中タッチ)", 30, 45);
+        else if (currentTab.startsWith("dyn_shoulder")) {
+            ctx.fillText(currentTab === "dyn_shoulder_r" ? "👐 肩複合可動性 [右手上]" : "👐 肩複合可動性 [左手上]", 30, 45);
             if (rW && lW) {
                 const wristDist = Math.hypot(lW.x - rW.x, lW.y - rW.y);
                 ctx.fillStyle = "#ffffff"; ctx.fillText(`左右手首間距離: ${(wristDist * 2).toFixed(1)} mm`, 30, 85);
-                if (isMP) {
-                    window.savedMetrics[currentTab] = `手首間距離: ${(wristDist * 2).toFixed(1)} mm`;
-                    window.savedReviews.dynamicCombined += `【肩複合可動性】手首間距離 ${(wristDist * 2).toFixed(1)} mm。肩関節の内外旋および胸郭の可動域非対称性を評価。`;
-                }
+                if (isMP) window.savedMetrics[currentTab] = `手首間距離: ${(wristDist * 2).toFixed(1)} mm`;
             }
         }
     }
@@ -345,11 +348,12 @@
         clearRadar(ctx, color);
         if (history.length < 2) return;
         ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
-        history.forEach((pt, idx) => { const rX = 65 + (pt.x * 0.7); const rY = 65 + (pt.y * 0.7); if (idx === 0) ctx.moveTo(rX, rY); else ctx.lineTo(rX, rY); });
+        history.forEach((pt, idx) => { const rX = 60 + (pt.x * 0.7); const rY = 60 + (pt.y * 0.7); if (idx === 0) ctx.moveTo(rX, rY); else ctx.lineTo(rX, rY); });
         ctx.stroke();
-        const lastPt = history[history.length - 1]; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(65 + (lastPt.x * 0.7), 65 + (lastPt.y * 0.7), 3, 0, 2*Math.PI); ctx.fill(); ctx.restore();
+        const lastPt = history[history.length - 1]; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(60 + (lastPt.x * 0.7), 60 + (lastPt.y * 0.7), 3, 0, 2*Math.PI); ctx.fill(); ctx.restore();
     }
 
+    // 🛠️ 縮小したレーダーの見切れ完全防止ロジック
     function adjustAllRadarPositions() {
         for (let i = 0; i < 2; i++) {
             const canvas = canvases[i]; const wrapper = wrappers[i];
@@ -358,15 +362,17 @@
             let actualWidth, actualHeight, offsetX, offsetY;
             if (containerRatio > videoRatio) { actualHeight = rect.height; actualWidth = rect.height * videoRatio; offsetX = (rect.width - actualWidth) / 2; offsetY = 0; } 
             else { actualWidth = rect.width; actualHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - actualHeight) / 2; }
-            wrapper.style.right = `${offsetX + 20}px`; wrapper.style.bottom = `${offsetY + 20}px`;
+            wrapper.style.right = `${offsetX + 15}px`; wrapper.style.bottom = `${offsetY + 15}px`;
         }
     }
 
     recBtn.onclick = () => {
         isPausedForEdit = false; isRecording = true; coordinateBuffer = []; swayHistoryMP = []; swayHistoryMN = [];
         recordingStartTime = Date.now();
-        // 静止姿勢は10秒、動的評価は3秒サンプリング
-        recordingDuration = (currentTab === "front" || currentTab === "back" || currentTab === "l_side" || currentTab === "r_side") ? 10000 : 3000;
+        
+        // ⏱️ オブジェクトから現在の種目の秒数を取得
+        recordingDuration = DURATION_MAP[currentTab];
+        
         timerDisplay.style.display = "block"; recBtn.disabled = true; downloadCsvBtn.disabled = true;
 
         recordedChunks = [];
@@ -407,7 +413,11 @@
         }
         const activeCanvas = canvases[0]; const imgElement = document.getElementById(`p-img-${currentTab}`);
         if(imgElement) imgElement.src = activeCanvas.toDataURL("image/png");
-        refreshReportView(); recBtn.disabled = false; downloadCsvBtn.disabled = false;
+        
+        // 録画ボタンテキスト復帰
+        recBtn.innerText = `⏱️ 録画・計測スタート (${DURATION_MAP[currentTab]/1000}秒)`;
+        recBtn.disabled = false; downloadCsvBtn.disabled = false;
+        refreshReportView(); 
     }
 
     canvases.forEach((canvas, modelIdx) => {
@@ -467,7 +477,10 @@
             const devices = await navigator.mediaDevices.enumerateDevices();
             videoSource.innerHTML = '';
             devices.forEach(d => { if(d.kind==='videoinput'){ const o=document.createElement('option'); o.value=d.deviceId; o.text=d.label||'Camera'; videoSource.appendChild(o); }});
-            startBtn.innerText = "📷 カメラを起動 (フルHD)";
+            
+            // 初期の録画ボタン表示設定
+            recBtn.innerText = `⏱️ 録画・計測スタート (10秒)`;
+            
         } catch (e) { startBtn.innerText = "❌ 起動エラー"; console.error(e); }
     }
 
