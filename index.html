@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V25 (Dynamic Playback)</title>
+    <title>CONNECT AI - Master Evaluation Engine V26 (Realtime Playback)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -27,7 +27,6 @@
         #downloadCsvBtn { background: #2e7d32; color: white; }
         #printReportBtn { background: #ff9100; color: #000; box-shadow: 0 0 10px rgba(255,145,0,0.3); }
         
-        /* 🚀 プレイバック専用コントロールUI */
         .playback-controls { display: none; padding: 12px 15px; background: #002233; justify-content: center; gap: 15px; align-items: center; border-bottom: 2px solid #00bfff; width: 100%; box-sizing: border-box; }
         #timelineSlider { flex: 1; max-width: 600px; cursor: pointer; }
         #playPauseBtn { background: #00bfff; color: #000; min-width: 100px; }
@@ -96,7 +95,7 @@
     <button id="playPauseBtn">▶ 再生</button>
     <input type="range" id="timelineSlider" min="0" max="100" value="0">
     <span id="frameCounter" style="color:#00bfff; font-weight:bold; font-size:14px; min-width:60px;">0 / 0</span>
-    <span style="color:white; font-size:12px; margin-left:10px;">👻 半透明青色：理想の動作モデル (Ideal)</span>
+    <span style="color:white; font-size:12px; margin-left:10px;">👻 半透明青色：理想の動作モデル</span>
 </div>
 
 <div class="container">
@@ -113,7 +112,7 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書 [静止]</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V25</div></div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書 [静止]</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V26</div></div>
         <div class="print-grid">
             <div class="print-card"><h3>1. 前面</h3><img id="p-img-front" class="print-img-placeholder"></div>
             <div class="print-card"><h3>2. 後面</h3><img id="p-img-back" class="print-img-placeholder"></div>
@@ -163,7 +162,6 @@
     const timerDisplay = document.getElementById('timerDisplay');
     const downloadCsvBtn = document.getElementById('downloadCsvBtn');
     
-    // UI Elements for Playback
     const mainControls = document.getElementById('mainControls');
     const playbackControls = document.getElementById('playbackControls');
     const playPauseBtn = document.getElementById('playPauseBtn');
@@ -178,11 +176,14 @@
     let currentTab = "front"; 
     let currentStream = null;
 
-    let appMode = "camera"; // 'camera' or 'playback'
+    let appMode = "camera"; 
     let playbackInterval = null;
     let isPlaying = false;
     let playbackDataMP = [];
     let playbackDataMN = [];
+    
+    // 🚀 実時間プレイバック用のインターバル（ミリ秒）
+    window.playbackIntervalMs = 33; 
 
     let recordingStartTime = 0;
     let recordingDuration = 10000; 
@@ -231,51 +232,41 @@
         ctx.beginPath(); ctx.moveTo(60, 5); ctx.lineTo(60, 115); ctx.moveTo(5, 60); ctx.lineTo(115, 60); ctx.stroke(); 
     }
 
-    // 🚀🚀【新規】AIによる「理想の骨格（お手本ゴースト）」を生成するロジック
     function generateIdealKeypoints(actualKps, mode) {
         if (!actualKps) return null;
-        let ideal = JSON.parse(JSON.stringify(actualKps)); // ディープコピー
+        let ideal = JSON.parse(JSON.stringify(actualKps)); 
 
         const getK = (name) => ideal.find(k => k.name === name);
         const setY = (names, y) => names.forEach(n => { let k = getK(n); if (k) k.y = y; });
         const setX = (names, x) => names.forEach(n => { let k = getK(n); if (k) k.x = x; });
 
-        // 1. オーバーヘッドスクワット：ニーイン（Knee Valgus）を防ぎ、腕を落とさない軌道
         if (mode === 'dyn_overhead') {
             let lA = getK('left_ankle'), rA = getK('right_ankle');
             let lK = getK('left_knee'), rK = getK('right_knee');
             let lS = getK('left_shoulder'), rS = getK('right_shoulder');
             let lW = getK('left_wrist'), rW = getK('right_wrist');
             
-            // 膝を常につま先（足首）と同じX軸上に補正
             if (lA && lK) lK.x = lA.x;
             if (rA && rK) rK.x = rA.x;
-            // 腕の落下を補正（手首が肩より下がらないように）
             if (lW && lS && lW.y > lS.y) lW.y = lS.y - 50;
             if (rW && rS && rW.y > rS.y) rW.y = rS.y - 50;
         }
-        // 2. 片脚バランス：骨盤（ヒップ）と肩の傾きを完全に水平に保つ
         else if (mode.startsWith('dyn_single')) {
             let lH = getK('left_hip'), rH = getK('right_hip');
             if (lH && rH) { let midY = (lH.y + rH.y) / 2; setY(['left_hip', 'right_hip'], midY); }
             let lS = getK('left_shoulder'), rS = getK('right_shoulder');
             if (lS && rS) { let midY = (lS.y + rS.y) / 2; setY(['left_shoulder', 'right_shoulder'], midY); }
         }
-        // 3. 立位体前屈：なめらかな屈曲（簡易補正）
         else if (mode.startsWith('dyn_flex')) {
-             // 側面の評価なので、膝が曲がらないように固定
              let lH = getK('left_hip'), lK = getK('left_knee'), lA = getK('left_ankle');
              let rH = getK('right_hip'), rK = getK('right_knee'), rA = getK('right_ankle');
-             if(lA && lK && lH) lK.x = (lA.x + lH.x)/2; // 膝を真っ直ぐに
+             if(lA && lK && lH) lK.x = (lA.x + lH.x)/2; 
              if(rA && rK && rH) rK.x = (rA.x + rH.x)/2;
         }
-
         return ideal;
     }
 
     function runReviewLogic(ctx, getK, isMP, canvas) {
-        // ... (V24と同じ静止アライメントとレビュー出力ロジック) ...
-        // ※プレイバック中は動的レビュー文字の上書きを防ぐためシンプル化
         ctx.fillStyle = "#deff9a"; ctx.font = "bold 20px sans-serif";
         const rA = getK('right_ankle'), lA = getK('left_ankle'), nose = getK('nose');
 
@@ -336,16 +327,22 @@
         }
     }
 
-    // 🚀🚀【新規】プレイバックモードの制御ロジック
     function enterPlaybackMode() {
         appMode = 'playback';
         mainControls.style.display = 'none';
         playbackControls.style.display = 'flex';
         
-        // 取得した録画データからプレイバック用配列を分離
         playbackDataMP = poseDataLog.filter(d => d.model === 'MediaPipe' && d.mode === currentTab);
         playbackDataMN = poseDataLog.filter(d => d.model === 'MoveNet' && d.mode === currentTab);
         
+        // 🚀 録画データの実時間タイムスタンプから平均フレームレートを逆算して同期
+        if (playbackDataMP.length > 1) {
+            const actualDurationMs = playbackDataMP[playbackDataMP.length - 1].time - playbackDataMP[0].time;
+            window.playbackIntervalMs = actualDurationMs / playbackDataMP.length;
+        } else {
+            window.playbackIntervalMs = 33; 
+        }
+
         const maxFrames = Math.max(playbackDataMP.length, playbackDataMN.length) - 1;
         timelineSlider.max = maxFrames > 0 ? maxFrames : 0;
         timelineSlider.value = 0;
@@ -367,13 +364,14 @@
         if (forcePlay === true || !isPlaying) {
             isPlaying = true;
             playPauseBtn.innerText = "⏸ 停止";
+            // 🚀 算出された正確な実時間インターバルで再生ループを回す
             playbackInterval = setInterval(() => {
                 let currentVal = parseInt(timelineSlider.value);
-                if (currentVal >= parseInt(timelineSlider.max)) currentVal = 0; // ループ再生
+                if (currentVal >= parseInt(timelineSlider.max)) currentVal = 0; 
                 else currentVal++;
                 timelineSlider.value = currentVal;
                 renderPlaybackFrame(currentVal);
-            }, 33); // 約30FPS
+            }, window.playbackIntervalMs); 
         } else {
             isPlaying = false;
             playPauseBtn.innerText = "▶ 再生";
@@ -392,7 +390,6 @@
         for (let i = 0; i < 2; i++) {
             const ctx = ctxs[i]; const canvas = canvases[i];
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            // プレイバック時は背景を暗くして骨格を見やすく
             ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height); 
             drawCenterGrid(ctx, canvas);
 
@@ -400,13 +397,11 @@
             if (dataArray[frameIdx]) {
                 const actualKps = dataArray[frameIdx].keypoints;
                 
-                // 👻 1. 理想の骨格（ゴースト）を生成して半透明の青色で描画
                 const idealKps = generateIdealKeypoints(actualKps, currentTab);
                 if (idealKps) {
-                    drawSkeleton(ctx, idealKps, 'rgba(0, 191, 255, 0.6)'); // 透明な水色
+                    drawSkeleton(ctx, idealKps, 'rgba(0, 191, 255, 0.6)'); 
                 }
 
-                // 🔴 2. 実際の測定骨格を不透明の赤/水色で上に重ねて描画
                 drawSkeleton(ctx, actualKps, i === 0 ? '#ff5252' : '#00ffff');
                 runReviewLogic(ctx, (n) => actualKps.find(k => k.name === n), i === 0, canvas);
             }
@@ -416,7 +411,6 @@
 
     recBtn.onclick = () => {
         isPausedForEdit = false; isRecording = true; coordinateBuffer = []; swayHistoryMP = []; swayHistoryMN = [];
-        // 動的タブなら以前のログをクリア
         if(currentTab.startsWith('dyn_')) { poseDataLog = poseDataLog.filter(d => d.mode !== currentTab); }
 
         recordingStartTime = Date.now(); recordingDuration = DURATION_MAP[currentTab];
@@ -442,10 +436,8 @@
         if (recorder && recorder.state !== "inactive") recorder.stop(); 
 
         if (currentTab.startsWith("dyn_")) {
-            // 🚀 動的評価の場合はプレイバック・シミュレーターへ移行
             enterPlaybackMode();
         } else {
-            // 静的評価の場合は平均値を算出してエディットモードへ
             isPausedForEdit = true;
             for (let mIdx = 0; mIdx < 2; mIdx++) {
                 if (coordinateBuffer[mIdx] && coordinateBuffer[mIdx].length > 0) {
@@ -467,7 +459,6 @@
         }
     }
 
-    // ... [V24と完全に同一の getEventPos と Pointer Events ドラッグロジックを保持] ...
     function getEventPos(canvas, e) {
         const rect = canvas.getBoundingClientRect();
         let clientX, clientY;
@@ -522,7 +513,7 @@
     });
 
     function refreshReportView() {
-        if(appMode === 'playback') return; // Playback中は専用描画ループに任せる
+        if(appMode === 'playback') return; 
         const w = video.videoWidth, h = video.videoHeight;
         for (let i = 0; i < 2; i++) {
             const ctx = ctxs[i]; const canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); drawCenterGrid(ctx, canvas);
@@ -573,7 +564,7 @@
     async function render() {
         if (!isRunning) return;
         if (appMode === 'playback' || isPausedForEdit) {
-            requestAnimationFrame(render); return; // 再生・編集時はカメラ映像の上書きをストップ
+            requestAnimationFrame(render); return; 
         }
 
         const w = video.videoWidth, h = video.videoHeight;
@@ -606,7 +597,7 @@
     function drawCenterGrid(ctx, canvas) { ctx.save(); ctx.strokeStyle="rgba(255,255,255,0.2)"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(canvas.width/2,0); ctx.lineTo(canvas.width/2,canvas.height); ctx.stroke(); ctx.restore(); }
 
     function drawSkeleton(ctx, kps, color) {
-        ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 3; const isMP = kps.length > 20; // 🚀 線を少し太くして見やすく
+        ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 3; const isMP = kps.length > 20; 
         const pairs = isMP ? [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]] : [[5,6],[5,11],[6,12],[11,12],[5,7],[7,9],[6,8],[8,10],[11,13],[13,15],[12,14],[14,16]];
         pairs.forEach(([s,e])=>{ const p1=kps[s], p2=kps[e]; if(p1 && p2 && p1.score > 0.0 && p2.score > 0.0){ ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); }});
         if (!(isMP && (currentTab === "front" || currentTab === "back"))) {
