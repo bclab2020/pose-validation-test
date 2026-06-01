@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V27 (Realtime Sync Playback)</title>
+    <title>CONNECT AI - Master Evaluation Engine V28 (Bounding Box Stance Center)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -112,7 +112,7 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書 [静止]</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V27</div></div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書 [静止]</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V28</div></div>
         <div class="print-grid">
             <div class="print-card"><h3>1. 前面</h3><img id="p-img-front" class="print-img-placeholder"></div>
             <div class="print-card"><h3>2. 後面</h3><img id="p-img-back" class="print-img-placeholder"></div>
@@ -181,7 +181,6 @@
     let playbackDataMP = [];
     let playbackDataMN = [];
     
-    // 🚀 実時間プレイバック用変数
     let playbackRafId = null;
     let playbackStartTime = 0;
     let playbackTotalDuration = 0;
@@ -270,21 +269,38 @@
 
     function runReviewLogic(ctx, getK, isMP, canvas) {
         ctx.fillStyle = "#deff9a"; ctx.font = "bold 20px sans-serif";
-        const rA = getK('right_ankle'), lA = getK('left_ankle'), nose = getK('nose');
+        const nose = getK('nose');
 
         if (currentTab === "front" || currentTab === "back") {
             ctx.fillText(currentTab === "front" ? "🧍 前面アライメント" : "🧍 後面アライメント", 30, 45);
             let originX, originY;
+
+            // 🚀 V28: カスタムマーカーがある場合はそれを優先、ない場合は【全6点バウンディングボックス法】で真のセンターを計算
             if (window.customOriginMarkers[currentTab] && isMP) { 
-                originX = window.customOriginMarkers[currentTab].x; originY = window.customOriginMarkers[currentTab].y;
-            } else if (rA && lA) { 
-                originX = (lA.x + rA.x) / 2; originY = (lA.y + rA.y) / 2; 
+                originX = window.customOriginMarkers[currentTab].x; 
+                originY = window.customOriginMarkers[currentTab].y;
+            } else {
+                let footPtsX = [];
+                let footPtsY = [];
+                // 足首、かかと、つま先の左右6点をすべて抽出
+                ['left_ankle', 'right_ankle', 'left_heel', 'right_heel', 'left_foot_index', 'right_foot_index'].forEach(name => {
+                    let p = getK(name);
+                    if (p && p.score > 0.1) { footPtsX.push(p.x); footPtsY.push(p.y); }
+                });
+                
+                if (footPtsX.length >= 2) {
+                    // 足幅の最大・最小のど真ん中をX軸とする
+                    originX = (Math.min(...footPtsX) + Math.max(...footPtsX)) / 2;
+                    // Y軸は一番下の座標（床面）を基準とする
+                    originY = Math.max(...footPtsY); 
+                }
             }
+
             if (originX !== undefined && originY !== undefined && isMP) {
                 window.currentAnchorPos = { x: originX, y: originY };
                 let anchorColor = window.anchorStatus === "dragging" ? "rgba(255, 165, 0, 0.8)" : (window.anchorStatus === "locked" ? "rgba(0, 191, 255, 0.8)" : "rgba(57, 255, 20, 0.8)");
                 let strokeColor = window.anchorStatus === "dragging" ? "#ffa500" : (window.anchorStatus === "locked" ? "#00bfff" : "#39ff14");
-                let statusText = window.anchorStatus === "dragging" ? "🖐️ 移動中..." : (window.anchorStatus === "locked" ? "🔒 ロック完了！(計測OK)" : "👈 触ってドラッグで基準点をロック");
+                let statusText = window.anchorStatus === "dragging" ? "🖐️ 移動中..." : (window.anchorStatus === "locked" ? "🔒 ロック完了！(計測OK)" : "👈 自動検出済 (ズレていればドラッグで修正)");
 
                 ctx.save(); ctx.fillStyle = anchorColor; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
                 ctx.beginPath(); ctx.arc(originX, originY, 18, 0, 2*Math.PI); ctx.fill(); ctx.stroke(); 
@@ -329,7 +345,6 @@
         }
     }
 
-    // 🚀 実時間プレイバックの初期化
     function enterPlaybackMode() {
         appMode = 'playback';
         mainControls.style.display = 'none';
@@ -363,13 +378,11 @@
         isPausedForEdit = false;
     }
 
-    // 🚀 タイムスタンプ同期式の再生制御
     function togglePlay(forcePlay) {
         if (forcePlay === true || !isPlaying) {
             isPlaying = true;
             playPauseBtn.innerText = "⏸ 停止";
             
-            // スライダーの位置から再生開始地点（実時間）を計算
             if (playbackDataMP.length > 1) {
                 let currentIdx = parseInt(timelineSlider.value);
                 if(currentIdx >= playbackDataMP.length) currentIdx = 0;
@@ -386,19 +399,16 @@
         }
     }
 
-    // 🚀 フレームレートに依存しない実時間ループ
     function playbackLoop() {
         if (!isPlaying) return;
         let now = Date.now();
         let elapsed = now - playbackStartTime;
 
-        // ループ再生処理
         if (elapsed > playbackTotalDuration) {
             playbackStartTime = now;
             elapsed = 0;
         }
 
-        // 経過時間に最も近いタイムスタンプを持つフレームを検索
         let targetTime = playbackBaseTime + elapsed;
         let targetIdx = playbackDataMP.length - 1;
         for (let i = 0; i < playbackDataMP.length; i++) {
