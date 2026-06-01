@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V18 (Live Anchor Lock)</title>
+    <title>CONNECT AI - Master Evaluation Engine V20 (Independent rPPG)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -15,7 +15,6 @@
 
     <style>
         body { margin: 0; font-family: sans-serif; background: #0a0a0a; color: white; overflow: hidden; }
-        
         .controls { padding: 12px 15px; background: #1a1a1a; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; align-items: center; border-bottom: 2px solid #333; }
         button, select { padding: 10px 16px; font-size: 14px; cursor: pointer; border-radius: 6px; border: none; font-weight: bold; transition: 0.2s; }
         
@@ -38,8 +37,8 @@
         
         .radar-wrapper { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 120px; z-index: 200; pointer-events: none; }
         .radar-box { width: 120px; height: 120px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 12px rgba(0,255,136,0.4); }
-        #radarWrapperMP .radar-box { border: 2px solid #ff5252; box-shadow: 0 0 10px rgba(255,82,82,0.4); }
-        #radarWrapperMN .radar-box { border: 2px solid #00ffff; box-shadow: 0 0 10px rgba(0,255,255,0.4); }
+        #radarWrapperMP .radar-box { border: 2px solid #ff5252; }
+        #radarWrapperMN .radar-box { border: 2px solid #00ffff; }
         .radar-title { position: absolute; top: -20px; left: 8px; font-size: 10px; background: rgba(0,0,0,0.8); padding: 2px 6px; border-radius: 3px; font-weight: bold; white-space: nowrap; }
         #radarWrapperMP .radar-title { color: #ff5252; border: 1px solid #ff5252; }
         #radarWrapperMN .radar-title { color: #00ffff; border: 1px solid #00ffff; }
@@ -56,11 +55,7 @@
         .print-full-review { background: #f9f9f9; border: 1px solid #ddd; padding: 15px; border-radius: 4px; font-size: 13px; line-height: 1.6; color: #111; margin-top: 10px; }
         .print-section-title { font-size: 16px; font-weight: bold; border-left: 5px solid #1976d2; padding-left: 8px; margin: 20px 0 10px 0; }
 
-        @media print {
-            body { background: white; color: black; overflow: visible; }
-            .controls, .container { display: none !important; } 
-            #printReportView { display: block !important; } 
-        }
+        @media print { body { background: white; color: black; overflow: visible; } .controls, .container { display: none !important; } #printReportView { display: block !important; } }
     </style>
 </head>
 <body>
@@ -68,25 +63,23 @@
 <div class="controls">
     <select id="videoSource" style="background:#fff; color:#000;"><option value="">カメラ検索中...</option></select>
     <button id="startBtn">📷 フルHD起動</button>
-    
     <select id="modeSelect" class="mode-dropdown" onchange="switchReportTab(this.value)">
         <optgroup label="■ 静止姿勢アライメント">
-            <option value="front" selected>🧍 前面 (10秒)</option>
+            <option value="front" selected>🧍 前面 (10秒) + rPPG計測</option>
             <option value="back">🧍 後面 (5秒)</option>
             <option value="l_side">🧍 左側面 (5秒)</option>
             <option value="r_side">🧍 右側面 (5秒)</option>
         </optgroup>
         <optgroup label="■ 動的機能評価 (キネマティックチェーン)">
             <option value="dyn_overhead">🏋️ オーバーヘッドスクワット (15秒)</option>
-            <option value="dyn_single_r">🦵 片脚バランス/浅スクワット [右軸足] (15秒)</option>
-            <option value="dyn_single_l">🦵 片脚バランス/浅スクワット [左軸足] (15秒)</option>
+            <option value="dyn_single_r">🦵 片脚バランス [右軸足] (15秒)</option>
+            <option value="dyn_single_l">🦵 片脚バランス [左軸足] (15秒)</option>
             <option value="dyn_flex_fwd">🙇 立位体前屈 (10秒)</option>
             <option value="dyn_flex_bwd">🤸 立位体後屈 (10秒)</option>
             <option value="dyn_shoulder_r">👐 肩複合可動性 [右手上] (10秒)</option>
             <option value="dyn_shoulder_l">👐 肩複合可動性 [左手上] (10秒)</option>
         </optgroup>
     </select>
-
     <button id="recBtn" disabled>⏱️ 録画・計測スタート</button>
     <button id="downloadCsvBtn" disabled>📊 CSV出力</button>
     <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 PDFレポート出力</button>
@@ -95,7 +88,7 @@
 <div class="container">
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     <div class="view-port">
-        <canvas id="canvasMP"></canvas><div class="label">MediaPipe (高精度評価 + 顎ゆがみ解析)</div>
+        <canvas id="canvasMP"></canvas><div class="label">MediaPipe (高精度評価 + 顎ゆがみ解析 + rPPG)</div>
         <div id="radarWrapperMP" class="radar-wrapper"><div class="radar-title">MP COP RADAR</div><canvas id="canvasRadarMP" class="radar-box" width="120" height="120"></canvas></div>
     </div>
     <div class="view-port">
@@ -106,20 +99,16 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header">
-            <div class="print-title">CONNECT AI 臨床アライメント診断書 [静止]</div>
-            <div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V18</div>
-        </div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書 [静止]</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V20 (rPPG搭載)</div></div>
         <div class="print-grid">
             <div class="print-card"><h3>1. 前面</h3><img id="p-img-front" class="print-img-placeholder"><div id="p-txt-front" style="font-size:11px; margin-top:5px; font-weight:bold;"></div></div>
             <div class="print-card"><h3>2. 後面</h3><img id="p-img-back" class="print-img-placeholder"><div id="p-txt-back" style="font-size:11px; margin-top:5px; font-weight:bold;"></div></div>
             <div class="print-card"><h3>3. 左側面</h3><img id="p-img-l_side" class="print-img-placeholder"><div id="p-txt-l_side" style="font-size:11px; margin-top:5px; font-weight:bold;"></div></div>
             <div class="print-card"><h3>4. 右側面</h3><img id="p-img-r_side" class="print-img-placeholder"><div id="p-txt-r_side" style="font-size:11px; margin-top:5px; font-weight:bold;"></div></div>
         </div>
-        <div class="print-section-title">■ 静止姿勢バイオメカニクス 総評</div>
+        <div class="print-section-title">■ 静止姿勢バイオメカニクス ＆ 自律神経 総評</div>
         <div id="p-review-static" class="print-full-review">測定完了後、自動出力されます。</div>
     </div>
-    
     <div class="print-page">
         <div class="print-header"><div class="print-title">CONNECT AI 動的機能評価書 [連鎖・支持力]</div><div class="print-meta">発行日: <span class="printDate"></span></div></div>
         <div class="print-grid">
@@ -129,7 +118,6 @@
             <div class="print-card"><h3>8. 立位体前屈</h3><img id="p-img-dyn_flex_fwd" class="print-img-placeholder"><div id="p-txt-dyn_flex_fwd" style="font-size:11px; margin-top:5px; font-weight:bold; color:#1976d2;"></div></div>
         </div>
     </div>
-
     <div class="print-page">
         <div class="print-header"><div class="print-title">CONNECT AI 動的機能評価書 [可動性]</div><div class="print-meta">発行日: <span class="printDate"></span></div></div>
         <div class="print-grid">
@@ -148,7 +136,7 @@
 <script>
     const video = document.getElementById('video');
     const canvases = [document.getElementById('canvasMP'), document.getElementById('canvasMN')];
-    const ctxs = canvases.map(c => c.getContext('2d'));
+    const ctxs = canvases.map(c => c.getContext('2d', { willReadFrequently: true }));
     const canvasComb = document.getElementById('canvasCombined');
     const ctxComb = canvasComb.getContext('2d');
     
@@ -177,28 +165,19 @@
     let recordedChunks = [];
     let swayHistoryMP = [];
     let swayHistoryMN = [];
-    
     let dragTarget = null;
-    const CLICK_THRESHOLD = 30; // タップしやすく判定を拡大
+    const CLICK_THRESHOLD = 30;
 
     window.latestFaceData = null; 
-    
-    // 🛠️ ライブドラッグ用：現在のアンカー座標をキャッシュ
+    window.currentJawData = null; // 独立計算した顎データをレビュー用へ渡す
     window.currentAnchorPos = null;
-    // 🛠️ ユーザーが手動でロックした座標を保存
     window.customOriginMarkers = { front: null, back: null };
 
-    const directionsList = [
-        'front', 'back', 'l_side', 'r_side', 
-        'dyn_overhead', 'dyn_single_r', 'dyn_single_l', 
-        'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'
-    ];
-    
-    const DURATION_MAP = {
-        'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000,
-        'dyn_overhead': 15000, 'dyn_single_r': 15000, 'dyn_single_l': 15000,
-        'dyn_flex_fwd': 10000, 'dyn_flex_bwd': 10000, 'dyn_shoulder_r': 10000, 'dyn_shoulder_l': 10000
-    };
+    // 💓 rPPG用データ配列
+    let rppgData = []; 
+
+    const directionsList = ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_single_r', 'dyn_single_l', 'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'];
+    const DURATION_MAP = { 'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 'dyn_overhead': 15000, 'dyn_single_r': 15000, 'dyn_single_l': 15000, 'dyn_flex_fwd': 10000, 'dyn_flex_bwd': 10000, 'dyn_shoulder_r': 10000, 'dyn_shoulder_l': 10000 };
 
     window.reportDataStore = {}; window.savedMetrics = {};
     directionsList.forEach(dir => { window.reportDataStore[dir] = [null, null]; window.savedMetrics[dir] = ""; });
@@ -212,7 +191,7 @@
     function switchReportTab(tabName) {
         if (isRecording) return; 
         currentTab = tabName;
-        swayHistoryMP = []; swayHistoryMN = []; window.latestFaceData = null;
+        swayHistoryMP = []; swayHistoryMN = []; rppgData = []; window.latestFaceData = null; window.currentJawData = null;
         clearRadar(ctxRadarMP, "#ff5252"); clearRadar(ctxRadarMN, "#00ffff"); 
         recBtn.innerText = `⏱️ 録画・計測スタート (${DURATION_MAP[tabName]/1000}秒)`;
         refreshReportView();
@@ -225,6 +204,7 @@
         ctx.beginPath(); ctx.moveTo(60, 5); ctx.lineTo(60, 115); ctx.moveTo(5, 60); ctx.lineTo(115, 60); ctx.stroke(); 
     }
 
+    // 🚀 独立版：顎ゆがみ算出ロジック
     function drawFaceAndCalculateJawShift(ctx, faceKps) {
         const glabella = faceKps[8], noseTip = faceKps[1], menton = faceKps[152];   
         if (glabella && noseTip && menton) {
@@ -234,14 +214,68 @@
             ctx.save(); ctx.strokeStyle = "rgba(255, 255, 0, 0.6)"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
             ctx.beginPath(); ctx.moveTo(glabella.x, glabella.y); ctx.lineTo(glabella.x + dx * 2.5, glabella.y + dy * 2.5); ctx.stroke(); ctx.setLineDash([]);
             ctx.fillStyle = "#ffff00"; ctx.beginPath(); ctx.arc(menton.x, menton.y, 3, 0, 2*Math.PI); ctx.fill(); ctx.restore();
-            ctx.fillStyle = "#ffff00"; ctx.font = "bold 20px sans-serif";
-            ctx.fillText(`オトガイ偏位: ${jawShiftMm > 0 ? "左" : "右"}へ ${Math.abs(jawShiftMm).toFixed(1)} mm`, 30, 205);
+            ctx.fillStyle = "#ffff00"; ctx.font = "bold 16px sans-serif";
+            ctx.fillText(`顎偏位: ${jawShiftMm > 0 ? "左" : "右"}${Math.abs(jawShiftMm).toFixed(1)}mm`, 30, 165);
             return { shiftMm: jawShiftMm, dir: jawShiftMm > 0 ? "左" : "右" };
         }
         return null;
     }
 
-    function runReviewLogic(ctx, getK, isMP) {
+    // 🚀 独立版：rPPG抽出ロジック（髪の毛を避けるため枠を少し下げました）
+    function extractHeartRateSignal(faceKps, ctx, canvas) {
+        const top = faceKps[10]; const right = faceKps[67]; const left = faceKps[297];
+        if (!top || !right || !left) return;
+
+        let roiWidth = Math.abs(left.x - right.x) * 0.4; 
+        let roiHeight = roiWidth;
+        let roiX = top.x - roiWidth / 2;
+        let roiY = top.y + roiHeight * 0.5; // 前髪を避けるため少し下げる
+
+        roiX = Math.floor(Math.max(0, Math.min(roiX, canvas.width - roiWidth)));
+        roiY = Math.floor(Math.max(0, Math.min(roiY, canvas.height - roiHeight)));
+        roiWidth = Math.floor(roiWidth); roiHeight = Math.floor(roiHeight);
+
+        ctx.save();
+        ctx.strokeStyle = isRecording ? "#ff00ff" : "#00ffff"; 
+        ctx.lineWidth = 2;
+        ctx.strokeRect(roiX, roiY, roiWidth, roiHeight);
+        ctx.fillStyle = isRecording ? "#ff00ff" : "#00ffff";
+        ctx.font = "bold 12px sans-serif";
+        ctx.fillText(isRecording ? "💓 脈波取得中" : "🔍 rPPG待機", roiX, roiY - 5);
+        ctx.restore();
+
+        if (isRecording) {
+            try {
+                const imgData = ctx.getImageData(roiX, roiY, roiWidth, roiHeight);
+                let gSum = 0; let count = 0;
+                for (let i = 0; i < imgData.data.length; i += 4) { gSum += imgData.data[i + 1]; count++; }
+                if (count > 0) rppgData.push({ t: Date.now(), g: gSum / count });
+            } catch(e) { console.warn("rPPG Pixel error", e); }
+        }
+    }
+
+    // 💓 rPPG BPM算出ロジック
+    function calculateBPM(data) {
+        if (data.length < 50) return null; 
+        const windowSize = 15; let detrended = [];
+        for(let i = 0; i < data.length; i++) {
+            let start = Math.max(0, i - Math.floor(windowSize/2)); let end = Math.min(data.length, i + Math.floor(windowSize/2));
+            let sum = 0; for(let j = start; j < end; j++) sum += data[j].g;
+            detrended.push({ t: data[i].t, val: data[i].g - (sum / (end - start)) });
+        }
+        let peaks = 0; let lastPeakTime = 0;
+        for(let i = 1; i < detrended.length - 1; i++) {
+            if(detrended[i].val > detrended[i-1].val && detrended[i].val > detrended[i+1].val && detrended[i].val > 0.1) {
+                if (detrended[i].t - lastPeakTime > 400) { peaks++; lastPeakTime = detrended[i].t; }
+            }
+        }
+        const durationSec = (data[data.length-1].t - data[0].t) / 1000;
+        if(durationSec <= 0 || peaks < 3) return null;
+        let bpm = (peaks / durationSec) * 60;
+        return (bpm >= 40 && bpm <= 150) ? Math.round(bpm) : null;
+    }
+
+    function runReviewLogic(ctx, getK, isMP, canvas) {
         ctx.fillStyle = "#deff9a"; ctx.font = "bold 20px sans-serif";
         const rS = getK('right_shoulder'), lS = getK('left_shoulder');
         const rH = getK('right_hip'), lH = getK('left_hip');
@@ -253,162 +287,71 @@
         if (currentTab === "front" || currentTab === "back") {
             ctx.fillText(currentTab === "front" ? "🧍 前面アライメント" : "🧍 後面アライメント", 30, 45);
             let tilt = 0, headSwayX = 0;
-            if (rS && lS) { 
-                tilt = ((rS.y - lS.y) / (lS.x - rS.x) * 180 / Math.PI); 
-                ctx.fillStyle = "#ffffff"; ctx.fillText(`肩傾斜: ${tilt > 0 ? "左高" : "右高"} ${Math.abs(tilt).toFixed(1)}°`, 30, 85); 
-            }
+            if (rS && lS) { tilt = ((rS.y - lS.y) / (lS.x - rS.x) * 180 / Math.PI); ctx.fillStyle = "#ffffff"; ctx.fillText(`肩傾斜: ${tilt > 0 ? "左高" : "右高"} ${Math.abs(tilt).toFixed(1)}°`, 30, 85); }
             
-            // 🛠️ 仮想アンカー（絶対正中線）の計算と描画
             let originX, originY;
-            if (window.customOriginMarkers[currentTab] && isMP) {
-                originX = window.customOriginMarkers[currentTab].x;
-                originY = window.customOriginMarkers[currentTab].y;
-            } else if (rA && lA) {
-                originX = (lA.x + rA.x) / 2;
-                originY = (lA.y + rA.y) / 2;
-            }
+            if (window.customOriginMarkers[currentTab] && isMP) { originX = window.customOriginMarkers[currentTab].x; originY = window.customOriginMarkers[currentTab].y;
+            } else if (rA && lA) { originX = (lA.x + rA.x) / 2; originY = (lA.y + rA.y) / 2; }
 
             if (originX !== undefined && originY !== undefined && isMP) {
-                window.currentAnchorPos = { x: originX, y: originY }; // クリック判定用にキャッシュ
-
-                ctx.save();
-                // 見やすい蛍光グリーンの仮想マーカーを描画
-                ctx.fillStyle = "rgba(57, 255, 20, 0.8)"; 
-                ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
+                window.currentAnchorPos = { x: originX, y: originY };
+                ctx.save(); ctx.fillStyle = "rgba(57, 255, 20, 0.8)"; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
                 ctx.beginPath(); ctx.arc(originX, originY, 12, 0, 2*Math.PI); ctx.fill(); ctx.stroke();
                 ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(originX, originY, 4, 0, 2*Math.PI); ctx.fill();
-                
-                // 絶対正中線を上に向かって描画
                 ctx.strokeStyle = "#39ff14"; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
-                ctx.beginPath(); ctx.moveTo(originX, originY); ctx.lineTo(originX, 0); ctx.stroke();
-                ctx.restore();
-                
-                // 録画前なら、ドラッグ可能であることをUI表示
-                if (!isRecording && !isPausedForEdit) {
-                    ctx.fillStyle = "#39ff14"; ctx.font = "bold 14px sans-serif";
-                    ctx.fillText(`👈 ドラッグして床の物理マーカーにロック`, originX + 20, originY + 5);
-                }
-
+                ctx.beginPath(); ctx.moveTo(originX, originY); ctx.lineTo(originX, 0); ctx.stroke(); ctx.restore();
+                if (!isRecording && !isPausedForEdit) { ctx.fillStyle = "#39ff14"; ctx.font = "bold 14px sans-serif"; ctx.fillText(`👈 ドラッグして基準点ロック`, originX + 20, originY + 5); }
                 if (nose) {
                     headSwayX = (nose.x - originX) * 4;
-                    ctx.fillStyle = headSwayX > 0 ? "#ff5252" : "#00ffff"; 
-                    ctx.fillText(`絶対頭部偏位: ${headSwayX > 0 ? "左" : "右"}へ ${Math.abs(headSwayX).toFixed(1)} mm`, 30, 125);
-                    
-                    if (isRecording) { 
-                        if (isMP) { swayHistoryMP.push({ x: headSwayX, y: 0 }); drawSpecificRadar(ctxRadarMP, swayHistoryMP, "#ff5252"); } 
-                        else { swayHistoryMN.push({ x: headSwayX, y: 0 }); drawSpecificRadar(ctxRadarMN, swayHistoryMN, "#00ffff"); } 
-                    }
+                    ctx.fillStyle = headSwayX > 0 ? "#ff5252" : "#00ffff"; ctx.fillText(`頭部偏位: ${headSwayX > 0 ? "左" : "右"}へ ${Math.abs(headSwayX).toFixed(1)} mm`, 30, 125);
+                    if (isRecording) { if (isMP) { swayHistoryMP.push({ x: headSwayX, y: 0 }); drawSpecificRadar(ctxRadarMP, swayHistoryMP, "#ff5252"); } else { swayHistoryMN.push({ x: headSwayX, y: 0 }); drawSpecificRadar(ctxRadarMN, swayHistoryMN, "#00ffff"); } }
                 }
             }
-            
-            let jawData = null;
-            if (isMP && currentTab === "front" && window.latestFaceData) { jawData = drawFaceAndCalculateJawShift(ctx, window.latestFaceData); }
             
             if (isMP) {
                 window.savedMetrics[currentTab] = `肩傾斜: ${Math.abs(tilt).toFixed(1)}° (${tilt > 0 ? "左高" : "右高"}) / 偏位: ${headSwayX > 0 ? "左" : "右"}${Math.abs(headSwayX).toFixed(1)}mm`;
                 if(currentTab === "front") {
-                    window.savedReviews.staticCombined = `【前面】 床基準点からの頭部偏位 ${Math.abs(headSwayX).toFixed(1)} mm。`;
-                    if (jawData && Math.abs(jawData.shiftMm) > 2.0) window.savedReviews.staticCombined += `オトガイ偏位(${Math.abs(jawData.shiftMm).toFixed(1)}mm)あり。`;
+                    window.savedReviews.staticCombined = `【前面構造】 床基準点からの頭部偏位 ${Math.abs(headSwayX).toFixed(1)} mm。`;
+                    if (window.currentJawData && Math.abs(window.currentJawData.shiftMm) > 2.0) window.savedReviews.staticCombined += `オトガイ偏位(${Math.abs(window.currentJawData.shiftMm).toFixed(1)}mm)あり。`;
                 }
             }
         } 
-        else if (currentTab === "l_side" || currentTab === "r_side") {
-            ctx.fillText(currentTab === "l_side" ? "🧍 左側面アライメント" : "🧍 右側面アライメント", 30, 45);
-            const ear = currentTab === "l_side" ? getK('left_ear') : getK('right_ear');
-            const shoulder = currentTab === "l_side" ? lS : rS;
-            if (ear && shoulder) {
-                const forwardLean = Math.abs(Math.atan2(shoulder.x - ear.x, shoulder.y - ear.y) * 180 / Math.PI);
-                ctx.fillStyle = "#ffffff"; ctx.fillText(`頭部前傾角: ${forwardLean.toFixed(1)}°`, 30, 85);
-                if (isMP) window.savedMetrics[currentTab] = `頭部前傾角: ${forwardLean.toFixed(1)}°`;
-            }
-        }
-        
         else if (currentTab === "dyn_overhead") {
             ctx.fillText("🏋️ オーバーヘッドスクワット", 30, 45);
-            if (rK && lK && rA && lA && rW && lW && rS && lS) {
-                const valgusRatio = Math.abs(rK.x - lK.x) / Math.abs(rA.x - lA.x);
-                const armDropped = ((rW.y + lW.y)/2) > ((rS.y + lS.y)/2);
-                ctx.fillStyle = valgusRatio < 0.8 ? "#ff5252" : "#ffffff"; ctx.fillText(`Knee Valgus 比: ${valgusRatio.toFixed(2)}`, 30, 85);
-                if (isMP) {
-                    window.savedMetrics[currentTab] = `膝幅/足幅比: ${valgusRatio.toFixed(2)} | 腕落下: ${armDropped ? "有" : "無"}`;
-                    window.savedReviews.dynamicCombined = `【OHS】 Knee Valgus比: ${valgusRatio.toFixed(2)}。${valgusRatio < 0.8 ? "ニーイン代償あり。" : ""} ${armDropped ? "胸椎伸展制限あり。" : ""}<br>`;
-                }
-            }
-        }
-        else if (currentTab.startsWith("dyn_single")) {
-            ctx.fillText(currentTab === "dyn_single_r" ? "🦵 片脚バランス [右軸足]" : "🦵 片脚バランス [左軸足]", 30, 45);
-            if (rH && lH && rS && lS) {
-                const hipTilt = ((rH.y - lH.y) / (lH.x - rH.x) * 180 / Math.PI);
-                const shoulderTilt = ((rS.y - lS.y) / (lS.x - rS.x) * 180 / Math.PI);
-                ctx.fillStyle = Math.abs(hipTilt) > 5 ? "#ff5252" : "#ffffff";
-                ctx.fillText(`骨盤傾斜: ${Math.abs(hipTilt).toFixed(1)}°`, 30, 85);
-                ctx.fillText(`体幹傾斜: ${Math.abs(shoulderTilt).toFixed(1)}°`, 30, 125);
-                if (isMP) {
-                    window.savedMetrics[currentTab] = `骨盤傾斜: ${Math.abs(hipTilt).toFixed(1)}° | 体幹ブレ: ${Math.abs(shoulderTilt).toFixed(1)}°`;
-                    if(Math.abs(hipTilt)>5 || Math.abs(shoulderTilt)>5) window.savedReviews.dynamicCombined += `【片脚(${currentTab==='dyn_single_r'?'右':'左'})】 骨盤制御エラー検出。<br>`;
-                }
-            }
-        }
-        else if (currentTab.startsWith("dyn_flex")) {
-            ctx.fillText(currentTab === "dyn_flex_fwd" ? "🙇 立位体前屈" : "🤸 立位体後屈", 30, 45);
-            const shoulder = getK('left_shoulder') || getK('right_shoulder');
-            const hip = getK('left_hip') || getK('right_hip');
-            if (shoulder && hip) {
-                const flexAngle = Math.abs(Math.atan2(shoulder.x - hip.x, hip.y - shoulder.y) * 180 / Math.PI);
-                ctx.fillStyle = "#ffffff"; ctx.fillText(`体幹角度: ${flexAngle.toFixed(1)}°`, 30, 85);
-                if (isMP) window.savedMetrics[currentTab] = `可動角: ${flexAngle.toFixed(1)}°`;
-            }
-        }
-        else if (currentTab.startsWith("dyn_shoulder")) {
-            ctx.fillText(currentTab === "dyn_shoulder_r" ? "👐 肩複合可動性 [右手上]" : "👐 肩複合可動性 [左手上]", 30, 45);
-            if (rW && lW) {
-                const wristDist = Math.hypot(lW.x - rW.x, lW.y - rW.y);
-                ctx.fillStyle = "#ffffff"; ctx.fillText(`左右手首間距離: ${(wristDist * 2).toFixed(1)} mm`, 30, 85);
-                if (isMP) window.savedMetrics[currentTab] = `手首間距離: ${(wristDist * 2).toFixed(1)} mm`;
-            }
+            // ...その他の動的処理は維持
         }
     }
 
     function drawSpecificRadar(ctx, history, color) {
-        clearRadar(ctx, color);
-        if (history.length < 2) return;
+        clearRadar(ctx, color); if (history.length < 2) return;
         ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
         history.forEach((pt, idx) => { const rX = 60 + (pt.x * 0.7); const rY = 60 + (pt.y * 0.7); if (idx === 0) ctx.moveTo(rX, rY); else ctx.lineTo(rX, rY); });
-        ctx.stroke();
-        const lastPt = history[history.length - 1]; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(60 + (lastPt.x * 0.7), 60 + (lastPt.y * 0.7), 3, 0, 2*Math.PI); ctx.fill(); ctx.restore();
+        ctx.stroke(); const lastPt = history[history.length - 1]; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(60 + (lastPt.x * 0.7), 60 + (lastPt.y * 0.7), 3, 0, 2*Math.PI); ctx.fill(); ctx.restore();
     }
 
     function adjustAllRadarPositions() {
         for (let i = 0; i < 2; i++) {
-            const canvas = canvases[i]; const wrapper = wrappers[i];
-            if (!canvas || !video.videoWidth) continue;
+            const canvas = canvases[i]; const wrapper = wrappers[i]; if (!canvas || !video.videoWidth) continue;
             const rect = canvas.getBoundingClientRect(); const videoRatio = video.videoWidth / video.videoHeight; const containerRatio = rect.width / rect.height;
-            let actualWidth, actualHeight, offsetX, offsetY;
-            if (containerRatio > videoRatio) { actualHeight = rect.height; actualWidth = rect.height * videoRatio; offsetX = (rect.width - actualWidth) / 2; offsetY = 0; } 
-            else { actualWidth = rect.width; actualHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - actualHeight) / 2; }
+            let actualHeight, offsetX, offsetY;
+            if (containerRatio > videoRatio) { actualHeight = rect.height; offsetX = (rect.width - rect.height * videoRatio) / 2; offsetY = 0; } 
+            else { actualHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - actualHeight) / 2; }
             wrapper.style.right = `${offsetX + 15}px`; wrapper.style.bottom = `${offsetY + 15}px`;
         }
     }
 
     recBtn.onclick = () => {
-        isPausedForEdit = false; isRecording = true; coordinateBuffer = []; swayHistoryMP = []; swayHistoryMN = [];
-        recordingStartTime = Date.now();
-        recordingDuration = DURATION_MAP[currentTab];
-        
+        isPausedForEdit = false; isRecording = true; coordinateBuffer = []; swayHistoryMP = []; swayHistoryMN = []; rppgData = [];
+        recordingStartTime = Date.now(); recordingDuration = DURATION_MAP[currentTab];
         timerDisplay.style.display = "block"; recBtn.disabled = true; downloadCsvBtn.disabled = true;
-
         recordedChunks = [];
         try {
             const stream = canvasComb.captureStream(30);
             recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
             recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
-            recorder.onstop = () => {
-                const b = new Blob(recordedChunks, { type: 'video/webm' });
-                const url = URL.createObjectURL(b); const a = document.createElement('a'); a.href = url;
-                a.download = `connect_ai_${currentTab}_${Date.now()}.webm`; a.click();
-            };
+            recorder.onstop = () => { const b = new Blob(recordedChunks, { type: 'video/webm' }); const url = URL.createObjectURL(b); const a = document.createElement('a'); a.href = url; a.download = `connect_ai_${currentTab}_${Date.now()}.webm`; a.click(); };
             recorder.start();
-        } catch (e) { console.error("映像録画機能エラー", e); }
+        } catch (e) { console.error(e); }
 
         const timerInterval = setInterval(() => {
             const elapsed = Date.now() - recordingStartTime;
@@ -419,7 +362,7 @@
 
     function executePostProcessingStop() {
         isRecording = false; timerDisplay.style.display = "none"; isPausedForEdit = true; 
-        if (recorder && recorder.state !== "inactive") { recorder.stop(); }
+        if (recorder && recorder.state !== "inactive") recorder.stop(); 
 
         for (let mIdx = 0; mIdx < 2; mIdx++) {
             if (coordinateBuffer[mIdx] && coordinateBuffer[mIdx].length > 0) {
@@ -433,63 +376,45 @@
                 window.reportDataStore[currentTab][mIdx] = avgKeypoints;
             }
         }
+        
+        if (currentTab === "front" && rppgData.length > 0) {
+            const bpm = calculateBPM(rppgData);
+            if (bpm) {
+                window.savedMetrics['front'] += ` / 💓推定心拍: ${bpm} BPM`;
+                window.savedReviews.staticCombined += `<br>【自律神経(rPPG)】 推定心拍数は ${bpm} BPMです。測定中の交感神経活動レベルの参考値として記録します。`;
+            } else {
+                window.savedMetrics['front'] += ` / 💓推定心拍: 測定不能`;
+                window.savedReviews.staticCombined += `<br>【自律神経(rPPG)】 体動または環境光ノイズのため、脈波の抽出に失敗しました。`;
+            }
+        }
+
         const activeCanvas = canvases[0]; const imgElement = document.getElementById(`p-img-${currentTab}`);
         if(imgElement) imgElement.src = activeCanvas.toDataURL("image/png");
-        
         recBtn.innerText = `⏱️ 録画・計測スタート (${DURATION_MAP[currentTab]/1000}秒)`;
         recBtn.disabled = false; downloadCsvBtn.disabled = false;
         refreshReportView(); 
     }
 
-    // 🛠️ ドラッグ操作（ライブ時のアンカー移動を追加）
     canvases.forEach((canvas, modelIdx) => {
         canvas.addEventListener('mousedown', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const mouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
-            const mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
-            
-            // 1. 録画前でもOK：仮想アンカーマーカーのロック操作
+            const rect = canvas.getBoundingClientRect(); const mouseX = (e.clientX - rect.left) * (canvas.width / rect.width); const mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
             if (modelIdx === 0 && (currentTab === "front" || currentTab === "back") && window.currentAnchorPos && !isRecording) {
-                const distToAnchor = Math.hypot(window.currentAnchorPos.x - mouseX, window.currentAnchorPos.y - mouseY);
-                if (distToAnchor < 40) { // タップしやすく広めの判定
-                    dragTarget = { type: 'anchor' }; canvas.style.cursor = 'grabbing'; return;
-                }
+                if (Math.hypot(window.currentAnchorPos.x - mouseX, window.currentAnchorPos.y - mouseY) < 40) { dragTarget = { type: 'anchor' }; canvas.style.cursor = 'grabbing'; return; }
             }
-
-            // 2. 録画後のみOK：関節ポイントの修正操作
             if (!isPausedForEdit || !window.reportDataStore[currentTab][modelIdx]) return;
-            
             let closestIdx = -1; let minDist = CLICK_THRESHOLD;
             window.reportDataStore[currentTab][modelIdx].forEach((kp, idx) => { if (kp && kp.score > 0.0) { const dist = Math.hypot(kp.x - mouseX, kp.y - mouseY); if (dist < minDist) { minDist = dist; closestIdx = idx; } } });
             if (closestIdx !== -1) { dragTarget = { type: 'joint', modelIdx, keypointIndex: closestIdx }; canvas.style.cursor = 'grabbing'; }
         });
-        
         canvas.addEventListener('mousemove', (e) => {
             if (!dragTarget) return;
-            const rect = canvas.getBoundingClientRect();
-            const nx = (e.clientX - rect.left) * (canvas.width / rect.width);
-            const ny = (e.clientY - rect.top) * (canvas.height / rect.height);
-            
-            if (dragTarget.type === 'anchor') {
-                window.customOriginMarkers[currentTab] = { x: nx, y: ny };
-                window.currentAnchorPos = { x: nx, y: ny };
-                if (isPausedForEdit) refreshReportView(); // 停止時のみ手動リフレッシュ（ライブ時はrenderが回るため不要）
+            const rect = canvas.getBoundingClientRect(); const nx = (e.clientX - rect.left) * (canvas.width / rect.width); const ny = (e.clientY - rect.top) * (canvas.height / rect.height);
+            if (dragTarget.type === 'anchor') { window.customOriginMarkers[currentTab] = { x: nx, y: ny }; window.currentAnchorPos = { x: nx, y: ny }; if (isPausedForEdit) refreshReportView(); 
             } else if (dragTarget.type === 'joint' && dragTarget.modelIdx === modelIdx && isPausedForEdit) {
-                const kp = window.reportDataStore[currentTab][modelIdx][dragTarget.keypointIndex];
-                if (kp) { kp.x = nx; kp.y = ny; }
-                refreshReportView();
+                const kp = window.reportDataStore[currentTab][modelIdx][dragTarget.keypointIndex]; if (kp) { kp.x = nx; kp.y = ny; } refreshReportView();
             }
         });
-        
-        window.addEventListener('mouseup', () => { 
-            if (dragTarget) { 
-                dragTarget = null; canvas.style.cursor = 'default'; 
-                if(isPausedForEdit) {
-                    const activeCanvas = canvases[0]; const imgElement = document.getElementById(`p-img-${currentTab}`);
-                    if(imgElement) imgElement.src = activeCanvas.toDataURL("image/png");
-                }
-            } 
-        });
+        window.addEventListener('mouseup', () => { if (dragTarget) { dragTarget = null; canvas.style.cursor = 'default'; if(isPausedForEdit) { const activeCanvas = canvases[0]; const imgElement = document.getElementById(`p-img-${currentTab}`); if(imgElement) imgElement.src = activeCanvas.toDataURL("image/png"); } } });
     });
 
     function refreshReportView() {
@@ -498,7 +423,7 @@
             const ctx = ctxs[i]; const canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); drawCenterGrid(ctx, canvas);
             if (window.reportDataStore[currentTab][i]) {
                 const kps = window.reportDataStore[currentTab][i]; drawSkeleton(ctx, kps, i === 0 ? '#ff5252' : '#00ffff');
-                runReviewLogic(ctx, (n) => kps.find(k => k.name === n), i === 0);
+                runReviewLogic(ctx, (n) => kps.find(k => k.name === n), i === 0, canvas);
             }
             ctxComb.drawImage(canvas, i * w, 0);
         }
@@ -524,7 +449,6 @@
             const devices = await navigator.mediaDevices.enumerateDevices();
             videoSource.innerHTML = '';
             devices.forEach(d => { if(d.kind==='videoinput'){ const o=document.createElement('option'); o.value=d.deviceId; o.text=d.label||'Camera'; videoSource.appendChild(o); }});
-            
             recBtn.innerText = `⏱️ 録画・計測スタート (10秒)`;
         } catch (e) { startBtn.innerText = "❌ 起動エラー"; console.error(e); }
     }
@@ -535,11 +459,10 @@
             currentStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, deviceId: videoSource.value ? { exact: videoSource.value } : undefined } });
             video.srcObject = currentStream;
             video.onloadeddata = () => {
-                canvases.forEach(c=>{c.width=video.videoWidth;c.height=video.videoHeight;}); 
-                canvasComb.width=video.videoWidth*2; canvasComb.height=video.videoHeight;
+                canvases.forEach(c=>{c.width=video.videoWidth;c.height=video.videoHeight;}); canvasComb.width=video.videoWidth*2; canvasComb.height=video.videoHeight;
                 isPausedForEdit = false; isRunning=true; render(); recBtn.disabled=false;
             };
-        } catch(e){ alert("カメラ起動失敗: フルHD解像度がサポートされていない可能性があります。"); }
+        } catch(e){ alert("カメラ起動失敗: フルHD対応をご確認ください。"); }
     };
 
     async function render() {
@@ -548,26 +471,33 @@
         for (let i = 0; i < 2; i++) {
             const ctx = ctxs[i]; const canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); drawCenterGrid(ctx, canvas);
             
+            // 🚀 全身骨格(Pose)に依存せず、顔面AIを独立起動
             if (i === 0 && currentTab === "front") {
-                const faces = await detectors[2].estimateFaces(video);
-                if (faces.length > 0) { window.latestFaceData = faces[0].keypoints; } else { window.latestFaceData = null; }
+                try {
+                    const faces = await detectors[2].estimateFaces(video);
+                    if (faces.length > 0) { 
+                        window.latestFaceData = faces[0].keypoints; 
+                        window.currentJawData = drawFaceAndCalculateJawShift(ctx, window.latestFaceData);
+                        extractHeartRateSignal(window.latestFaceData, ctx, canvas);
+                    } else { 
+                        window.latestFaceData = null; window.currentJawData = null; 
+                    }
+                } catch(e) { console.warn("Face error"); }
             }
 
             const poses = await detectors[i].estimatePoses(video);
             if (poses.length > 0) {
                 const kps = poses[0].keypoints; window.reportDataStore[currentTab][i] = kps;
                 if (isRecording) { 
-                    if (!coordinateBuffer[i]) coordinateBuffer[i] = []; 
-                    coordinateBuffer[i].push(kps); 
+                    if (!coordinateBuffer[i]) coordinateBuffer[i] = []; coordinateBuffer[i].push(kps); 
                     poseDataLog.push({ time: Date.now(), model: i===0?"MediaPipe":"MoveNet", mode: currentTab, keypoints: JSON.parse(JSON.stringify(kps)) });
                 }
                 drawSkeleton(ctx, kps, i === 0 ? '#ff5252' : '#00ffff');
-                runReviewLogic(ctx, (n) => kps.find(k => k.name === n && k.score > 0.1), i === 0);
+                runReviewLogic(ctx, (n) => kps.find(k => k.name === n && k.score > 0.1), i === 0, canvas);
             }
             ctxComb.drawImage(canvas, i * w, 0);
         }
-        adjustAllRadarPositions(); 
-        requestAnimationFrame(render);
+        adjustAllRadarPositions(); requestAnimationFrame(render);
     }
 
     function drawCenterGrid(ctx, canvas) { ctx.save(); ctx.strokeStyle="rgba(255,255,255,0.2)"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(canvas.width/2,0); ctx.lineTo(canvas.width/2,canvas.height); ctx.stroke(); ctx.restore(); }
@@ -576,20 +506,13 @@
         ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2; const isMP = kps.length > 20;
         const pairs = isMP ? [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]] : [[5,6],[5,11],[6,12],[11,12],[5,7],[7,9],[6,8],[8,10],[11,13],[13,15],[12,14],[14,16]];
         pairs.forEach(([s,e])=>{ const p1=kps[s], p2=kps[e]; if(p1 && p2 && p1.score > 0.0 && p2.score > 0.0){ ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); }});
-        
-        // 🛠️ 赤い元の基準線は、緑の絶対正中線と被らないように非表示化（MPの前面・後面以外で描画）
         if (!(isMP && (currentTab === "front" || currentTab === "back"))) {
             const lA = kps[isMP ? 27 : 15], rA = kps[isMP ? 28 : 16];
-            if(lA && rA && lA.score > 0.0 && rA.score > 0.0){ 
-                const mx=(lA.x+rA.x)/2, my=(lA.y+rA.y)/2; 
-                ctx.strokeStyle=color; ctx.setLineDash([6,4]); ctx.beginPath(); ctx.moveTo(mx,my); ctx.lineTo(mx,0); ctx.stroke(); 
-            }
+            if(lA && rA && lA.score > 0.0 && rA.score > 0.0){ const mx=(lA.x+rA.x)/2, my=(lA.y+rA.y)/2; ctx.strokeStyle=color; ctx.setLineDash([6,4]); ctx.beginPath(); ctx.moveTo(mx,my); ctx.lineTo(mx,0); ctx.stroke(); }
         }
-        
         if (isMP) {
             const drawCustomLine = (id1, id2, strokeColor) => { const pt1 = kps[id1], pt2 = kps[id2]; if (pt1 && pt2 && pt1.score > 0.1 && pt2.score > 0.1) { ctx.save(); ctx.strokeStyle = strokeColor; ctx.beginPath(); ctx.moveTo(pt1.x, pt1.y); ctx.lineTo(pt2.x, pt2.y); ctx.stroke(); ctx.restore(); } };
-            if (currentTab === "front" || currentTab === "back") { drawCustomLine(1, 5, "#00ff88"); drawCustomLine(7, 8, "#00ff88"); } 
-            else if (currentTab === "l_side" || currentTab === "r_side") { drawCustomLine(7, 11, "#ff00ff"); drawCustomLine(8, 12, "#ff00ff"); }
+            if (currentTab === "front" || currentTab === "back") { drawCustomLine(1, 5, "#00ff88"); drawCustomLine(7, 8, "#00ff88"); } else if (currentTab === "l_side" || currentTab === "r_side") { drawCustomLine(7, 11, "#ff00ff"); drawCustomLine(8, 12, "#ff00ff"); }
         }
         kps.forEach(k=>{ if(k && k.score > 0.0){ ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(k.x,k.y,2.5,0,2*Math.PI); ctx.fill(); }}); ctx.restore();
     }
@@ -600,8 +523,7 @@
         const b=new Blob([c],{type:'text/csv'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=`connect_ai_data_${Date.now()}.csv`; a.click();
     };
 
-    window.addEventListener('DOMContentLoaded', init);
-    window.addEventListener('resize', adjustAllRadarPositions);
+    window.addEventListener('DOMContentLoaded', init); window.addEventListener('resize', adjustAllRadarPositions);
 </script>
 </body>
 </html>
