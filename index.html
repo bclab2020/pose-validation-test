@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V20 (Independent rPPG)</title>
+    <title>CONNECT AI - Master Evaluation Engine V21 (Stable Biomechanics)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -65,7 +65,7 @@
     <button id="startBtn">📷 フルHD起動</button>
     <select id="modeSelect" class="mode-dropdown" onchange="switchReportTab(this.value)">
         <optgroup label="■ 静止姿勢アライメント">
-            <option value="front" selected>🧍 前面 (10秒) + rPPG計測</option>
+            <option value="front" selected>🧍 前面 (10秒)</option>
             <option value="back">🧍 後面 (5秒)</option>
             <option value="l_side">🧍 左側面 (5秒)</option>
             <option value="r_side">🧍 右側面 (5秒)</option>
@@ -88,7 +88,7 @@
 <div class="container">
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     <div class="view-port">
-        <canvas id="canvasMP"></canvas><div class="label">MediaPipe (高精度評価 + 顎ゆがみ解析 + rPPG)</div>
+        <canvas id="canvasMP"></canvas><div class="label">MediaPipe (高精度評価 + 顎ゆがみ解析)</div>
         <div id="radarWrapperMP" class="radar-wrapper"><div class="radar-title">MP COP RADAR</div><canvas id="canvasRadarMP" class="radar-box" width="120" height="120"></canvas></div>
     </div>
     <div class="view-port">
@@ -99,14 +99,14 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書 [静止]</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V20 (rPPG搭載)</div></div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書 [静止]</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V21</div></div>
         <div class="print-grid">
             <div class="print-card"><h3>1. 前面</h3><img id="p-img-front" class="print-img-placeholder"><div id="p-txt-front" style="font-size:11px; margin-top:5px; font-weight:bold;"></div></div>
             <div class="print-card"><h3>2. 後面</h3><img id="p-img-back" class="print-img-placeholder"><div id="p-txt-back" style="font-size:11px; margin-top:5px; font-weight:bold;"></div></div>
             <div class="print-card"><h3>3. 左側面</h3><img id="p-img-l_side" class="print-img-placeholder"><div id="p-txt-l_side" style="font-size:11px; margin-top:5px; font-weight:bold;"></div></div>
             <div class="print-card"><h3>4. 右側面</h3><img id="p-img-r_side" class="print-img-placeholder"><div id="p-txt-r_side" style="font-size:11px; margin-top:5px; font-weight:bold;"></div></div>
         </div>
-        <div class="print-section-title">■ 静止姿勢バイオメカニクス ＆ 自律神経 総評</div>
+        <div class="print-section-title">■ 静止姿勢バイオメカニクス 総評</div>
         <div id="p-review-static" class="print-full-review">測定完了後、自動出力されます。</div>
     </div>
     <div class="print-page">
@@ -136,7 +136,7 @@
 <script>
     const video = document.getElementById('video');
     const canvases = [document.getElementById('canvasMP'), document.getElementById('canvasMN')];
-    const ctxs = canvases.map(c => c.getContext('2d', { willReadFrequently: true }));
+    const ctxs = canvases.map(c => c.getContext('2d')); 
     const canvasComb = document.getElementById('canvasCombined');
     const ctxComb = canvasComb.getContext('2d');
     
@@ -169,12 +169,9 @@
     const CLICK_THRESHOLD = 30;
 
     window.latestFaceData = null; 
-    window.currentJawData = null; // 独立計算した顎データをレビュー用へ渡す
+    window.currentJawData = null;
     window.currentAnchorPos = null;
     window.customOriginMarkers = { front: null, back: null };
-
-    // 💓 rPPG用データ配列
-    let rppgData = []; 
 
     const directionsList = ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_single_r', 'dyn_single_l', 'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'];
     const DURATION_MAP = { 'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 'dyn_overhead': 15000, 'dyn_single_r': 15000, 'dyn_single_l': 15000, 'dyn_flex_fwd': 10000, 'dyn_flex_bwd': 10000, 'dyn_shoulder_r': 10000, 'dyn_shoulder_l': 10000 };
@@ -191,7 +188,7 @@
     function switchReportTab(tabName) {
         if (isRecording) return; 
         currentTab = tabName;
-        swayHistoryMP = []; swayHistoryMN = []; rppgData = []; window.latestFaceData = null; window.currentJawData = null;
+        swayHistoryMP = []; swayHistoryMN = []; window.latestFaceData = null; window.currentJawData = null;
         clearRadar(ctxRadarMP, "#ff5252"); clearRadar(ctxRadarMN, "#00ffff"); 
         recBtn.innerText = `⏱️ 録画・計測スタート (${DURATION_MAP[tabName]/1000}秒)`;
         refreshReportView();
@@ -204,7 +201,6 @@
         ctx.beginPath(); ctx.moveTo(60, 5); ctx.lineTo(60, 115); ctx.moveTo(5, 60); ctx.lineTo(115, 60); ctx.stroke(); 
     }
 
-    // 🚀 独立版：顎ゆがみ算出ロジック
     function drawFaceAndCalculateJawShift(ctx, faceKps) {
         const glabella = faceKps[8], noseTip = faceKps[1], menton = faceKps[152];   
         if (glabella && noseTip && menton) {
@@ -219,60 +215,6 @@
             return { shiftMm: jawShiftMm, dir: jawShiftMm > 0 ? "左" : "右" };
         }
         return null;
-    }
-
-    // 🚀 独立版：rPPG抽出ロジック（髪の毛を避けるため枠を少し下げました）
-    function extractHeartRateSignal(faceKps, ctx, canvas) {
-        const top = faceKps[10]; const right = faceKps[67]; const left = faceKps[297];
-        if (!top || !right || !left) return;
-
-        let roiWidth = Math.abs(left.x - right.x) * 0.4; 
-        let roiHeight = roiWidth;
-        let roiX = top.x - roiWidth / 2;
-        let roiY = top.y + roiHeight * 0.5; // 前髪を避けるため少し下げる
-
-        roiX = Math.floor(Math.max(0, Math.min(roiX, canvas.width - roiWidth)));
-        roiY = Math.floor(Math.max(0, Math.min(roiY, canvas.height - roiHeight)));
-        roiWidth = Math.floor(roiWidth); roiHeight = Math.floor(roiHeight);
-
-        ctx.save();
-        ctx.strokeStyle = isRecording ? "#ff00ff" : "#00ffff"; 
-        ctx.lineWidth = 2;
-        ctx.strokeRect(roiX, roiY, roiWidth, roiHeight);
-        ctx.fillStyle = isRecording ? "#ff00ff" : "#00ffff";
-        ctx.font = "bold 12px sans-serif";
-        ctx.fillText(isRecording ? "💓 脈波取得中" : "🔍 rPPG待機", roiX, roiY - 5);
-        ctx.restore();
-
-        if (isRecording) {
-            try {
-                const imgData = ctx.getImageData(roiX, roiY, roiWidth, roiHeight);
-                let gSum = 0; let count = 0;
-                for (let i = 0; i < imgData.data.length; i += 4) { gSum += imgData.data[i + 1]; count++; }
-                if (count > 0) rppgData.push({ t: Date.now(), g: gSum / count });
-            } catch(e) { console.warn("rPPG Pixel error", e); }
-        }
-    }
-
-    // 💓 rPPG BPM算出ロジック
-    function calculateBPM(data) {
-        if (data.length < 50) return null; 
-        const windowSize = 15; let detrended = [];
-        for(let i = 0; i < data.length; i++) {
-            let start = Math.max(0, i - Math.floor(windowSize/2)); let end = Math.min(data.length, i + Math.floor(windowSize/2));
-            let sum = 0; for(let j = start; j < end; j++) sum += data[j].g;
-            detrended.push({ t: data[i].t, val: data[i].g - (sum / (end - start)) });
-        }
-        let peaks = 0; let lastPeakTime = 0;
-        for(let i = 1; i < detrended.length - 1; i++) {
-            if(detrended[i].val > detrended[i-1].val && detrended[i].val > detrended[i+1].val && detrended[i].val > 0.1) {
-                if (detrended[i].t - lastPeakTime > 400) { peaks++; lastPeakTime = detrended[i].t; }
-            }
-        }
-        const durationSec = (data[data.length-1].t - data[0].t) / 1000;
-        if(durationSec <= 0 || peaks < 3) return null;
-        let bpm = (peaks / durationSec) * 60;
-        return (bpm >= 40 && bpm <= 150) ? Math.round(bpm) : null;
     }
 
     function runReviewLogic(ctx, getK, isMP, canvas) {
@@ -316,9 +258,59 @@
                 }
             }
         } 
+        else if (currentTab === "l_side" || currentTab === "r_side") {
+            ctx.fillText(currentTab === "l_side" ? "🧍 左側面アライメント" : "🧍 右側面アライメント", 30, 45);
+            const ear = currentTab === "l_side" ? getK('left_ear') : getK('right_ear');
+            const shoulder = currentTab === "l_side" ? lS : rS;
+            if (ear && shoulder) {
+                const forwardLean = Math.abs(Math.atan2(shoulder.x - ear.x, shoulder.y - ear.y) * 180 / Math.PI);
+                ctx.fillStyle = "#ffffff"; ctx.fillText(`頭部前傾角: ${forwardLean.toFixed(1)}°`, 30, 85);
+                if (isMP) window.savedMetrics[currentTab] = `頭部前傾角: ${forwardLean.toFixed(1)}°`;
+            }
+        }
         else if (currentTab === "dyn_overhead") {
             ctx.fillText("🏋️ オーバーヘッドスクワット", 30, 45);
-            // ...その他の動的処理は維持
+            if (rK && lK && rA && lA && rW && lW && rS && lS) {
+                const valgusRatio = Math.abs(rK.x - lK.x) / Math.abs(rA.x - lA.x);
+                const armDropped = ((rW.y + lW.y)/2) > ((rS.y + lS.y)/2);
+                ctx.fillStyle = valgusRatio < 0.8 ? "#ff5252" : "#ffffff"; ctx.fillText(`Knee Valgus 比: ${valgusRatio.toFixed(2)}`, 30, 85);
+                if (isMP) {
+                    window.savedMetrics[currentTab] = `膝幅/足幅比: ${valgusRatio.toFixed(2)} | 腕落下: ${armDropped ? "有" : "無"}`;
+                    window.savedReviews.dynamicCombined = `【OHS】 Knee Valgus比: ${valgusRatio.toFixed(2)}。${valgusRatio < 0.8 ? "ニーイン代償あり。" : ""} ${armDropped ? "胸椎伸展制限あり。" : ""}<br>`;
+                }
+            }
+        }
+        else if (currentTab.startsWith("dyn_single")) {
+            ctx.fillText(currentTab === "dyn_single_r" ? "🦵 片脚バランス [右軸足]" : "🦵 片脚バランス [左軸足]", 30, 45);
+            if (rH && lH && rS && lS) {
+                const hipTilt = ((rH.y - lH.y) / (lH.x - rH.x) * 180 / Math.PI);
+                const shoulderTilt = ((rS.y - lS.y) / (lS.x - rS.x) * 180 / Math.PI);
+                ctx.fillStyle = Math.abs(hipTilt) > 5 ? "#ff5252" : "#ffffff";
+                ctx.fillText(`骨盤傾斜: ${Math.abs(hipTilt).toFixed(1)}°`, 30, 85);
+                ctx.fillText(`体幹傾斜: ${Math.abs(shoulderTilt).toFixed(1)}°`, 30, 125);
+                if (isMP) {
+                    window.savedMetrics[currentTab] = `骨盤傾斜: ${Math.abs(hipTilt).toFixed(1)}° | 体幹ブレ: ${Math.abs(shoulderTilt).toFixed(1)}°`;
+                    if(Math.abs(hipTilt)>5 || Math.abs(shoulderTilt)>5) window.savedReviews.dynamicCombined += `【片脚(${currentTab==='dyn_single_r'?'右':'左'})】 骨盤制御エラー検出。<br>`;
+                }
+            }
+        }
+        else if (currentTab.startsWith("dyn_flex")) {
+            ctx.fillText(currentTab === "dyn_flex_fwd" ? "🙇 立位体前屈" : "🤸 立位体後屈", 30, 45);
+            const shoulder = getK('left_shoulder') || getK('right_shoulder');
+            const hip = getK('left_hip') || getK('right_hip');
+            if (shoulder && hip) {
+                const flexAngle = Math.abs(Math.atan2(shoulder.x - hip.x, hip.y - shoulder.y) * 180 / Math.PI);
+                ctx.fillStyle = "#ffffff"; ctx.fillText(`体幹角度: ${flexAngle.toFixed(1)}°`, 30, 85);
+                if (isMP) window.savedMetrics[currentTab] = `可動角: ${flexAngle.toFixed(1)}°`;
+            }
+        }
+        else if (currentTab.startsWith("dyn_shoulder")) {
+            ctx.fillText(currentTab === "dyn_shoulder_r" ? "👐 肩複合可動性 [右手上]" : "👐 肩複合可動性 [左手上]", 30, 45);
+            if (rW && lW) {
+                const wristDist = Math.hypot(lW.x - rW.x, lW.y - rW.y);
+                ctx.fillStyle = "#ffffff"; ctx.fillText(`左右手首間距離: ${(wristDist * 2).toFixed(1)} mm`, 30, 85);
+                if (isMP) window.savedMetrics[currentTab] = `手首間距離: ${(wristDist * 2).toFixed(1)} mm`;
+            }
         }
     }
 
@@ -341,7 +333,7 @@
     }
 
     recBtn.onclick = () => {
-        isPausedForEdit = false; isRecording = true; coordinateBuffer = []; swayHistoryMP = []; swayHistoryMN = []; rppgData = [];
+        isPausedForEdit = false; isRecording = true; coordinateBuffer = []; swayHistoryMP = []; swayHistoryMN = [];
         recordingStartTime = Date.now(); recordingDuration = DURATION_MAP[currentTab];
         timerDisplay.style.display = "block"; recBtn.disabled = true; downloadCsvBtn.disabled = true;
         recordedChunks = [];
@@ -377,17 +369,6 @@
             }
         }
         
-        if (currentTab === "front" && rppgData.length > 0) {
-            const bpm = calculateBPM(rppgData);
-            if (bpm) {
-                window.savedMetrics['front'] += ` / 💓推定心拍: ${bpm} BPM`;
-                window.savedReviews.staticCombined += `<br>【自律神経(rPPG)】 推定心拍数は ${bpm} BPMです。測定中の交感神経活動レベルの参考値として記録します。`;
-            } else {
-                window.savedMetrics['front'] += ` / 💓推定心拍: 測定不能`;
-                window.savedReviews.staticCombined += `<br>【自律神経(rPPG)】 体動または環境光ノイズのため、脈波の抽出に失敗しました。`;
-            }
-        }
-
         const activeCanvas = canvases[0]; const imgElement = document.getElementById(`p-img-${currentTab}`);
         if(imgElement) imgElement.src = activeCanvas.toDataURL("image/png");
         recBtn.innerText = `⏱️ 録画・計測スタート (${DURATION_MAP[currentTab]/1000}秒)`;
@@ -471,14 +452,12 @@
         for (let i = 0; i < 2; i++) {
             const ctx = ctxs[i]; const canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); drawCenterGrid(ctx, canvas);
             
-            // 🚀 全身骨格(Pose)に依存せず、顔面AIを独立起動
             if (i === 0 && currentTab === "front") {
                 try {
                     const faces = await detectors[2].estimateFaces(video);
                     if (faces.length > 0) { 
                         window.latestFaceData = faces[0].keypoints; 
                         window.currentJawData = drawFaceAndCalculateJawShift(ctx, window.latestFaceData);
-                        extractHeartRateSignal(window.latestFaceData, ctx, canvas);
                     } else { 
                         window.latestFaceData = null; window.currentJawData = null; 
                     }
