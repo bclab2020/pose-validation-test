@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V22 (Touch Anchor Lock)</title>
+    <title>CONNECT AI - Master Evaluation Engine V23 (Touch Perfect)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -30,10 +30,11 @@
         .container { display: flex; width: 100vw; height: calc(100vh - 70px); position: relative; background: #000; }
         .view-port { flex: 1; position: relative; border-right: 1px solid #333; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; }
         video { display: none; }
-        canvas { width: 100%; height: 100%; object-fit: contain; touch-action: none; /* 🚀スマホスワイプ防止 */ }
+        /* 🚀スマホやiPadのブラウザデフォルトのスワイプ挙動を完全に無効化 */
+        canvas { width: 100%; height: 100%; object-fit: contain; touch-action: none; user-select: none; -webkit-user-select: none; }
         
-        .label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 12px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; }
-        .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; border: 2px solid #ff5252; display: none; z-index: 100; box-shadow: 0 0 15px rgba(211,47,47,0.5); }
+        .label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 12px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; pointer-events: none; }
+        .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; border: 2px solid #ff5252; display: none; z-index: 100; box-shadow: 0 0 15px rgba(211,47,47,0.5); pointer-events: none; }
         
         .radar-wrapper { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 120px; z-index: 200; pointer-events: none; }
         .radar-box { width: 120px; height: 120px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 12px rgba(0,255,136,0.4); }
@@ -99,7 +100,7 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書 [静止]</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V22</div></div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書 [静止]</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V23</div></div>
         <div class="print-grid">
             <div class="print-card"><h3>1. 前面</h3><img id="p-img-front" class="print-img-placeholder"><div id="p-txt-front" style="font-size:11px; margin-top:5px; font-weight:bold;"></div></div>
             <div class="print-card"><h3>2. 後面</h3><img id="p-img-back" class="print-img-placeholder"><div id="p-txt-back" style="font-size:11px; margin-top:5px; font-weight:bold;"></div></div>
@@ -167,14 +168,10 @@
     let swayHistoryMN = [];
     
     let dragTarget = null;
-    const CLICK_THRESHOLD = 30; // タップ判定の拡大
-
     window.latestFaceData = null; 
     window.currentJawData = null;
     window.currentAnchorPos = null;
     window.customOriginMarkers = { front: null, back: null };
-    
-    // 🚀 新規：アンカーのロック状態を管理 (unlocked / dragging / locked)
     window.anchorStatus = "unlocked";
 
     const directionsList = ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_single_r', 'dyn_single_l', 'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'];
@@ -193,7 +190,7 @@
         if (isRecording) return; 
         currentTab = tabName;
         swayHistoryMP = []; swayHistoryMN = []; window.latestFaceData = null; window.currentJawData = null;
-        window.anchorStatus = "unlocked"; // 🚀 タブ切り替えでロック状態リセット
+        window.anchorStatus = "unlocked";
         clearRadar(ctxRadarMP, "#ff5252"); clearRadar(ctxRadarMN, "#00ffff"); 
         recBtn.innerText = `⏱️ 録画・計測スタート (${DURATION_MAP[tabName]/1000}秒)`;
         refreshReportView();
@@ -246,47 +243,41 @@
             if (originX !== undefined && originY !== undefined && isMP) {
                 window.currentAnchorPos = { x: originX, y: originY };
                 
-                // 🚀 UIカラーとテキストを状態によって変更
-                let anchorColor = "rgba(57, 255, 20, 0.8)"; // 初期（緑）
+                let anchorColor = "rgba(57, 255, 20, 0.8)";
                 let strokeColor = "#39ff14";
-                let statusText = "👈 ドラッグして基準点をロック";
+                let statusText = "👈 触ってドラッグで基準点をロック";
                 
                 if (window.anchorStatus === "dragging") {
-                    anchorColor = "rgba(255, 165, 0, 0.8)"; // ドラッグ中（オレンジ）
-                    strokeColor = "#ffa500";
-                    statusText = "🖐️ 移動中...";
+                    anchorColor = "rgba(255, 165, 0, 0.8)"; strokeColor = "#ffa500"; statusText = "🖐️ 移動中...";
                 } else if (window.anchorStatus === "locked") {
-                    anchorColor = "rgba(0, 191, 255, 0.8)"; // ロック完了（青）
-                    strokeColor = "#00bfff";
-                    statusText = "🔒 ロック完了！（計測スタートOK）";
+                    anchorColor = "rgba(0, 191, 255, 0.8)"; strokeColor = "#00bfff"; statusText = "🔒 ロック完了！(計測OK)";
                 }
 
                 ctx.save(); 
                 ctx.fillStyle = anchorColor; 
                 ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.arc(originX, originY, 15, 0, 2*Math.PI); ctx.fill(); ctx.stroke(); // タップしやすいよう少し拡大
-                ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(originX, originY, 4, 0, 2*Math.PI); ctx.fill();
+                ctx.beginPath(); ctx.arc(originX, originY, 18, 0, 2*Math.PI); ctx.fill(); ctx.stroke(); // 🎯 見やすく少し拡大
+                ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(originX, originY, 5, 0, 2*Math.PI); ctx.fill();
                 ctx.strokeStyle = strokeColor; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
                 ctx.beginPath(); ctx.moveTo(originX, originY); ctx.lineTo(originX, 0); ctx.stroke(); 
                 ctx.restore();
                 
                 if (!isRecording && !isPausedForEdit) { 
-                    ctx.fillStyle = strokeColor; 
-                    ctx.font = "bold 16px sans-serif"; 
-                    ctx.fillText(statusText, originX + 25, originY + 5); 
+                    ctx.fillStyle = strokeColor; ctx.font = "bold 18px sans-serif"; // テキスト拡大
+                    ctx.fillText(statusText, originX + 30, originY + 8); 
                 }
                 
                 if (nose) {
                     headSwayX = (nose.x - originX) * 4;
-                    ctx.fillStyle = headSwayX > 0 ? "#ff5252" : "#00ffff"; ctx.fillText(`頭部偏位: ${headSwayX > 0 ? "左" : "右"}へ ${Math.abs(headSwayX).toFixed(1)} mm`, 30, 125);
+                    ctx.fillStyle = headSwayX > 0 ? "#ff5252" : "#00ffff"; ctx.fillText(`絶対偏位: ${headSwayX > 0 ? "左" : "右"}へ ${Math.abs(headSwayX).toFixed(1)} mm`, 30, 125);
                     if (isRecording) { if (isMP) { swayHistoryMP.push({ x: headSwayX, y: 0 }); drawSpecificRadar(ctxRadarMP, swayHistoryMP, "#ff5252"); } else { swayHistoryMN.push({ x: headSwayX, y: 0 }); drawSpecificRadar(ctxRadarMN, swayHistoryMN, "#00ffff"); } }
                 }
             }
             
             if (isMP) {
-                window.savedMetrics[currentTab] = `肩傾斜: ${Math.abs(tilt).toFixed(1)}° (${tilt > 0 ? "左高" : "右高"}) / 偏位: ${headSwayX > 0 ? "左" : "右"}${Math.abs(headSwayX).toFixed(1)}mm`;
+                window.savedMetrics[currentTab] = `肩傾斜: ${Math.abs(tilt).toFixed(1)}° / 偏位: ${headSwayX > 0 ? "左" : "右"}${Math.abs(headSwayX).toFixed(1)}mm`;
                 if(currentTab === "front") {
-                    window.savedReviews.staticCombined = `【前面構造】 床基準点からの頭部偏位 ${Math.abs(headSwayX).toFixed(1)} mm。`;
+                    window.savedReviews.staticCombined = `【前面構造】 基準点からの頭部偏位 ${Math.abs(headSwayX).toFixed(1)} mm。`;
                     if (window.currentJawData && Math.abs(window.currentJawData.shiftMm) > 2.0) window.savedReviews.staticCombined += `オトガイ偏位(${Math.abs(window.currentJawData.shiftMm).toFixed(1)}mm)あり。`;
                 }
             }
@@ -341,7 +332,7 @@
             ctx.fillText(currentTab === "dyn_shoulder_r" ? "👐 肩複合可動性 [右手上]" : "👐 肩複合可動性 [左手上]", 30, 45);
             if (rW && lW) {
                 const wristDist = Math.hypot(lW.x - rW.x, lW.y - rW.y);
-                ctx.fillStyle = "#ffffff"; ctx.fillText(`左右手首間距離: ${(wristDist * 2).toFixed(1)} mm`, 30, 85);
+                ctx.fillStyle = "#ffffff"; ctx.fillText(`手首間距離: ${(wristDist * 2).toFixed(1)} mm`, 30, 85);
                 if (isMP) window.savedMetrics[currentTab] = `手首間距離: ${(wristDist * 2).toFixed(1)} mm`;
             }
         }
@@ -409,75 +400,71 @@
         refreshReportView(); 
     }
 
-    // 🚀 新規：スマホ・タブレットのタッチ＆ドラッグ完全対応
+    // 🚀🚀【完全改修】Pointer Events APIによる完璧なタッチ＆ドラッグ処理
     canvases.forEach((canvas, modelIdx) => {
-        const handleStart = (e) => {
-            if(e.type.includes('touch')) e.preventDefault();
-            const rect = canvas.getBoundingClientRect(); 
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX; 
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            if(clientX === undefined) return;
-            const mouseX = (clientX - rect.left) * (canvas.width / rect.width); 
-            const mouseY = (clientY - rect.top) * (canvas.height / rect.height);
+        const handlePointerDown = (e) => {
+            canvas.setPointerCapture(e.pointerId); // 画面外に指がズレても追跡
+            const rect = canvas.getBoundingClientRect();
             
-            // アンカー操作（録画前）
+            // 🎯 スケール計算（スマホ画面と1080pキャンバスの比率）
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const mouseX = (e.clientX - rect.left) * scaleX;
+            const mouseY = (e.clientY - rect.top) * scaleY;
+            
+            // 🎯 タップ判定エリアを「画面上の見た目のサイズ（45px）」に合わせて巨大化！
+            const hitRadius = 45 * scaleX; 
+
+            // 1. アンカー（緑ドット）のドラッグ判定
             if (modelIdx === 0 && (currentTab === "front" || currentTab === "back") && window.currentAnchorPos && !isRecording) {
-                if (Math.hypot(window.currentAnchorPos.x - mouseX, window.currentAnchorPos.y - mouseY) < 60) { // タップ範囲拡大
-                    dragTarget = { type: 'anchor' }; 
-                    window.anchorStatus = "dragging"; // UIをオレンジに
+                const distToAnchor = Math.hypot(window.currentAnchorPos.x - mouseX, window.currentAnchorPos.y - mouseY);
+                if (distToAnchor < hitRadius * 1.5) { // ドット周辺をざっくり触ればOK
+                    dragTarget = { type: 'anchor', pointerId: e.pointerId }; 
+                    window.anchorStatus = "dragging"; 
                     canvas.style.cursor = 'grabbing'; 
                     return; 
                 }
             }
             
-            // 関節ポイント微調整（録画後）
+            // 2. 録画後の関節ポイント補正
             if (!isPausedForEdit || !window.reportDataStore[currentTab][modelIdx]) return;
-            let closestIdx = -1; let minDist = CLICK_THRESHOLD;
+            let closestIdx = -1; let minDist = hitRadius;
             window.reportDataStore[currentTab][modelIdx].forEach((kp, idx) => { if (kp && kp.score > 0.0) { const dist = Math.hypot(kp.x - mouseX, kp.y - mouseY); if (dist < minDist) { minDist = dist; closestIdx = idx; } } });
-            if (closestIdx !== -1) { dragTarget = { type: 'joint', modelIdx, keypointIndex: closestIdx }; canvas.style.cursor = 'grabbing'; }
+            if (closestIdx !== -1) { dragTarget = { type: 'joint', modelIdx, keypointIndex: closestIdx, pointerId: e.pointerId }; canvas.style.cursor = 'grabbing'; }
         };
 
-        const handleMove = (e) => {
+        const handlePointerMove = (e) => {
             if (!dragTarget) return;
-            if(e.type.includes('touch')) e.preventDefault();
-            const rect = canvas.getBoundingClientRect(); 
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX; 
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            const nx = (clientX - rect.left) * (canvas.width / rect.width); 
-            const ny = (clientY - rect.top) * (canvas.height / rect.height);
+            const rect = canvas.getBoundingClientRect();
+            const nx = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const ny = (e.clientY - rect.top) * (canvas.height / rect.height);
             
             if (dragTarget.type === 'anchor') { 
                 window.customOriginMarkers[currentTab] = { x: nx, y: ny }; 
                 window.currentAnchorPos = { x: nx, y: ny }; 
-                if (isPausedForEdit) refreshReportView(); // 停止時のみ手動描画更新
+                if (isPausedForEdit) refreshReportView(); 
             } else if (dragTarget.type === 'joint' && dragTarget.modelIdx === modelIdx && isPausedForEdit) {
-                const kp = window.reportDataStore[currentTab][modelIdx][dragTarget.keypointIndex]; 
-                if (kp) { kp.x = nx; kp.y = ny; } 
-                refreshReportView();
+                const kp = window.reportDataStore[currentTab][modelIdx][dragTarget.keypointIndex]; if (kp) { kp.x = nx; kp.y = ny; } refreshReportView();
             }
         };
 
-        const handleEnd = () => { 
+        const handlePointerUp = (e) => { 
             if (dragTarget) { 
-                if (dragTarget.type === 'anchor') {
-                    window.anchorStatus = "locked"; // UIを青のロック状態に
-                }
-                dragTarget = null; 
-                canvas.style.cursor = 'default'; 
+                canvas.releasePointerCapture(dragTarget.pointerId);
+                if (dragTarget.type === 'anchor') window.anchorStatus = "locked"; // 青色にロック
+                dragTarget = null; canvas.style.cursor = 'default'; 
                 if(isPausedForEdit) { 
-                    const activeCanvas = canvases[0]; 
-                    const imgElement = document.getElementById(`p-img-${currentTab}`); 
+                    const activeCanvas = canvases[0]; const imgElement = document.getElementById(`p-img-${currentTab}`); 
                     if(imgElement) imgElement.src = activeCanvas.toDataURL("image/png"); 
                 } 
             } 
         };
 
-        canvas.addEventListener('mousedown', handleStart);
-        canvas.addEventListener('touchstart', handleStart, { passive: false });
-        canvas.addEventListener('mousemove', handleMove);
-        canvas.addEventListener('touchmove', handleMove, { passive: false });
-        window.addEventListener('mouseup', handleEnd);
-        window.addEventListener('touchend', handleEnd);
+        // タッチ操作の全てをPointer Eventsに一元化
+        canvas.addEventListener('pointerdown', handlePointerDown);
+        canvas.addEventListener('pointermove', handlePointerMove);
+        canvas.addEventListener('pointerup', handlePointerUp);
+        canvas.addEventListener('pointercancel', handlePointerUp);
     });
 
     function refreshReportView() {
@@ -554,7 +541,7 @@
                     poseDataLog.push({ time: Date.now(), model: i===0?"MediaPipe":"MoveNet", mode: currentTab, keypoints: JSON.parse(JSON.stringify(kps)) });
                 }
                 drawSkeleton(ctx, kps, i === 0 ? '#ff5252' : '#00ffff');
-                runReviewLogic(ctx, (n) => kps.find(k => k.name === n && k.score > 0.1), i === 0, canvas);
+                runReviewLogic(ctx, (n) => kps.find(k => k.name === n), i === 0, canvas);
             }
             ctxComb.drawImage(canvas, i * w, 0);
         }
