@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V34 (Custom Duration)</title>
+    <title>CONNECT AI - Master Evaluation Engine V35 (D-Pad Precision Edit)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -21,8 +21,6 @@
         .mode-dropdown { background: #333; color: #deff9a; border: 1px solid #555; padding: 10px; font-size: 15px; outline: none; }
         .mode-dropdown optgroup { color: #aaa; font-style: normal; font-weight: bold; background: #222; }
         .mode-dropdown option { color: #fff; }
-
-        /* 🚀 新規追加：時間選択用プルダウン */
         #durationSelect { background: #1976d2; color: #fff; border: 1px solid #0d47a1; padding: 10px 12px; font-size: 15px; outline: none; }
         
         #startBtn { background: #1976d2; color: white; }
@@ -31,9 +29,10 @@
         #printReportBtn { background: #ff9100; color: #000; box-shadow: 0 0 10px rgba(255,145,0,0.3); }
         
         .playback-controls { display: none; padding: 12px 15px; background: #002233; justify-content: center; gap: 15px; align-items: center; border-bottom: 2px solid #00bfff; width: 100%; box-sizing: border-box; }
-        #timelineSlider { flex: 1; max-width: 600px; cursor: pointer; }
-        #playPauseBtn { background: #00bfff; color: #000; min-width: 100px; }
+        #timelineSlider { flex: 1; max-width: 500px; cursor: pointer; }
+        #playPauseBtn { background: #00bfff; color: #000; min-width: 90px; }
         #backToCamBtn { background: #555; color: white; }
+        #editFrameBtn { background: #ff9100; color: #000; font-weight: bold; box-shadow: 0 0 8px rgba(255,145,0,0.5); }
         
         .container { display: flex; width: 100vw; height: calc(100vh - 70px); position: relative; background: #000; }
         .view-port { flex: 1; position: relative; border-right: 1px solid #333; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; }
@@ -43,10 +42,9 @@
         .label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 12px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; pointer-events: none; }
         .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; border: 2px solid #ff5252; display: none; z-index: 100; box-shadow: 0 0 15px rgba(211,47,47,0.5); pointer-events: none; }
         
-        /* レーダーのフローティング用スタイル */
+        /* レーダーフローティング */
         .radar-wrapper { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 120px; z-index: 200; touch-action: none; cursor: grab; transition: transform 0.2s, opacity 0.2s; }
         .radar-wrapper.dragging { cursor: grabbing; transform: scale(1.1); opacity: 0.8; z-index: 999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); border-radius: 50%; transition: none; }
-        
         .radar-box { width: 120px; height: 120px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 12px rgba(0,255,136,0.4); pointer-events: none; }
         #radarWrapperMP .radar-box { border: 2px solid #ff5252; }
         #radarWrapperMN .radar-box { border: 2px solid #00ffff; }
@@ -54,15 +52,25 @@
         #radarWrapperMP .radar-title { color: #ff5252; border: 1px solid #ff5252; }
         #radarWrapperMN .radar-title { color: #00ffff; border: 1px solid #00ffff; }
 
+        /* 🚀 新規追加：D-Pad (十字キー) UI */
+        #dpadPanel {
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+            background: rgba(15, 15, 15, 0.95); border: 2px solid #00bfff; border-radius: 16px;
+            padding: 15px 25px; z-index: 1000; display: none; flex-direction: column; align-items: center;
+            box-shadow: 0 15px 40px rgba(0, 191, 255, 0.4); backdrop-filter: blur(5px);
+        }
+        .dpad-header { color: #00bfff; font-size: 14px; font-weight: bold; margin-bottom: 12px; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; width: 100%; position: relative; }
+        .dpad-row { display: flex; justify-content: center; gap: 8px; margin: 4px 0; }
+        .dpad-btn { width: 55px; height: 55px; border-radius: 12px; background: #2a2a2a; color: white; font-size: 24px; border: 1px solid #444; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: 0.1s; }
+        .dpad-btn:active { background: #00bfff; color: black; transform: translateY(2px); box-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+        .dpad-step-btn { width: 55px; height: 55px; font-size: 14px; background: #1976d2; border: none; font-weight: bold; }
+        .dpad-close { position: absolute; right: -10px; top: -5px; width: 30px; height: 30px; border-radius: 50%; background: #ff5252; color: white; border: none; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+
         #printReportView { display: none; background: white; color: black; padding: 30px 40px; }
         .print-page { page-break-after: always; color: black; }
         .print-header { border-bottom: 3px solid #111; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
         .print-title { font-size: 24px; font-weight: bold; color: #111; }
         .print-meta { font-size: 12px; text-align: right; color: #555; line-height: 1.4; }
-        .print-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
-        .print-card { border: 1px solid #ccc; padding: 10px; background: #fafafa; border-radius: 4px; }
-        .print-card h3 { margin: 0 0 8px 0; font-size: 13px; border-bottom: 2px solid #333; padding-bottom: 3px; color: #111; }
-        .print-img-placeholder { width: 100%; height: 190px; background: #000; border-radius: 4px; object-fit: contain; display: block; }
         .print-full-review { background: #f9f9f9; border: 1px solid #ddd; padding: 15px; border-radius: 4px; font-size: 13px; line-height: 1.6; color: #111; margin-top: 10px; }
         .print-section-title { font-size: 16px; font-weight: bold; border-left: 5px solid #1976d2; padding-left: 8px; margin: 20px 0 10px 0; }
 
@@ -107,15 +115,27 @@
 </div>
 
 <div class="playback-controls" id="playbackControls">
-    <button id="backToCamBtn">🔙 再測定 (カメラへ戻る)</button>
+    <button id="backToCamBtn">🔙 再測定へ</button>
     <button id="playPauseBtn">▶ 再生</button>
     <input type="range" id="timelineSlider" min="0" max="100" value="0">
     <span id="frameCounter" style="color:#00bfff; font-weight:bold; font-size:14px; min-width:60px;">0 / 0</span>
-    <span style="color:white; font-size:12px; margin-left:10px;">👻 ゴースト：理想の動作モデル</span>
+    <button id="editFrameBtn">✂️ このフレームを微調整</button>
 </div>
 
 <div class="container">
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
+    
+    <div id="dpadPanel">
+        <div class="dpad-header">🎯 ポイント微調整モード <button class="dpad-close" id="dpadClose">✖</button></div>
+        <div class="dpad-row"><button class="dpad-btn" id="dpadUp">▲</button></div>
+        <div class="dpad-row">
+            <button class="dpad-btn" id="dpadLeft">◀</button>
+            <button class="dpad-btn dpad-step-btn" id="dpadStep">1px</button>
+            <button class="dpad-btn" id="dpadRight">▶</button>
+        </div>
+        <div class="dpad-row"><button class="dpad-btn" id="dpadDown">▼</button></div>
+    </div>
+
     <div class="view-port">
         <canvas id="canvasMP"></canvas><div class="label">MediaPipe (高精度評価 + 視点別オーバーレイ)</div>
         <div id="radarWrapperMP" class="radar-wrapper"><div class="radar-title">MP COP RADAR</div><canvas id="canvasRadarMP" class="radar-box" width="120" height="120"></canvas></div>
@@ -128,7 +148,7 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V34</div></div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V35</div></div>
         <div class="print-section-title">■ 静止姿勢・動的評価 総評</div>
         <div id="p-review-static" class="print-full-review">測定完了後、自動出力されます。</div>
     </div>
@@ -150,7 +170,7 @@
     
     const startBtn = document.getElementById('startBtn');
     const recBtn = document.getElementById('recBtn');
-    const durationSelect = document.getElementById('durationSelect'); // 🚀 新規追加
+    const durationSelect = document.getElementById('durationSelect'); 
     const timerDisplay = document.getElementById('timerDisplay');
     const downloadCsvBtn = document.getElementById('downloadCsvBtn');
     
@@ -160,6 +180,7 @@
     const timelineSlider = document.getElementById('timelineSlider');
     const frameCounter = document.getElementById('frameCounter');
     const backToCamBtn = document.getElementById('backToCamBtn');
+    const editFrameBtn = document.getElementById('editFrameBtn');
 
     let detectors = []; 
     let isRunning = false;
@@ -185,12 +206,15 @@
     
     let recorder;
     let recordedChunks = [];
-    let swayHistoryMP = [];
-    let swayHistoryMN = [];
     
-    let dragTarget = null;
+    let dragTarget = null; // アンカー移動用
     
-    // 【V33】完璧なグローバル・ドラッグ監視システム
+    // 🚀 V35: D-Pad 選択・編集システム
+    let selectedJoint = null; // { modelIdx, keypointIndex }
+    let dpadStepVal = 1;
+    let isEditingPlaybackFrame = false;
+
+    // フローティングレーダー管理
     let activeRadarDrag = null;
     let isRadarMovedManually = [false, false]; 
     let longPressTimers = [null, null];
@@ -198,76 +222,36 @@
 
     wrappers.forEach((wrapper, index) => {
         wrapper.style.touchAction = "none"; 
-
         wrapper.addEventListener('pointerdown', (e) => {
             e.stopPropagation(); 
             if (activeRadarDrag) return;
-
             initialTouch = { x: e.clientX, y: e.clientY };
-
             longPressTimers[index] = setTimeout(() => {
                 const rect = wrapper.getBoundingClientRect();
-                activeRadarDrag = {
-                    element: wrapper,
-                    index: index,
-                    startX: initialTouch.x, 
-                    startY: initialTouch.y,
-                    startLeft: rect.left,
-                    startTop: rect.top
-                };
-
-                wrapper.style.right = 'auto';
-                wrapper.style.bottom = 'auto';
-                wrapper.style.left = `${rect.left}px`;
-                wrapper.style.top = `${rect.top}px`;
-                
-                wrapper.classList.add('dragging');
-                isRadarMovedManually[index] = true;
+                activeRadarDrag = { element: wrapper, index: index, startX: initialTouch.x, startY: initialTouch.y, startLeft: rect.left, startTop: rect.top };
+                wrapper.style.right = 'auto'; wrapper.style.bottom = 'auto'; wrapper.style.left = `${rect.left}px`; wrapper.style.top = `${rect.top}px`;
+                wrapper.classList.add('dragging'); isRadarMovedManually[index] = true;
             }, 300);
         });
-
         wrapper.addEventListener('pointermove', (e) => {
             if (longPressTimers[index] && initialTouch) {
-                const dist = Math.hypot(e.clientX - initialTouch.x, e.clientY - initialTouch.y);
-                if (dist > 10) {
-                    clearTimeout(longPressTimers[index]);
-                    longPressTimers[index] = null;
-                }
+                if (Math.hypot(e.clientX - initialTouch.x, e.clientY - initialTouch.y) > 10) { clearTimeout(longPressTimers[index]); longPressTimers[index] = null; }
             }
         });
-
-        const cancelPress = () => {
-            if (longPressTimers[index]) {
-                clearTimeout(longPressTimers[index]);
-                longPressTimers[index] = null;
-            }
-        };
-        wrapper.addEventListener('pointerup', cancelPress);
-        wrapper.addEventListener('pointercancel', cancelPress);
+        const cancelPress = () => { if (longPressTimers[index]) { clearTimeout(longPressTimers[index]); longPressTimers[index] = null; } };
+        wrapper.addEventListener('pointerup', cancelPress); wrapper.addEventListener('pointercancel', cancelPress);
     });
 
     window.addEventListener('pointermove', (e) => {
         if (activeRadarDrag) {
             e.preventDefault(); 
-            const dx = e.clientX - activeRadarDrag.startX;
-            const dy = e.clientY - activeRadarDrag.startY;
-            activeRadarDrag.element.style.left = `${activeRadarDrag.startLeft + dx}px`;
-            activeRadarDrag.element.style.top = `${activeRadarDrag.startTop + dy}px`;
+            const dx = e.clientX - activeRadarDrag.startX; const dy = e.clientY - activeRadarDrag.startY;
+            activeRadarDrag.element.style.left = `${activeRadarDrag.startLeft + dx}px`; activeRadarDrag.element.style.top = `${activeRadarDrag.startTop + dy}px`;
         }
     }, { passive: false });
+    window.addEventListener('pointerup', () => { if (activeRadarDrag) { activeRadarDrag.element.classList.remove('dragging'); activeRadarDrag = null; } });
 
-    window.addEventListener('pointerup', () => {
-        if (activeRadarDrag) {
-            activeRadarDrag.element.classList.remove('dragging');
-            activeRadarDrag = null;
-        }
-    });
-
-    window.latestFaceData = null; 
-    window.currentJawData = null;
-    window.currentAnchorPos = null;
-    window.customOriginMarkers = {};
-    window.anchorStatus = "unlocked";
+    window.latestFaceData = null; window.currentAnchorPos = null; window.customOriginMarkers = {}; window.anchorStatus = "unlocked";
 
     const directionsList = ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_overhead_side', 'dyn_single_r', 'dyn_single_l', 'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'];
     const DURATION_MAP = { 'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 'dyn_overhead': 15000, 'dyn_overhead_side': 15000, 'dyn_single_r': 15000, 'dyn_single_l': 15000, 'dyn_flex_fwd': 10000, 'dyn_flex_bwd': 10000, 'dyn_shoulder_r': 10000, 'dyn_shoulder_l': 10000 };
@@ -276,138 +260,113 @@
     directionsList.forEach(dir => { window.reportDataStore[dir] = [null, null]; window.savedMetrics[dir] = ""; window.customOriginMarkers[dir] = null; });
     window.savedReviews = { staticCombined: "未測定", dynamicCombined: "" };
 
-    document.addEventListener('DOMContentLoaded', () => {
-        const d = new Date(); const dStr = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
-        document.querySelectorAll('.printDate').forEach(el => el.innerText = dStr);
-    });
+    document.addEventListener('DOMContentLoaded', () => { document.querySelectorAll('.printDate').forEach(el => el.innerText = `${new Date().getFullYear()}年${new Date().getMonth()+1}月${new Date().getDate()}日`); });
+
+    // 🚀 D-Pad コントロールロジック
+    document.getElementById('dpadStep').onclick = (e) => { dpadStepVal = dpadStepVal === 1 ? 5 : 1; e.target.innerText = dpadStepVal + 'px'; };
+    const moveJoint = (dx, dy) => {
+        if(!selectedJoint) return;
+        let kp = null;
+        if(appMode === 'playback' && isEditingPlaybackFrame) {
+            const dArray = selectedJoint.modelIdx === 0 ? playbackDataMP : playbackDataMN;
+            const fIdx = parseInt(timelineSlider.value);
+            if(dArray[fIdx]) kp = dArray[fIdx].keypoints[selectedJoint.keypointIndex];
+        } else if (isPausedForEdit) {
+            kp = window.reportDataStore[currentTab][selectedJoint.modelIdx][selectedJoint.keypointIndex];
+        }
+        if(kp) {
+            kp.x += dx; kp.y += dy;
+            if(appMode === 'playback') renderPlaybackFrame(parseInt(timelineSlider.value));
+            else refreshReportView();
+        }
+    };
+    document.getElementById('dpadUp').onclick = () => moveJoint(0, -dpadStepVal);
+    document.getElementById('dpadDown').onclick = () => moveJoint(0, dpadStepVal);
+    document.getElementById('dpadLeft').onclick = () => moveJoint(-dpadStepVal, 0);
+    document.getElementById('dpadRight').onclick = () => moveJoint(dpadStepVal, 0);
+    
+    const closeDpad = () => { selectedJoint = null; document.getElementById('dpadPanel').style.display = 'none'; if(appMode === 'playback') renderPlaybackFrame(parseInt(timelineSlider.value)); else refreshReportView(); };
+    document.getElementById('dpadClose').onclick = closeDpad;
+
+    // 🚀 動的評価のキーフレーム編集トグル
+    editFrameBtn.onclick = function() {
+        if(!isEditingPlaybackFrame) {
+            togglePlay(false); // 再生停止
+            isEditingPlaybackFrame = true;
+            this.innerText = "✅ 編集完了 (ロック)";
+            this.style.background = "#39ff14";
+        } else {
+            isEditingPlaybackFrame = false;
+            this.innerText = "✂️ このフレームを微調整";
+            this.style.background = "#ff9100";
+            closeDpad();
+        }
+    };
 
     function switchReportTab(tabName) {
-        if (isRecording) return; 
-        currentTab = tabName;
-        swayHistoryMP = []; swayHistoryMN = []; window.latestFaceData = null; window.currentJawData = null;
-        window.anchorStatus = "unlocked";
+        if (isRecording) return; currentTab = tabName; window.latestFaceData = null; window.anchorStatus = "unlocked";
         clearRadar(ctxRadarMP, "#ff5252"); clearRadar(ctxRadarMN, "#00ffff"); 
-        
-        // 🚀 タブ切り替え時に、プルダウンを推奨秒数に合わせる
-        if(DURATION_MAP[tabName]) {
-            let recommended = DURATION_MAP[tabName].toString();
-            // プルダウン内に存在すればそれに合わせる
-            let options = Array.from(durationSelect.options).map(opt => opt.value);
-            if(options.includes(recommended)) {
-                durationSelect.value = recommended;
-            }
-        }
-
-        exitPlaybackMode();
-        refreshReportView();
+        closeDpad(); isEditingPlaybackFrame = false; editFrameBtn.innerText = "✂️ このフレームを微調整"; editFrameBtn.style.background = "#ff9100";
+        if(DURATION_MAP[tabName]) { let recommended = DURATION_MAP[tabName].toString(); if(Array.from(durationSelect.options).map(opt => opt.value).includes(recommended)) durationSelect.value = recommended; }
+        exitPlaybackMode(); refreshReportView();
     }
 
     function clearRadar(ctx, color) {
         if (!ctx) return; ctx.clearRect(0, 0, 120, 120); ctx.strokeStyle = color + "33"; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(60, 60, 25, 0, 2*Math.PI); ctx.stroke(); 
-        ctx.beginPath(); ctx.arc(60, 60, 45, 0, 2*Math.PI); ctx.stroke();
+        ctx.beginPath(); ctx.arc(60, 60, 25, 0, 2*Math.PI); ctx.stroke(); ctx.beginPath(); ctx.arc(60, 60, 45, 0, 2*Math.PI); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(60, 5); ctx.lineTo(60, 115); ctx.moveTo(5, 60); ctx.lineTo(115, 60); ctx.stroke(); 
     }
 
-    function getAngle(A, B, C) {
-        let AB = Math.hypot(B.x - A.x, B.y - A.y);
-        let BC = Math.hypot(B.x - C.x, B.y - C.y);
-        let AC = Math.hypot(C.x - A.x, C.y - A.y);
-        return Math.acos((AB*AB + BC*BC - AC*AC) / (2 * AB * BC)) * 180 / Math.PI;
-    }
+    function getAngle(A, B, C) { let AB = Math.hypot(B.x - A.x, B.y - A.y), BC = Math.hypot(B.x - C.x, B.y - C.y), AC = Math.hypot(C.x - A.x, C.y - A.y); return Math.acos((AB*AB + BC*BC - AC*AC) / (2 * AB * BC)) * 180 / Math.PI; }
 
     function drawAngleArc(ctx, center, p1, p2, angleVal, color) {
         ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.beginPath();
-        let a1 = Math.atan2(p1.y - center.y, p1.x - center.x);
-        let a2 = Math.atan2(p2.y - center.y, p2.x - center.x);
-        let start = Math.min(a1, a2); let end = Math.max(a1, a2);
+        let a1 = Math.atan2(p1.y - center.y, p1.x - center.x), a2 = Math.atan2(p2.y - center.y, p2.x - center.x);
+        let start = Math.min(a1, a2), end = Math.max(a1, a2);
         if (end - start > Math.PI) { start = Math.max(a1, a2); end = Math.min(a1, a2) + 2*Math.PI; }
-        ctx.arc(center.x, center.y, 35, start, end);
-        ctx.stroke();
-        ctx.fillStyle = color; ctx.font = "bold 16px sans-serif";
-        ctx.fillText(`${Math.round(angleVal)}°`, center.x + 40, center.y + 10);
+        ctx.arc(center.x, center.y, 35, start, end); ctx.stroke();
+        ctx.fillStyle = color; ctx.font = "bold 16px sans-serif"; ctx.fillText(`${Math.round(angleVal)}°`, center.x + 40, center.y + 10); ctx.restore();
+    }
+
+    // 🚀 クロスヘア（十字線）描画ロジック
+    function drawCrosshair(ctx, kp, canvas) {
+        if(!kp) return;
+        ctx.save();
+        ctx.strokeStyle = "rgba(0, 191, 255, 0.7)"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(0, kp.y); ctx.lineTo(canvas.width, kp.y); ctx.moveTo(kp.x, 0); ctx.lineTo(kp.x, canvas.height); ctx.stroke();
+        ctx.beginPath(); ctx.arc(kp.x, kp.y, 14, 0, 2*Math.PI); ctx.strokeStyle = "#00bfff"; ctx.lineWidth = 3; ctx.setLineDash([]); ctx.stroke();
+        ctx.fillStyle = "rgba(0, 191, 255, 0.3)"; ctx.fill();
         ctx.restore();
     }
 
-    function generateIdealKeypoints(actualKps, mode) {
-        if (!actualKps) return null;
-        let ideal = JSON.parse(JSON.stringify(actualKps)); 
-        const getK = (name) => ideal.find(k => k.name === name);
-        const setY = (names, y) => names.forEach(n => { let k = getK(n); if (k) k.y = y; });
-        const setX = (names, x) => names.forEach(n => { let k = getK(n); if (k) k.x = x; });
-
-        if (mode === 'dyn_overhead') {
-            let lA = getK('left_ankle'), rA = getK('right_ankle');
-            let lK = getK('left_knee'), rK = getK('right_knee');
-            if (lA && lK) lK.x = lA.x;
-            if (rA && rK) rK.x = rA.x;
-        }
-        else if (mode === 'dyn_overhead_side') {
-            let lS = getK('left_shoulder'), rS = getK('right_shoulder');
-            let lW = getK('left_wrist'), rW = getK('right_wrist');
-            if (lW && lS && lW.y > lS.y) lW.y = lS.y - 40;
-            if (rW && rS && rW.y > rS.y) rW.y = rS.y - 40;
-        }
-        return ideal;
-    }
-
     function runReviewLogic(ctx, getK, isMP, canvas) {
-        ctx.fillStyle = "#deff9a"; ctx.font = "bold 20px sans-serif";
-        const nose = getK('nose');
-        let originX, originY;
-
+        ctx.fillStyle = "#deff9a"; ctx.font = "bold 20px sans-serif"; const nose = getK('nose'); let originX, originY;
         if (currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) {
-            if (window.customOriginMarkers[currentTab] && isMP) { 
-                originX = window.customOriginMarkers[currentTab].x; originY = window.customOriginMarkers[currentTab].y;
-            } else {
-                let footPtsX = []; let footPtsY = [];
-                ['left_ankle', 'right_ankle', 'left_heel', 'right_heel', 'left_foot_index', 'right_foot_index'].forEach(name => {
-                    let p = getK(name); if (p && p.score > 0.1) { footPtsX.push(p.x); footPtsY.push(p.y); }
-                });
+            if (window.customOriginMarkers[currentTab] && isMP) { originX = window.customOriginMarkers[currentTab].x; originY = window.customOriginMarkers[currentTab].y; } else {
+                let footPtsX = [], footPtsY = []; ['left_ankle', 'right_ankle', 'left_heel', 'right_heel', 'left_foot_index', 'right_foot_index'].forEach(name => { let p = getK(name); if (p && p.score > 0.1) { footPtsX.push(p.x); footPtsY.push(p.y); } });
                 if (footPtsX.length >= 2) { originX = (Math.min(...footPtsX) + Math.max(...footPtsX)) / 2; originY = Math.max(...footPtsY); }
             }
         }
 
         if (originX !== undefined && originY !== undefined && isMP) {
             window.currentAnchorPos = { x: originX, y: originY };
-            let anchorColor = window.anchorStatus === "dragging" ? "rgba(255, 165, 0, 0.8)" : (window.anchorStatus === "locked" ? "rgba(0, 191, 255, 0.8)" : "rgba(57, 255, 20, 0.8)");
-            let strokeColor = window.anchorStatus === "dragging" ? "#ffa500" : (window.anchorStatus === "locked" ? "#00bfff" : "#39ff14");
-
+            let anchorColor = window.anchorStatus === "dragging" ? "rgba(255, 165, 0, 0.8)" : "rgba(0, 191, 255, 0.8)";
             ctx.save(); ctx.fillStyle = anchorColor; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
             ctx.beginPath(); ctx.arc(originX, originY, 18, 0, 2*Math.PI); ctx.fill(); ctx.stroke(); 
-            ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(originX, originY, 5, 0, 2*Math.PI); ctx.fill();
-            ctx.strokeStyle = strokeColor; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
-            ctx.beginPath(); ctx.moveTo(originX, originY); ctx.lineTo(originX, 0); ctx.stroke(); ctx.restore();
+            ctx.strokeStyle = anchorColor; ctx.lineWidth = 2; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(originX, originY); ctx.lineTo(originX, 0); ctx.stroke(); ctx.restore();
             
-            let corridorWidth = 60; 
-            let sway = nose ? (nose.x - originX) : 0;
-            let corridorColor = Math.abs(sway) > corridorWidth/2 ? "rgba(255, 0, 0, 0.15)" : "rgba(0, 255, 0, 0.1)";
-            
-            ctx.save();
-            ctx.fillStyle = corridorColor;
-            ctx.fillRect(originX - corridorWidth/2, 0, corridorWidth, originY);
-            if (Math.abs(sway) > corridorWidth/2) {
-                ctx.fillStyle = "#ff5252"; ctx.font = "bold 16px sans-serif";
-                ctx.fillText(`⚠️ 体幹スウェイ: ${sway > 0 ? "左" : "右"}へ ${Math.abs(sway).toFixed(1)}px`, originX + 40, originY - 100);
-            }
-            ctx.restore();
+            let sway = nose ? (nose.x - originX) : 0; let corridorColor = Math.abs(sway) > 30 ? "rgba(255, 0, 0, 0.15)" : "rgba(0, 255, 0, 0.1)";
+            ctx.save(); ctx.fillStyle = corridorColor; ctx.fillRect(originX - 30, 0, 60, originY);
+            if (Math.abs(sway) > 30) { ctx.fillStyle = "#ff5252"; ctx.font = "bold 16px sans-serif"; ctx.fillText(`⚠️ 体幹スウェイ: ${sway > 0 ? "左" : "右"}へ ${Math.abs(sway).toFixed(1)}px`, originX + 40, originY - 100); } ctx.restore();
         }
 
         if (currentTab === "dyn_overhead") {
             ctx.fillText("🏋️ OHS [前面]", 30, 45);
-            const rK = getK('right_knee'), lK = getK('left_knee');
-            const rH = getK('right_hip'), lH = getK('left_hip');
-            const rA = getK('right_ankle'), lA = getK('left_ankle');
-
+            const rK = getK('right_knee'), lK = getK('left_knee'), rH = getK('right_hip'), lH = getK('left_hip'), rA = getK('right_ankle'), lA = getK('left_ankle');
             if (rK && lK && rA && lA && rH && lH) {
-                let rAngle = getAngle(rH, rK, rA);
-                let lAngle = getAngle(lH, lK, lA);
-                let rIsValgus = rK.x > rA.x; 
-                let lIsValgus = lK.x < lA.x; 
-                
-                drawAngleArc(ctx, rK, rH, rA, rAngle, rIsValgus ? '#ff5252' : '#39ff14');
-                drawAngleArc(ctx, lK, lH, lA, lAngle, lIsValgus ? '#ff5252' : '#39ff14');
-                
+                let rAngle = getAngle(rH, rK, rA), lAngle = getAngle(lH, lK, lA);
+                let rIsValgus = rK.x > rA.x, lIsValgus = lK.x < lA.x; 
+                drawAngleArc(ctx, rK, rH, rA, rAngle, rIsValgus ? '#ff5252' : '#39ff14'); drawAngleArc(ctx, lK, lH, lA, lAngle, lIsValgus ? '#ff5252' : '#39ff14');
                 if(rIsValgus || lIsValgus) { ctx.fillStyle = "#ff5252"; ctx.fillText(`⚠️ ニーイン発生中`, 30, 85); }
             }
         }
@@ -415,138 +374,91 @@
             ctx.fillText("🏋️ OHS [側面]", 30, 45);
             let s = getK('left_shoulder') && getK('left_shoulder').score > 0.5 ? getK('left_shoulder') : getK('right_shoulder');
             let w = getK('left_wrist') && getK('left_wrist').score > 0.5 ? getK('left_wrist') : getK('right_wrist');
-            
             if (s && w) {
-                ctx.save(); ctx.strokeStyle = "rgba(255, 255, 0, 0.8)"; ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.moveTo(0, s.y); ctx.lineTo(canvas.width, s.y); ctx.stroke(); ctx.restore();
-
-                let armDropped = w.y > s.y;
-                if (armDropped) {
+                ctx.save(); ctx.strokeStyle = "rgba(255, 255, 0, 0.8)"; ctx.setLineDash([5, 5]); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, s.y); ctx.lineTo(canvas.width, s.y); ctx.stroke(); ctx.restore();
+                if (w.y > s.y) {
                     ctx.fillStyle = "#ff5252"; ctx.fillText(`⚠️ 腕の落下（広背筋/胸椎制限）`, 30, 85);
-                    ctx.save(); ctx.strokeStyle = "orange"; ctx.lineWidth = 6;
-                    ctx.beginPath(); ctx.moveTo(s.x, s.y); 
+                    ctx.save(); ctx.strokeStyle = "orange"; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(s.x, s.y); 
                     let e = getK('left_elbow') && getK('left_elbow').score > 0.5 ? getK('left_elbow') : getK('right_elbow');
-                    if(e) { ctx.lineTo(e.x, e.y); ctx.lineTo(w.x, w.y); } else { ctx.lineTo(w.x, w.y); }
-                    ctx.stroke(); ctx.restore();
-                } else {
-                    ctx.fillStyle = "#ffffff"; ctx.fillText(`腕の挙上: 正常`, 30, 85);
-                }
+                    if(e) { ctx.lineTo(e.x, e.y); ctx.lineTo(w.x, w.y); } else { ctx.lineTo(w.x, w.y); } ctx.stroke(); ctx.restore();
+                } else { ctx.fillStyle = "#ffffff"; ctx.fillText(`腕の挙上: 正常`, 30, 85); }
             }
         }
-        else if (currentTab === "front") { ctx.fillText("🧍 前面アライメント", 30, 45); } 
-        else if (currentTab.startsWith("dyn_single")) { ctx.fillText("🦵 片脚バランス", 30, 45); }
-    }
-
-    function drawSpecificRadar(ctx, history, color) {
-        clearRadar(ctx, color); if (history.length < 2) return;
-        ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
-        history.forEach((pt, idx) => { const rX = 60 + (pt.x * 0.7); const rY = 60 + (pt.y * 0.7); if (idx === 0) ctx.moveTo(rX, rY); else ctx.lineTo(rX, rY); });
-        ctx.stroke(); const lastPt = history[history.length - 1]; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(60 + (lastPt.x * 0.7), 60 + (lastPt.y * 0.7), 3, 0, 2*Math.PI); ctx.fill(); ctx.restore();
+        else if (currentTab === "front") { ctx.fillText("🧍 前面アライメント", 30, 45); } else if (currentTab.startsWith("dyn_single")) { ctx.fillText("🦵 片脚バランス", 30, 45); }
     }
 
     function adjustAllRadarPositions() {
         for (let i = 0; i < 2; i++) {
             if (isRadarMovedManually[i]) continue; 
-            
-            const canvas = canvases[i]; const wrapper = wrappers[i]; if (!canvas || !video.videoWidth) continue;
-            const rect = canvas.getBoundingClientRect(); const videoRatio = video.videoWidth / video.videoHeight; const containerRatio = rect.width / rect.height;
+            const canvas = canvases[i], wrapper = wrappers[i]; if (!canvas || !video.videoWidth) continue;
+            const rect = canvas.getBoundingClientRect(), videoRatio = video.videoWidth / video.videoHeight, containerRatio = rect.width / rect.height;
             let actualHeight, offsetX, offsetY;
             if (containerRatio > videoRatio) { actualHeight = rect.height; offsetX = (rect.width - rect.height * videoRatio) / 2; offsetY = 0; } 
             else { actualHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - actualHeight) / 2; }
-            wrapper.style.right = `${offsetX + 15}px`; wrapper.style.bottom = `${offsetY + 15}px`;
-            wrapper.style.left = 'auto'; wrapper.style.top = 'auto'; 
+            wrapper.style.right = `${offsetX + 15}px`; wrapper.style.bottom = `${offsetY + 15}px`; wrapper.style.left = 'auto'; wrapper.style.top = 'auto'; 
         }
     }
 
     function enterPlaybackMode() {
         appMode = 'playback'; mainControls.style.display = 'none'; playbackControls.style.display = 'flex';
-        playbackDataMP = poseDataLog.filter(d => d.model === 'MediaPipe' && d.mode === currentTab);
-        playbackDataMN = poseDataLog.filter(d => d.model === 'MoveNet' && d.mode === currentTab);
-        
-        if (playbackDataMP.length > 1) { playbackBaseTime = playbackDataMP[0].time; playbackTotalDuration = playbackDataMP[playbackDataMP.length - 1].time - playbackBaseTime; } 
-        else { playbackBaseTime = 0; playbackTotalDuration = 0; }
-        const maxFrames = Math.max(playbackDataMP.length, playbackDataMN.length) - 1;
-        timelineSlider.max = maxFrames > 0 ? maxFrames : 0; timelineSlider.value = 0; frameCounter.innerText = `0 / ${timelineSlider.max}`;
+        playbackDataMP = poseDataLog.filter(d => d.model === 'MediaPipe' && d.mode === currentTab); playbackDataMN = poseDataLog.filter(d => d.model === 'MoveNet' && d.mode === currentTab);
+        if (playbackDataMP.length > 1) { playbackBaseTime = playbackDataMP[0].time; playbackTotalDuration = playbackDataMP[playbackDataMP.length - 1].time - playbackBaseTime; } else { playbackBaseTime = 0; playbackTotalDuration = 0; }
+        const maxFrames = Math.max(playbackDataMP.length, playbackDataMN.length) - 1; timelineSlider.max = maxFrames > 0 ? maxFrames : 0; timelineSlider.value = 0; frameCounter.innerText = `0 / ${timelineSlider.max}`;
         renderPlaybackFrame(0); togglePlay(true);
     }
 
-    function exitPlaybackMode() {
-        appMode = 'camera'; togglePlay(false); playbackControls.style.display = 'none'; mainControls.style.display = 'flex'; isPausedForEdit = false;
-    }
+    function exitPlaybackMode() { appMode = 'camera'; togglePlay(false); playbackControls.style.display = 'none'; mainControls.style.display = 'flex'; isPausedForEdit = false; closeDpad(); isEditingPlaybackFrame=false; editFrameBtn.innerText = "✂️ このフレームを微調整"; editFrameBtn.style.background = "#ff9100"; }
 
     function togglePlay(forcePlay) {
+        if(isEditingPlaybackFrame && forcePlay !== false) return; // 編集モード中は再生させない
         if (forcePlay === true || !isPlaying) {
             isPlaying = true; playPauseBtn.innerText = "⏸ 停止";
-            if (playbackDataMP.length > 1) {
-                let currentIdx = parseInt(timelineSlider.value); if(currentIdx >= playbackDataMP.length) currentIdx = 0;
-                let currentElapsed = playbackDataMP[currentIdx].time - playbackBaseTime; playbackStartTime = Date.now() - currentElapsed;
-            } else { playbackStartTime = Date.now(); }
+            if (playbackDataMP.length > 1) { let currentIdx = parseInt(timelineSlider.value); if(currentIdx >= playbackDataMP.length) currentIdx = 0; playbackStartTime = Date.now() - (playbackDataMP[currentIdx].time - playbackBaseTime); } else { playbackStartTime = Date.now(); }
             playbackLoop();
-        } else {
-            isPlaying = false; playPauseBtn.innerText = "▶ 再生"; cancelAnimationFrame(playbackRafId);
-        }
+        } else { isPlaying = false; playPauseBtn.innerText = "▶ 再生"; cancelAnimationFrame(playbackRafId); }
     }
 
     function playbackLoop() {
-        if (!isPlaying) return;
-        let now = Date.now(); let elapsed = now - playbackStartTime;
+        if (!isPlaying) return; let now = Date.now(), elapsed = now - playbackStartTime;
         if (elapsed > playbackTotalDuration) { playbackStartTime = now; elapsed = 0; }
-        let targetTime = playbackBaseTime + elapsed; let targetIdx = playbackDataMP.length - 1;
+        let targetTime = playbackBaseTime + elapsed, targetIdx = playbackDataMP.length - 1;
         for (let i = 0; i < playbackDataMP.length; i++) { if (playbackDataMP[i].time >= targetTime) { targetIdx = i; break; } }
-        timelineSlider.value = targetIdx; renderPlaybackFrame(targetIdx);
-        playbackRafId = requestAnimationFrame(playbackLoop);
+        timelineSlider.value = targetIdx; renderPlaybackFrame(targetIdx); playbackRafId = requestAnimationFrame(playbackLoop);
     }
 
     playPauseBtn.onclick = () => togglePlay(); backToCamBtn.onclick = () => exitPlaybackMode();
     timelineSlider.oninput = () => { togglePlay(false); renderPlaybackFrame(parseInt(timelineSlider.value)); };
 
     function renderPlaybackFrame(frameIdx) {
-        frameCounter.innerText = `${frameIdx} / ${timelineSlider.max}`;
-        const w = video.videoWidth || canvasComb.width/2, h = video.videoHeight || canvasComb.height;
+        frameCounter.innerText = `${frameIdx} / ${timelineSlider.max}`; const w = video.videoWidth || canvasComb.width/2, h = video.videoHeight || canvasComb.height;
         for (let i = 0; i < 2; i++) {
-            const ctx = ctxs[i]; const canvas = canvases[i];
-            ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height); 
-            drawCenterGrid(ctx, canvas);
+            const ctx = ctxs[i], canvas = canvases[i]; ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height); drawCenterGrid(ctx, canvas);
             const dataArray = i === 0 ? playbackDataMP : playbackDataMN;
             if (dataArray[frameIdx]) {
                 const actualKps = dataArray[frameIdx].keypoints;
-                const idealKps = generateIdealKeypoints(actualKps, currentTab);
-                if (idealKps) drawSkeleton(ctx, idealKps, 'rgba(0, 191, 255, 0.4)'); 
-                drawSkeleton(ctx, actualKps, i === 0 ? '#ffffff' : '#00ffff'); 
-                runReviewLogic(ctx, (n) => actualKps.find(k => k.name === n), i === 0, canvas);
+                if(!isEditingPlaybackFrame) { let ideal = JSON.parse(JSON.stringify(actualKps)); if (ideal) drawSkeleton(ctx, ideal, 'rgba(0, 191, 255, 0.4)'); }
+                drawSkeleton(ctx, actualKps, i === 0 ? '#ffffff' : '#00ffff'); runReviewLogic(ctx, (n) => actualKps.find(k => k.name === n), i === 0, canvas);
+                
+                // 🚀 十字線の描画
+                if (selectedJoint && selectedJoint.modelIdx === i && isEditingPlaybackFrame) { drawCrosshair(ctx, actualKps[selectedJoint.keypointIndex], canvas); }
             }
             ctxComb.drawImage(canvas, i * w, 0);
         }
     }
 
     recBtn.onclick = () => {
-        isPausedForEdit = false; isRecording = true; coordinateBuffer = []; swayHistoryMP = []; swayHistoryMN = [];
-        if(currentTab.startsWith('dyn_')) { poseDataLog = poseDataLog.filter(d => d.mode !== currentTab); }
-
-        // 🚀 V34：プルダウンから選択された秒数を取得
-        recordingDuration = parseInt(durationSelect.value);
-        recordingStartTime = Date.now(); 
-
-        timerDisplay.style.display = "block"; recBtn.disabled = true; downloadCsvBtn.disabled = true;
-        recordedChunks = [];
-        try {
-            const stream = canvasComb.captureStream(30);
-            recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
-            recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
-            recorder.onstop = () => { const b = new Blob(recordedChunks, { type: 'video/webm' }); const url = URL.createObjectURL(b); const a = document.createElement('a'); a.href = url; a.download = `connect_ai_${currentTab}_${Date.now()}.webm`; a.click(); };
-            recorder.start();
-        } catch (e) { console.error(e); }
-
+        isPausedForEdit = false; isRecording = true; closeDpad(); coordinateBuffer = []; poseDataLog = poseDataLog.filter(d => d.mode !== currentTab);
+        recordingDuration = parseInt(durationSelect.value); recordingStartTime = Date.now(); 
+        timerDisplay.style.display = "block"; recBtn.disabled = true; downloadCsvBtn.disabled = true; recordedChunks = [];
+        try { const stream = canvasComb.captureStream(30); recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' }); recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); }; recorder.onstop = () => { const b = new Blob(recordedChunks, { type: 'video/webm' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `connect_ai_${currentTab}_${Date.now()}.webm`; a.click(); }; recorder.start(); } catch (e) { console.error(e); }
         const timerInterval = setInterval(() => {
-            const elapsed = Date.now() - recordingStartTime;
-            timerDisplay.innerText = `REC ${Math.max(0, (recordingDuration - elapsed) / 1000).toFixed(1)}s`;
+            const elapsed = Date.now() - recordingStartTime; timerDisplay.innerText = `REC ${Math.max(0, (recordingDuration - elapsed) / 1000).toFixed(1)}s`;
             if (elapsed >= recordingDuration) { clearInterval(timerInterval); executePostProcessingStop(); }
         }, 100);
     };
 
     function executePostProcessingStop() {
-        isRecording = false; timerDisplay.style.display = "none"; 
-        if (recorder && recorder.state !== "inactive") recorder.stop(); 
+        isRecording = false; timerDisplay.style.display = "none"; if (recorder && recorder.state !== "inactive") recorder.stop(); 
         if (currentTab.startsWith("dyn_")) { enterPlaybackMode(); } 
         else {
             isPausedForEdit = true;
@@ -557,12 +469,7 @@
                     window.reportDataStore[currentTab][mIdx] = avgKeypoints;
                 }
             }
-            const activeCanvas = canvases[0]; const imgElement = document.getElementById(`p-img-${currentTab}`);
-            if(imgElement) imgElement.src = activeCanvas.toDataURL("image/png");
-            
-            // 🚀 V34：固定秒数のテキストを削除
-            recBtn.innerText = `🔴 録画スタート`; 
-            recBtn.disabled = false; downloadCsvBtn.disabled = false; refreshReportView(); 
+            recBtn.innerText = `🔴 録画スタート`; recBtn.disabled = false; downloadCsvBtn.disabled = false; refreshReportView(); 
         }
     }
 
@@ -570,71 +477,72 @@
         const rect = canvas.getBoundingClientRect(); let clientX, clientY;
         if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; } else if (e.changedTouches && e.changedTouches.length > 0) { clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY; } else { clientX = e.clientX; clientY = e.clientY; }
         if (clientX === undefined) return null;
-        const videoRatio = canvas.width / canvas.height; const containerRatio = rect.width / rect.height; let renderWidth, renderHeight, offsetX, offsetY;
+        const videoRatio = canvas.width / canvas.height, containerRatio = rect.width / rect.height; let renderWidth, renderHeight, offsetX, offsetY;
         if (containerRatio > videoRatio) { renderHeight = rect.height; renderWidth = rect.height * videoRatio; offsetX = (rect.width - renderWidth) / 2; offsetY = 0; } else { renderWidth = rect.width; renderHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - renderHeight) / 2; }
-        const xOnImage = clientX - rect.left - offsetX; const yOnImage = clientY - rect.top - offsetY;
-        const scaleX = canvas.width / renderWidth; const scaleY = canvas.height / renderHeight; return { x: xOnImage * scaleX, y: yOnImage * scaleY, renderScale: scaleX };
+        const scaleX = canvas.width / renderWidth, scaleY = canvas.height / renderHeight; return { x: (clientX - rect.left - offsetX) * scaleX, y: (clientY - rect.top - offsetY) * scaleY, renderScale: scaleX };
     }
 
+    // 🚀 キャンバスタッチ（D-Pad呼び出し ＆ アンカー移動）
     canvases.forEach((canvas, modelIdx) => {
         const handleStart = (e) => {
             if(e.cancelable) e.preventDefault(); const pos = getEventPos(canvas, e); if (!pos || pos.x < 0 || pos.y < 0 || pos.x > canvas.width || pos.y > canvas.height) return;
             const hitRadius = 80 * pos.renderScale; 
+            
+            // アンカー移動（従来通りドラッグ）
             if (modelIdx === 0 && (currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) && window.currentAnchorPos && !isRecording && appMode !== 'playback') {
-                const distToAnchor = Math.hypot(window.currentAnchorPos.x - pos.x, window.currentAnchorPos.y - pos.y);
-                if (distToAnchor < hitRadius * 1.5) { dragTarget = { type: 'anchor' }; window.anchorStatus = "dragging"; return; }
+                if (Math.hypot(window.currentAnchorPos.x - pos.x, window.currentAnchorPos.y - pos.y) < hitRadius * 1.5) { dragTarget = { type: 'anchor' }; window.anchorStatus = "dragging"; closeDpad(); return; }
             }
-            if (!isPausedForEdit || !window.reportDataStore[currentTab][modelIdx] || appMode === 'playback') return;
-            let closestIdx = -1; let minDist = hitRadius;
-            window.reportDataStore[currentTab][modelIdx].forEach((kp, idx) => { if (kp && kp.score > 0.0) { const dist = Math.hypot(kp.x - pos.x, kp.y - pos.y); if (dist < minDist) { minDist = dist; closestIdx = idx; } } });
-            if (closestIdx !== -1) { dragTarget = { type: 'joint', modelIdx, keypointIndex: closestIdx }; canvas.style.cursor = 'grabbing'; }
+            
+            // 🚀 関節の選択（D-Pad起動）
+            let kpsToSearch = null;
+            if (appMode === 'playback' && isEditingPlaybackFrame) { const dArray = modelIdx === 0 ? playbackDataMP : playbackDataMN; const fIdx = parseInt(timelineSlider.value); if (dArray[fIdx]) kpsToSearch = dArray[fIdx].keypoints; }
+            else if (isPausedForEdit && appMode !== 'playback') { kpsToSearch = window.reportDataStore[currentTab][modelIdx]; }
+            
+            if (kpsToSearch) {
+                let closestIdx = -1, minDist = hitRadius;
+                kpsToSearch.forEach((kp, idx) => { if (kp && kp.score > 0.0) { const dist = Math.hypot(kp.x - pos.x, kp.y - pos.y); if (dist < minDist) { minDist = dist; closestIdx = idx; } } });
+                if (closestIdx !== -1) {
+                    selectedJoint = { modelIdx, keypointIndex: closestIdx };
+                    document.getElementById('dpadPanel').style.display = 'flex';
+                } else {
+                    closeDpad(); // 何もない場所をタップしたら閉じる
+                }
+                if (appMode === 'playback') renderPlaybackFrame(parseInt(timelineSlider.value)); else refreshReportView();
+            }
         };
         const handleMove = (e) => {
-            if (!dragTarget) return; if(e.cancelable) e.preventDefault(); const pos = getEventPos(canvas, e); if (!pos) return;
-            const safeX = Math.max(0, Math.min(pos.x, canvas.width)); const safeY = Math.max(0, Math.min(pos.y, canvas.height));
-            if (dragTarget.type === 'anchor') { window.customOriginMarkers[currentTab] = { x: safeX, y: safeY }; window.currentAnchorPos = { x: safeX, y: safeY }; if (isPausedForEdit) refreshReportView(); 
-            } else if (dragTarget.type === 'joint' && dragTarget.modelIdx === modelIdx && isPausedForEdit) { const kp = window.reportDataStore[currentTab][modelIdx][dragTarget.keypointIndex]; if (kp) { kp.x = safeX; kp.y = safeY; } refreshReportView(); }
+            if (dragTarget && dragTarget.type === 'anchor') {
+                if(e.cancelable) e.preventDefault(); const pos = getEventPos(canvas, e); if (!pos) return;
+                const safeX = Math.max(0, Math.min(pos.x, canvas.width)), safeY = Math.max(0, Math.min(pos.y, canvas.height));
+                window.customOriginMarkers[currentTab] = { x: safeX, y: safeY }; window.currentAnchorPos = { x: safeX, y: safeY }; if (isPausedForEdit) refreshReportView(); 
+            }
         };
-        const handleEnd = () => { if (dragTarget) { if (dragTarget.type === 'anchor') window.anchorStatus = "locked"; dragTarget = null; canvas.style.cursor = 'default'; if(isPausedForEdit) { const activeCanvas = canvases[0]; const imgElement = document.getElementById(`p-img-${currentTab}`); if(imgElement) imgElement.src = activeCanvas.toDataURL("image/png"); } } };
-        canvas.addEventListener('pointerdown', handleStart); canvas.addEventListener('pointermove', handleMove);
-        canvas.addEventListener('pointerup', handleEnd); canvas.addEventListener('pointercancel', handleEnd);
+        const handleEnd = () => { if (dragTarget && dragTarget.type === 'anchor') { window.anchorStatus = "locked"; dragTarget = null; canvas.style.cursor = 'default'; } };
+        canvas.addEventListener('pointerdown', handleStart); canvas.addEventListener('pointermove', handleMove); canvas.addEventListener('pointerup', handleEnd); canvas.addEventListener('pointercancel', handleEnd);
     });
 
     function refreshReportView() {
-        if(appMode === 'playback') return; 
-        const w = video.videoWidth, h = video.videoHeight;
+        if(appMode === 'playback') return; const w = video.videoWidth, h = video.videoHeight;
         for (let i = 0; i < 2; i++) {
-            const ctx = ctxs[i]; const canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); drawCenterGrid(ctx, canvas);
+            const ctx = ctxs[i], canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); drawCenterGrid(ctx, canvas);
             if (window.reportDataStore[currentTab][i]) {
-                const kps = window.reportDataStore[currentTab][i]; drawSkeleton(ctx, kps, i === 0 ? '#ff5252' : '#00ffff');
-                runReviewLogic(ctx, (n) => kps.find(k => k.name === n), i === 0, canvas);
+                const kps = window.reportDataStore[currentTab][i]; drawSkeleton(ctx, kps, i === 0 ? '#ff5252' : '#00ffff'); runReviewLogic(ctx, (n) => kps.find(k => k.name === n), i === 0, canvas);
+                if (selectedJoint && selectedJoint.modelIdx === i) drawCrosshair(ctx, kps[selectedJoint.keypointIndex], canvas); // 🚀 十字線
             }
             ctxComb.drawImage(canvas, i * w, 0);
         }
         adjustAllRadarPositions(); 
     }
 
-    function prepareAndPrintReport() {
-        directionsList.forEach(dir => { const txtBox = document.getElementById(`p-txt-${dir}`); if(txtBox) txtBox.innerText = window.savedMetrics[dir] || "未測定"; });
-        document.getElementById('p-review-static').innerHTML = window.savedReviews.staticCombined;
-        document.getElementById('p-review-dynamic').innerHTML = window.savedReviews.dynamicCombined || "未測定";
-        window.print();
-    }
+    function prepareAndPrintReport() { window.print(); }
 
     async function init() {
         try {
             await tf.setBackend('webgl'); await tf.ready();
             detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
             detectors[1] = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING });
-            const faceModel = faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh;
-            detectors[2] = await faceLandmarksDetection.createDetector(faceModel, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh' });
-
-            clearRadar(ctxRadarMP, "#ff5252"); clearRadar(ctxRadarMN, "#00ffff");
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            videoSource.innerHTML = '';
-            devices.forEach(d => { if(d.kind==='videoinput'){ const o=document.createElement('option'); o.value=d.deviceId; o.text=d.label||'Camera'; videoSource.appendChild(o); }});
-            // 初期表示
-            document.getElementById('recBtn').innerText = `🔴 録画スタート`;
+            detectors[2] = await faceLandmarksDetection.createDetector(faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh' });
+            const devices = await navigator.mediaDevices.enumerateDevices(); videoSource.innerHTML = ''; devices.forEach(d => { if(d.kind==='videoinput') videoSource.appendChild(new Option(d.label||'Camera', d.deviceId)); });
         } catch (e) { startBtn.innerText = "❌ 起動エラー"; console.error(e); }
     }
 
@@ -643,29 +551,20 @@
         try {
             currentStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, deviceId: videoSource.value ? { exact: videoSource.value } : undefined } });
             video.srcObject = currentStream;
-            video.onloadeddata = () => {
-                canvases.forEach(c=>{c.width=video.videoWidth;c.height=video.videoHeight;}); canvasComb.width=video.videoWidth*2; canvasComb.height=video.videoHeight;
-                isPausedForEdit = false; isRunning=true; render(); recBtn.disabled=false;
-            };
+            video.onloadeddata = () => { canvases.forEach(c=>{c.width=video.videoWidth;c.height=video.videoHeight;}); canvasComb.width=video.videoWidth*2; canvasComb.height=video.videoHeight; isPausedForEdit = false; isRunning=true; render(); recBtn.disabled=false; };
         } catch(e){ alert("カメラ起動失敗: フルHD対応をご確認ください。"); }
     };
 
     async function render() {
-        if (!isRunning) return;
-        if (appMode === 'playback' || isPausedForEdit) { requestAnimationFrame(render); return; }
-
+        if (!isRunning || appMode === 'playback' || isPausedForEdit) { if(isRunning) requestAnimationFrame(render); return; }
         const w = video.videoWidth, h = video.videoHeight;
         for (let i = 0; i < 2; i++) {
-            const ctx = ctxs[i]; const canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); drawCenterGrid(ctx, canvas);
-            if (i === 0 && currentTab === "front") {
-                try { const faces = await detectors[2].estimateFaces(video); if (faces.length > 0) { window.latestFaceData = faces[0].keypoints; window.currentJawData = drawFaceAndCalculateJawShift(ctx, window.latestFaceData); } else { window.latestFaceData = null; window.currentJawData = null; } } catch(e) { console.warn("Face error"); }
-            }
+            const ctx = ctxs[i], canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); drawCenterGrid(ctx, canvas);
             const poses = await detectors[i].estimatePoses(video);
             if (poses.length > 0) {
                 const kps = poses[0].keypoints; window.reportDataStore[currentTab][i] = kps;
                 if (isRecording) { if (!coordinateBuffer[i]) coordinateBuffer[i] = []; coordinateBuffer[i].push(kps); poseDataLog.push({ time: Date.now(), model: i===0?"MediaPipe":"MoveNet", mode: currentTab, keypoints: JSON.parse(JSON.stringify(kps)) }); }
-                drawSkeleton(ctx, kps, appMode === 'playback' || currentTab.startsWith('dyn_') ? '#ffffff' : (i === 0 ? '#ff5252' : '#00ffff'));
-                runReviewLogic(ctx, (n) => kps.find(k => k.name === n), i === 0, canvas);
+                drawSkeleton(ctx, kps, currentTab.startsWith('dyn_') ? '#ffffff' : (i === 0 ? '#ff5252' : '#00ffff')); runReviewLogic(ctx, (n) => kps.find(k => k.name === n), i === 0, canvas);
             }
             ctxComb.drawImage(canvas, i * w, 0);
         }
@@ -673,28 +572,15 @@
     }
 
     function drawCenterGrid(ctx, canvas) { ctx.save(); ctx.strokeStyle="rgba(255,255,255,0.2)"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(canvas.width/2,0); ctx.lineTo(canvas.width/2,canvas.height); ctx.stroke(); ctx.restore(); }
-
     function drawSkeleton(ctx, kps, color) {
         ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 3; const isMP = kps.length > 20; 
         const pairs = isMP ? [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]] : [[5,6],[5,11],[6,12],[11,12],[5,7],[7,9],[6,8],[8,10],[11,13],[13,15],[12,14],[14,16]];
         pairs.forEach(([s,e])=>{ const p1=kps[s], p2=kps[e]; if(p1 && p2 && p1.score > 0.0 && p2.score > 0.0){ ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); }});
-        if (!(isMP && (currentTab === "front" || currentTab === "back"))) {
-            const lA = kps[isMP ? 27 : 15], rA = kps[isMP ? 28 : 16];
-            if(lA && rA && lA.score > 0.0 && rA.score > 0.0){ const mx=(lA.x+rA.x)/2, my=(lA.y+rA.y)/2; ctx.strokeStyle=color; ctx.setLineDash([6,4]); ctx.beginPath(); ctx.moveTo(mx,my); ctx.lineTo(mx,0); ctx.stroke(); }
-        }
-        if (isMP) {
-            const drawCustomLine = (id1, id2, strokeColor) => { const pt1 = kps[id1], pt2 = kps[id2]; if (pt1 && pt2 && pt1.score > 0.1 && pt2.score > 0.1) { ctx.save(); ctx.strokeStyle = strokeColor; ctx.beginPath(); ctx.moveTo(pt1.x, pt1.y); ctx.lineTo(pt2.x, pt2.y); ctx.stroke(); ctx.restore(); } };
-            if (currentTab === "front" || currentTab === "back") { drawCustomLine(1, 5, "#00ff88"); drawCustomLine(7, 8, "#00ff88"); } else if (currentTab === "l_side" || currentTab === "r_side") { drawCustomLine(7, 11, "#ff00ff"); drawCustomLine(8, 12, "#ff00ff"); }
-        }
+        if (!(isMP && (currentTab === "front" || currentTab === "back"))) { const lA = kps[isMP ? 27 : 15], rA = kps[isMP ? 28 : 16]; if(lA && rA && lA.score > 0.0 && rA.score > 0.0){ const mx=(lA.x+rA.x)/2, my=(lA.y+rA.y)/2; ctx.strokeStyle=color; ctx.setLineDash([6,4]); ctx.beginPath(); ctx.moveTo(mx,my); ctx.lineTo(mx,0); ctx.stroke(); } }
+        if (isMP) { const dl = (id1, id2, sc) => { const pt1 = kps[id1], pt2 = kps[id2]; if (pt1 && pt2 && pt1.score > 0.1 && pt2.score > 0.1) { ctx.save(); ctx.strokeStyle = sc; ctx.beginPath(); ctx.moveTo(pt1.x, pt1.y); ctx.lineTo(pt2.x, pt2.y); ctx.stroke(); ctx.restore(); } }; if (currentTab === "front" || currentTab === "back") { dl(1, 5, "#00ff88"); dl(7, 8, "#00ff88"); } else if (currentTab === "l_side" || currentTab === "r_side") { dl(7, 11, "#ff00ff"); dl(8, 12, "#ff00ff"); } }
         kps.forEach(k=>{ if(k && k.score > 0.0){ ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(k.x,k.y,3,0,2*Math.PI); ctx.fill(); }}); ctx.restore();
     }
-
-    downloadCsvBtn.onclick = () => {
-        let c="Timestamp,Model,Mode,PointID,PointName,X,Y\n";
-        poseDataLog.forEach(d=>{ d.keypoints.forEach((kp, idx)=>{ if(kp) c+=`${d.time},${d.model},${d.mode},${idx},${kp.name},${kp.x.toFixed(1)},${kp.y.toFixed(1)}\n`; }); });
-        const b=new Blob([c],{type:'text/csv'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=`connect_ai_data_${Date.now()}.csv`; a.click();
-    };
-
+    downloadCsvBtn.onclick = () => { let c="Timestamp,Model,Mode,PointID,PointName,X,Y\n"; poseDataLog.forEach(d=>{ d.keypoints.forEach((kp, idx)=>{ if(kp) c+=`${d.time},${d.model},${d.mode},${idx},${kp.name},${kp.x.toFixed(1)},${kp.y.toFixed(1)}\n`; }); }); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([c],{type:'text/csv'})); a.download=`connect_ai_data_${Date.now()}.csv`; a.click(); };
     window.addEventListener('DOMContentLoaded', init); window.addEventListener('resize', adjustAllRadarPositions);
 </script>
 </body>
