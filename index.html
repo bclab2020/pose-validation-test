@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V36 (Thick Center Line)</title>
+    <title>CONNECT AI - Master Evaluation Engine V37 (Thick Center Line 5px)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -148,7 +148,7 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V36</div></div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V37</div></div>
         <div class="print-section-title">■ 静止姿勢・動的評価 総評</div>
         <div id="p-review-static" class="print-full-review">測定完了後、自動出力されます。</div>
     </div>
@@ -429,7 +429,7 @@
         for (let i = 0; i < 2; i++) {
             const ctx = ctxs[i], canvas = canvases[i]; ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height); 
             
-            // 🚀 V36: drawCenterGrid を呼び出し（太さ2pxになりました）
+            // 🚀 V37: drawCenterGrid を呼び出し（太さ5pxになりました）
             drawCenterGrid(ctx, canvas);
             
             const dataArray = i === 0 ? playbackDataMP : playbackDataMN;
@@ -555,7 +555,7 @@
         for (let i = 0; i < 2; i++) {
             const ctx = ctxs[i], canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); 
             
-            // 🚀 V36: drawCenterGrid を呼び出し（太さ2pxになりました）
+            // 🚀 V37: センターラインの描画（太さ5px）
             drawCenterGrid(ctx, canvas);
             
             const poses = await detectors[i].estimatePoses(video);
@@ -569,11 +569,11 @@
         adjustAllRadarPositions(); requestAnimationFrame(render);
     }
 
-    // 🚀 V36: センターラインの太さを2pxに変更
+    // 🚀 V37: センターラインの太さを5pxに変更
     function drawCenterGrid(ctx, canvas) { 
         ctx.save(); 
-        ctx.strokeStyle="rgba(255,255,255,0.2)"; 
-        ctx.lineWidth=2; // ★ここを1から2に変更
+        ctx.strokeStyle="rgba(255,255,255,0.4)"; // 少し透明度も調整して視認性をアップ
+        ctx.lineWidth=5; // ★太さを5ピクセルに設定
         ctx.beginPath(); 
         ctx.moveTo(canvas.width/2,0); 
         ctx.lineTo(canvas.width/2,canvas.height); 
