@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V28 (Bounding Box Stance Center)</title>
+    <title>CONNECT AI - Master Evaluation Engine V30 (Floating Radar UI)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -40,11 +40,14 @@
         .label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 12px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; pointer-events: none; }
         .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; border: 2px solid #ff5252; display: none; z-index: 100; box-shadow: 0 0 15px rgba(211,47,47,0.5); pointer-events: none; }
         
-        .radar-wrapper { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 120px; z-index: 200; pointer-events: none; }
-        .radar-box { width: 120px; height: 120px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 12px rgba(0,255,136,0.4); }
+        /* 🚀 レーダーのフローティング用スタイル追加 */
+        .radar-wrapper { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 120px; z-index: 200; touch-action: none; cursor: grab; transition: transform 0.2s, opacity 0.2s; }
+        .radar-wrapper.dragging { cursor: grabbing; transform: scale(1.1); opacity: 0.8; z-index: 999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); border-radius: 50%; }
+        
+        .radar-box { width: 120px; height: 120px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 12px rgba(0,255,136,0.4); pointer-events: none; }
         #radarWrapperMP .radar-box { border: 2px solid #ff5252; }
         #radarWrapperMN .radar-box { border: 2px solid #00ffff; }
-        .radar-title { position: absolute; top: -20px; left: 8px; font-size: 10px; background: rgba(0,0,0,0.8); padding: 2px 6px; border-radius: 3px; font-weight: bold; white-space: nowrap; }
+        .radar-title { position: absolute; top: -20px; left: 8px; font-size: 10px; background: rgba(0,0,0,0.8); padding: 2px 6px; border-radius: 3px; font-weight: bold; white-space: nowrap; pointer-events: none; }
         #radarWrapperMP .radar-title { color: #ff5252; border: 1px solid #ff5252; }
         #radarWrapperMN .radar-title { color: #00ffff; border: 1px solid #00ffff; }
 
@@ -76,7 +79,8 @@
             <option value="r_side">🧍 右側面 (5秒)</option>
         </optgroup>
         <optgroup label="■ 動的機能評価 (キネマティックチェーン)">
-            <option value="dyn_overhead">🏋️ オーバーヘッドスクワット (15秒)</option>
+            <option value="dyn_overhead">🏋️ OHS [前面] (15秒)</option>
+            <option value="dyn_overhead_side">🏋️ OHS [側面] (15秒)</option>
             <option value="dyn_single_r">🦵 片脚バランス [右軸足] (15秒)</option>
             <option value="dyn_single_l">🦵 片脚バランス [左軸足] (15秒)</option>
             <option value="dyn_flex_fwd">🙇 立位体前屈 (10秒)</option>
@@ -95,13 +99,13 @@
     <button id="playPauseBtn">▶ 再生</button>
     <input type="range" id="timelineSlider" min="0" max="100" value="0">
     <span id="frameCounter" style="color:#00bfff; font-weight:bold; font-size:14px; min-width:60px;">0 / 0</span>
-    <span style="color:white; font-size:12px; margin-left:10px;">👻 半透明青色：理想の動作モデル</span>
+    <span style="color:white; font-size:12px; margin-left:10px;">👻 ゴースト：理想の動作モデル</span>
 </div>
 
 <div class="container">
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     <div class="view-port">
-        <canvas id="canvasMP"></canvas><div class="label">MediaPipe (高精度評価 + 顎ゆがみ解析)</div>
+        <canvas id="canvasMP"></canvas><div class="label">MediaPipe (高精度評価 + 視点別オーバーレイ)</div>
         <div id="radarWrapperMP" class="radar-wrapper"><div class="radar-title">MP COP RADAR</div><canvas id="canvasRadarMP" class="radar-box" width="120" height="120"></canvas></div>
     </div>
     <div class="view-port">
@@ -112,34 +116,9 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書 [静止]</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V28</div></div>
-        <div class="print-grid">
-            <div class="print-card"><h3>1. 前面</h3><img id="p-img-front" class="print-img-placeholder"></div>
-            <div class="print-card"><h3>2. 後面</h3><img id="p-img-back" class="print-img-placeholder"></div>
-            <div class="print-card"><h3>3. 左側面</h3><img id="p-img-l_side" class="print-img-placeholder"></div>
-            <div class="print-card"><h3>4. 右側面</h3><img id="p-img-r_side" class="print-img-placeholder"></div>
-        </div>
-        <div class="print-section-title">■ 静止姿勢バイオメカニクス 総評</div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V30</div></div>
+        <div class="print-section-title">■ 静止姿勢・動的評価 総評</div>
         <div id="p-review-static" class="print-full-review">測定完了後、自動出力されます。</div>
-    </div>
-    <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 動的機能評価書 [連鎖・支持力]</div><div class="print-meta">発行日: <span class="printDate"></span></div></div>
-        <div class="print-grid">
-            <div class="print-card"><h3>5. オーバーヘッド・スクワット</h3><img id="p-img-dyn_overhead" class="print-img-placeholder"></div>
-            <div class="print-card"><h3>6. 片脚バランス [右軸足]</h3><img id="p-img-dyn_single_r" class="print-img-placeholder"></div>
-            <div class="print-card"><h3>7. 片脚バランス [左軸足]</h3><img id="p-img-dyn_single_l" class="print-img-placeholder"></div>
-            <div class="print-card"><h3>8. 立位体前屈</h3><img id="p-img-dyn_flex_fwd" class="print-img-placeholder"></div>
-        </div>
-    </div>
-    <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 動的機能評価書 [可動性]</div><div class="print-meta">発行日: <span class="printDate"></span></div></div>
-        <div class="print-grid">
-            <div class="print-card"><h3>9. 立位体後屈</h3><img id="p-img-dyn_flex_bwd" class="print-img-placeholder"></div>
-            <div class="print-card"><h3>10. 肩複合可動性 [右手上]</h3><img id="p-img-dyn_shoulder_r" class="print-img-placeholder"></div>
-            <div class="print-card"><h3>11. 肩複合可動性 [左手上]</h3><img id="p-img-dyn_shoulder_l" class="print-img-placeholder"></div>
-        </div>
-        <div class="print-section-title">■ キネマティックチェーン機能 総評</div>
-        <div id="p-review-dynamic" class="print-full-review">運動測定完了後、学術基準レビューがここに印刷されます。</div>
     </div>
 </div>
 
@@ -197,23 +176,84 @@
     let swayHistoryMN = [];
     
     let dragTarget = null;
+    
+    // 🚀 レーダーのフローティング管理用変数
+    let activeRadarDrag = null;
+    let isRadarMovedManually = [false, false]; // ユーザーが手動で動かしたかのフラグ
+    let longPressTimers = [null, null];
+
     window.latestFaceData = null; 
     window.currentJawData = null;
     window.currentAnchorPos = null;
-    window.customOriginMarkers = { front: null, back: null };
+    window.customOriginMarkers = {};
     window.anchorStatus = "unlocked";
 
-    const directionsList = ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_single_r', 'dyn_single_l', 'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'];
-    const DURATION_MAP = { 'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 'dyn_overhead': 15000, 'dyn_single_r': 15000, 'dyn_single_l': 15000, 'dyn_flex_fwd': 10000, 'dyn_flex_bwd': 10000, 'dyn_shoulder_r': 10000, 'dyn_shoulder_l': 10000 };
+    const directionsList = ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_overhead_side', 'dyn_single_r', 'dyn_single_l', 'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'];
+    const DURATION_MAP = { 'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 'dyn_overhead': 15000, 'dyn_overhead_side': 15000, 'dyn_single_r': 15000, 'dyn_single_l': 15000, 'dyn_flex_fwd': 10000, 'dyn_flex_bwd': 10000, 'dyn_shoulder_r': 10000, 'dyn_shoulder_l': 10000 };
 
     window.reportDataStore = {}; window.savedMetrics = {};
-    directionsList.forEach(dir => { window.reportDataStore[dir] = [null, null]; window.savedMetrics[dir] = ""; });
+    directionsList.forEach(dir => { window.reportDataStore[dir] = [null, null]; window.savedMetrics[dir] = ""; window.customOriginMarkers[dir] = null; });
     window.savedReviews = { staticCombined: "未測定", dynamicCombined: "" };
 
     document.addEventListener('DOMContentLoaded', () => {
         const d = new Date(); const dStr = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
         document.querySelectorAll('.printDate').forEach(el => el.innerText = dStr);
     });
+
+    // 🚀 レーダーのドラッグ＆ドロップ（フローティングUI）処理
+    wrappers.forEach((wrapper, index) => {
+        wrapper.addEventListener('pointerdown', (e) => {
+            e.stopPropagation(); // キャンバス奥へのイベント貫通を防止
+            // 0.3秒長押しでドラッグモード起動
+            longPressTimers[index] = setTimeout(() => {
+                const rect = wrapper.getBoundingClientRect();
+                activeRadarDrag = {
+                    element: wrapper,
+                    index: index,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    startLeft: rect.left,
+                    startTop: rect.top
+                };
+                wrapper.classList.add('dragging');
+                // Absolute配置をLeft/Topベースに切り替え（手動モード）
+                wrapper.style.right = 'auto';
+                wrapper.style.bottom = 'auto';
+                wrapper.style.left = `${rect.left}px`;
+                wrapper.style.top = `${rect.top}px`;
+            }, 300);
+        });
+
+        wrapper.addEventListener('pointermove', (e) => {
+            // 長押し前に指が動いたらキャンセル
+            if (!activeRadarDrag && longPressTimers[index]) {
+                clearTimeout(longPressTimers[index]);
+            }
+        });
+
+        wrapper.addEventListener('pointerup', (e) => {
+            if(longPressTimers[index]) clearTimeout(longPressTimers[index]);
+        });
+    });
+
+    window.addEventListener('pointermove', (e) => {
+        if (activeRadarDrag) {
+            e.preventDefault(); // 画面スクロール防止
+            const dx = e.clientX - activeRadarDrag.startX;
+            const dy = e.clientY - activeRadarDrag.startY;
+            activeRadarDrag.element.style.left = `${activeRadarDrag.startLeft + dx}px`;
+            activeRadarDrag.element.style.top = `${activeRadarDrag.startTop + dy}px`;
+            isRadarMovedManually[activeRadarDrag.index] = true; // 手動移動フラグON
+        }
+    }, { passive: false });
+
+    window.addEventListener('pointerup', () => {
+        if (activeRadarDrag) {
+            activeRadarDrag.element.classList.remove('dragging');
+            activeRadarDrag = null;
+        }
+    });
+
 
     function switchReportTab(tabName) {
         if (isRecording) return; 
@@ -233,10 +273,29 @@
         ctx.beginPath(); ctx.moveTo(60, 5); ctx.lineTo(60, 115); ctx.moveTo(5, 60); ctx.lineTo(115, 60); ctx.stroke(); 
     }
 
+    function getAngle(A, B, C) {
+        let AB = Math.hypot(B.x - A.x, B.y - A.y);
+        let BC = Math.hypot(B.x - C.x, B.y - C.y);
+        let AC = Math.hypot(C.x - A.x, C.y - A.y);
+        return Math.acos((AB*AB + BC*BC - AC*AC) / (2 * AB * BC)) * 180 / Math.PI;
+    }
+
+    function drawAngleArc(ctx, center, p1, p2, angleVal, color) {
+        ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.beginPath();
+        let a1 = Math.atan2(p1.y - center.y, p1.x - center.x);
+        let a2 = Math.atan2(p2.y - center.y, p2.x - center.x);
+        let start = Math.min(a1, a2); let end = Math.max(a1, a2);
+        if (end - start > Math.PI) { start = Math.max(a1, a2); end = Math.min(a1, a2) + 2*Math.PI; }
+        ctx.arc(center.x, center.y, 35, start, end);
+        ctx.stroke();
+        ctx.fillStyle = color; ctx.font = "bold 16px sans-serif";
+        ctx.fillText(`${Math.round(angleVal)}°`, center.x + 40, center.y + 10);
+        ctx.restore();
+    }
+
     function generateIdealKeypoints(actualKps, mode) {
         if (!actualKps) return null;
         let ideal = JSON.parse(JSON.stringify(actualKps)); 
-
         const getK = (name) => ideal.find(k => k.name === name);
         const setY = (names, y) => names.forEach(n => { let k = getK(n); if (k) k.y = y; });
         const setX = (names, x) => names.forEach(n => { let k = getK(n); if (k) k.x = x; });
@@ -244,25 +303,14 @@
         if (mode === 'dyn_overhead') {
             let lA = getK('left_ankle'), rA = getK('right_ankle');
             let lK = getK('left_knee'), rK = getK('right_knee');
-            let lS = getK('left_shoulder'), rS = getK('right_shoulder');
-            let lW = getK('left_wrist'), rW = getK('right_wrist');
-            
             if (lA && lK) lK.x = lA.x;
             if (rA && rK) rK.x = rA.x;
-            if (lW && lS && lW.y > lS.y) lW.y = lS.y - 50;
-            if (rW && rS && rW.y > rS.y) rW.y = rS.y - 50;
         }
-        else if (mode.startsWith('dyn_single')) {
-            let lH = getK('left_hip'), rH = getK('right_hip');
-            if (lH && rH) { let midY = (lH.y + rH.y) / 2; setY(['left_hip', 'right_hip'], midY); }
+        else if (mode === 'dyn_overhead_side') {
             let lS = getK('left_shoulder'), rS = getK('right_shoulder');
-            if (lS && rS) { let midY = (lS.y + rS.y) / 2; setY(['left_shoulder', 'right_shoulder'], midY); }
-        }
-        else if (mode.startsWith('dyn_flex')) {
-             let lH = getK('left_hip'), lK = getK('left_knee'), lA = getK('left_ankle');
-             let rH = getK('right_hip'), rK = getK('right_knee'), rA = getK('right_ankle');
-             if(lA && lK && lH) lK.x = (lA.x + lH.x)/2; 
-             if(rA && rK && rH) rK.x = (rA.x + rH.x)/2;
+            let lW = getK('left_wrist'), rW = getK('right_wrist');
+            if (lW && lS && lW.y > lS.y) lW.y = lS.y - 40;
+            if (rW && rS && rW.y > rS.y) rW.y = rS.y - 40;
         }
         return ideal;
     }
@@ -270,61 +318,87 @@
     function runReviewLogic(ctx, getK, isMP, canvas) {
         ctx.fillStyle = "#deff9a"; ctx.font = "bold 20px sans-serif";
         const nose = getK('nose');
+        let originX, originY;
 
-        if (currentTab === "front" || currentTab === "back") {
-            ctx.fillText(currentTab === "front" ? "🧍 前面アライメント" : "🧍 後面アライメント", 30, 45);
-            let originX, originY;
-
-            // 🚀 V28: カスタムマーカーがある場合はそれを優先、ない場合は【全6点バウンディングボックス法】で真のセンターを計算
+        if (currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) {
             if (window.customOriginMarkers[currentTab] && isMP) { 
-                originX = window.customOriginMarkers[currentTab].x; 
-                originY = window.customOriginMarkers[currentTab].y;
+                originX = window.customOriginMarkers[currentTab].x; originY = window.customOriginMarkers[currentTab].y;
             } else {
-                let footPtsX = [];
-                let footPtsY = [];
-                // 足首、かかと、つま先の左右6点をすべて抽出
+                let footPtsX = []; let footPtsY = [];
                 ['left_ankle', 'right_ankle', 'left_heel', 'right_heel', 'left_foot_index', 'right_foot_index'].forEach(name => {
-                    let p = getK(name);
-                    if (p && p.score > 0.1) { footPtsX.push(p.x); footPtsY.push(p.y); }
+                    let p = getK(name); if (p && p.score > 0.1) { footPtsX.push(p.x); footPtsY.push(p.y); }
                 });
+                if (footPtsX.length >= 2) { originX = (Math.min(...footPtsX) + Math.max(...footPtsX)) / 2; originY = Math.max(...footPtsY); }
+            }
+        }
+
+        if (originX !== undefined && originY !== undefined && isMP) {
+            window.currentAnchorPos = { x: originX, y: originY };
+            let anchorColor = window.anchorStatus === "dragging" ? "rgba(255, 165, 0, 0.8)" : (window.anchorStatus === "locked" ? "rgba(0, 191, 255, 0.8)" : "rgba(57, 255, 20, 0.8)");
+            let strokeColor = window.anchorStatus === "dragging" ? "#ffa500" : (window.anchorStatus === "locked" ? "#00bfff" : "#39ff14");
+
+            ctx.save(); ctx.fillStyle = anchorColor; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(originX, originY, 18, 0, 2*Math.PI); ctx.fill(); ctx.stroke(); 
+            ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(originX, originY, 5, 0, 2*Math.PI); ctx.fill();
+            ctx.strokeStyle = strokeColor; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+            ctx.beginPath(); ctx.moveTo(originX, originY); ctx.lineTo(originX, 0); ctx.stroke(); ctx.restore();
+            
+            let corridorWidth = 60; 
+            let sway = nose ? (nose.x - originX) : 0;
+            let corridorColor = Math.abs(sway) > corridorWidth/2 ? "rgba(255, 0, 0, 0.15)" : "rgba(0, 255, 0, 0.1)";
+            
+            ctx.save();
+            ctx.fillStyle = corridorColor;
+            ctx.fillRect(originX - corridorWidth/2, 0, corridorWidth, originY);
+            if (Math.abs(sway) > corridorWidth/2) {
+                ctx.fillStyle = "#ff5252"; ctx.font = "bold 16px sans-serif";
+                ctx.fillText(`⚠️ 体幹スウェイ: ${sway > 0 ? "左" : "右"}へ ${Math.abs(sway).toFixed(1)}px`, originX + 40, originY - 100);
+            }
+            ctx.restore();
+        }
+
+        if (currentTab === "dyn_overhead") {
+            ctx.fillText("🏋️ OHS [前面]", 30, 45);
+            const rK = getK('right_knee'), lK = getK('left_knee');
+            const rH = getK('right_hip'), lH = getK('left_hip');
+            const rA = getK('right_ankle'), lA = getK('left_ankle');
+
+            if (rK && lK && rA && lA && rH && lH) {
+                let rAngle = getAngle(rH, rK, rA);
+                let lAngle = getAngle(lH, lK, lA);
+                let rIsValgus = rK.x > rA.x; 
+                let lIsValgus = lK.x < lA.x; 
                 
-                if (footPtsX.length >= 2) {
-                    // 足幅の最大・最小のど真ん中をX軸とする
-                    originX = (Math.min(...footPtsX) + Math.max(...footPtsX)) / 2;
-                    // Y軸は一番下の座標（床面）を基準とする
-                    originY = Math.max(...footPtsY); 
+                drawAngleArc(ctx, rK, rH, rA, rAngle, rIsValgus ? '#ff5252' : '#39ff14');
+                drawAngleArc(ctx, lK, lH, lA, lAngle, lIsValgus ? '#ff5252' : '#39ff14');
+                
+                if(rIsValgus || lIsValgus) { ctx.fillStyle = "#ff5252"; ctx.fillText(`⚠️ ニーイン発生中`, 30, 85); }
+            }
+        }
+        else if (currentTab === "dyn_overhead_side") {
+            ctx.fillText("🏋️ OHS [側面]", 30, 45);
+            let s = getK('left_shoulder') && getK('left_shoulder').score > 0.5 ? getK('left_shoulder') : getK('right_shoulder');
+            let w = getK('left_wrist') && getK('left_wrist').score > 0.5 ? getK('left_wrist') : getK('right_wrist');
+            
+            if (s && w) {
+                ctx.save(); ctx.strokeStyle = "rgba(255, 255, 0, 0.8)"; ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(0, s.y); ctx.lineTo(canvas.width, s.y); ctx.stroke(); ctx.restore();
+
+                let armDropped = w.y > s.y;
+                if (armDropped) {
+                    ctx.fillStyle = "#ff5252"; ctx.fillText(`⚠️ 腕の落下（広背筋/胸椎制限）`, 30, 85);
+                    ctx.save(); ctx.strokeStyle = "orange"; ctx.lineWidth = 6;
+                    ctx.beginPath(); ctx.moveTo(s.x, s.y); 
+                    let e = getK('left_elbow') && getK('left_elbow').score > 0.5 ? getK('left_elbow') : getK('right_elbow');
+                    if(e) { ctx.lineTo(e.x, e.y); ctx.lineTo(w.x, w.y); } else { ctx.lineTo(w.x, w.y); }
+                    ctx.stroke(); ctx.restore();
+                } else {
+                    ctx.fillStyle = "#ffffff"; ctx.fillText(`腕の挙上: 正常`, 30, 85);
                 }
             }
-
-            if (originX !== undefined && originY !== undefined && isMP) {
-                window.currentAnchorPos = { x: originX, y: originY };
-                let anchorColor = window.anchorStatus === "dragging" ? "rgba(255, 165, 0, 0.8)" : (window.anchorStatus === "locked" ? "rgba(0, 191, 255, 0.8)" : "rgba(57, 255, 20, 0.8)");
-                let strokeColor = window.anchorStatus === "dragging" ? "#ffa500" : (window.anchorStatus === "locked" ? "#00bfff" : "#39ff14");
-                let statusText = window.anchorStatus === "dragging" ? "🖐️ 移動中..." : (window.anchorStatus === "locked" ? "🔒 ロック完了！(計測OK)" : "👈 自動検出済 (ズレていればドラッグで修正)");
-
-                ctx.save(); ctx.fillStyle = anchorColor; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.arc(originX, originY, 18, 0, 2*Math.PI); ctx.fill(); ctx.stroke(); 
-                ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(originX, originY, 5, 0, 2*Math.PI); ctx.fill();
-                ctx.strokeStyle = strokeColor; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
-                ctx.beginPath(); ctx.moveTo(originX, originY); ctx.lineTo(originX, 0); ctx.stroke(); ctx.restore();
-                
-                if (!isRecording && !isPausedForEdit && appMode !== 'playback') { 
-                    ctx.fillStyle = strokeColor; ctx.font = "bold 18px sans-serif"; ctx.fillText(statusText, originX + 30, originY + 8); 
-                }
-                
-                if (nose) {
-                    let headSwayX = (nose.x - originX) * 4;
-                    ctx.fillStyle = headSwayX > 0 ? "#ff5252" : "#00ffff"; ctx.fillText(`絶対偏位: ${headSwayX > 0 ? "左" : "右"}へ ${Math.abs(headSwayX).toFixed(1)} mm`, 30, 125);
-                    if (isRecording) { if (isMP) { swayHistoryMP.push({ x: headSwayX, y: 0 }); drawSpecificRadar(ctxRadarMP, swayHistoryMP, "#ff5252"); } else { swayHistoryMN.push({ x: headSwayX, y: 0 }); drawSpecificRadar(ctxRadarMN, swayHistoryMN, "#00ffff"); } }
-                }
-            }
-        } 
-        else if (currentTab === "dyn_overhead") {
-            ctx.fillText("🏋️ オーバーヘッドスクワット", 30, 45);
         }
-        else if (currentTab.startsWith("dyn_single")) {
-            ctx.fillText(currentTab === "dyn_single_r" ? "🦵 片脚バランス [右軸足]" : "🦵 片脚バランス [左軸足]", 30, 45);
-        }
+        else if (currentTab === "front") { ctx.fillText("🧍 前面アライメント", 30, 45); } 
+        else if (currentTab.startsWith("dyn_single")) { ctx.fillText("🦵 片脚バランス", 30, 45); }
     }
 
     function drawSpecificRadar(ctx, history, color) {
@@ -334,120 +408,76 @@
         ctx.stroke(); const lastPt = history[history.length - 1]; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(60 + (lastPt.x * 0.7), 60 + (lastPt.y * 0.7), 3, 0, 2*Math.PI); ctx.fill(); ctx.restore();
     }
 
+    // 🚀 オートレイアウト関数を修正（手動移動したレーダーは無視する）
     function adjustAllRadarPositions() {
         for (let i = 0; i < 2; i++) {
+            if (isRadarMovedManually[i]) continue; // 手動で動かした場合はオートリサイズをキャンセル
+            
             const canvas = canvases[i]; const wrapper = wrappers[i]; if (!canvas || !video.videoWidth) continue;
             const rect = canvas.getBoundingClientRect(); const videoRatio = video.videoWidth / video.videoHeight; const containerRatio = rect.width / rect.height;
             let actualHeight, offsetX, offsetY;
             if (containerRatio > videoRatio) { actualHeight = rect.height; offsetX = (rect.width - rect.height * videoRatio) / 2; offsetY = 0; } 
             else { actualHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - actualHeight) / 2; }
             wrapper.style.right = `${offsetX + 15}px`; wrapper.style.bottom = `${offsetY + 15}px`;
+            wrapper.style.left = 'auto'; wrapper.style.top = 'auto'; // デフォルト配置に戻す
         }
     }
 
     function enterPlaybackMode() {
-        appMode = 'playback';
-        mainControls.style.display = 'none';
-        playbackControls.style.display = 'flex';
-        
+        appMode = 'playback'; mainControls.style.display = 'none'; playbackControls.style.display = 'flex';
         playbackDataMP = poseDataLog.filter(d => d.model === 'MediaPipe' && d.mode === currentTab);
         playbackDataMN = poseDataLog.filter(d => d.model === 'MoveNet' && d.mode === currentTab);
         
-        if (playbackDataMP.length > 1) {
-            playbackBaseTime = playbackDataMP[0].time;
-            playbackTotalDuration = playbackDataMP[playbackDataMP.length - 1].time - playbackBaseTime;
-        } else {
-            playbackBaseTime = 0;
-            playbackTotalDuration = 0;
-        }
-
+        if (playbackDataMP.length > 1) { playbackBaseTime = playbackDataMP[0].time; playbackTotalDuration = playbackDataMP[playbackDataMP.length - 1].time - playbackBaseTime; } 
+        else { playbackBaseTime = 0; playbackTotalDuration = 0; }
         const maxFrames = Math.max(playbackDataMP.length, playbackDataMN.length) - 1;
-        timelineSlider.max = maxFrames > 0 ? maxFrames : 0;
-        timelineSlider.value = 0;
-        frameCounter.innerText = `0 / ${timelineSlider.max}`;
-        
-        renderPlaybackFrame(0);
-        togglePlay(true);
+        timelineSlider.max = maxFrames > 0 ? maxFrames : 0; timelineSlider.value = 0; frameCounter.innerText = `0 / ${timelineSlider.max}`;
+        renderPlaybackFrame(0); togglePlay(true);
     }
 
     function exitPlaybackMode() {
-        appMode = 'camera';
-        togglePlay(false);
-        playbackControls.style.display = 'none';
-        mainControls.style.display = 'flex';
-        isPausedForEdit = false;
+        appMode = 'camera'; togglePlay(false); playbackControls.style.display = 'none'; mainControls.style.display = 'flex'; isPausedForEdit = false;
     }
 
     function togglePlay(forcePlay) {
         if (forcePlay === true || !isPlaying) {
-            isPlaying = true;
-            playPauseBtn.innerText = "⏸ 停止";
-            
+            isPlaying = true; playPauseBtn.innerText = "⏸ 停止";
             if (playbackDataMP.length > 1) {
-                let currentIdx = parseInt(timelineSlider.value);
-                if(currentIdx >= playbackDataMP.length) currentIdx = 0;
-                let currentElapsed = playbackDataMP[currentIdx].time - playbackBaseTime;
-                playbackStartTime = Date.now() - currentElapsed;
-            } else {
-                playbackStartTime = Date.now();
-            }
+                let currentIdx = parseInt(timelineSlider.value); if(currentIdx >= playbackDataMP.length) currentIdx = 0;
+                let currentElapsed = playbackDataMP[currentIdx].time - playbackBaseTime; playbackStartTime = Date.now() - currentElapsed;
+            } else { playbackStartTime = Date.now(); }
             playbackLoop();
         } else {
-            isPlaying = false;
-            playPauseBtn.innerText = "▶ 再生";
-            cancelAnimationFrame(playbackRafId);
+            isPlaying = false; playPauseBtn.innerText = "▶ 再生"; cancelAnimationFrame(playbackRafId);
         }
     }
 
     function playbackLoop() {
         if (!isPlaying) return;
-        let now = Date.now();
-        let elapsed = now - playbackStartTime;
-
-        if (elapsed > playbackTotalDuration) {
-            playbackStartTime = now;
-            elapsed = 0;
-        }
-
-        let targetTime = playbackBaseTime + elapsed;
-        let targetIdx = playbackDataMP.length - 1;
-        for (let i = 0; i < playbackDataMP.length; i++) {
-            if (playbackDataMP[i].time >= targetTime) {
-                targetIdx = i;
-                break;
-            }
-        }
-
-        timelineSlider.value = targetIdx;
-        renderPlaybackFrame(targetIdx);
-
+        let now = Date.now(); let elapsed = now - playbackStartTime;
+        if (elapsed > playbackTotalDuration) { playbackStartTime = now; elapsed = 0; }
+        let targetTime = playbackBaseTime + elapsed; let targetIdx = playbackDataMP.length - 1;
+        for (let i = 0; i < playbackDataMP.length; i++) { if (playbackDataMP[i].time >= targetTime) { targetIdx = i; break; } }
+        timelineSlider.value = targetIdx; renderPlaybackFrame(targetIdx);
         playbackRafId = requestAnimationFrame(playbackLoop);
     }
 
-    playPauseBtn.onclick = () => togglePlay();
-    backToCamBtn.onclick = () => exitPlaybackMode();
+    playPauseBtn.onclick = () => togglePlay(); backToCamBtn.onclick = () => exitPlaybackMode();
     timelineSlider.oninput = () => { togglePlay(false); renderPlaybackFrame(parseInt(timelineSlider.value)); };
 
     function renderPlaybackFrame(frameIdx) {
         frameCounter.innerText = `${frameIdx} / ${timelineSlider.max}`;
         const w = video.videoWidth || canvasComb.width/2, h = video.videoHeight || canvasComb.height;
-
         for (let i = 0; i < 2; i++) {
             const ctx = ctxs[i]; const canvas = canvases[i];
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height); 
+            ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height); 
             drawCenterGrid(ctx, canvas);
-
             const dataArray = i === 0 ? playbackDataMP : playbackDataMN;
             if (dataArray[frameIdx]) {
                 const actualKps = dataArray[frameIdx].keypoints;
-                
                 const idealKps = generateIdealKeypoints(actualKps, currentTab);
-                if (idealKps) {
-                    drawSkeleton(ctx, idealKps, 'rgba(0, 191, 255, 0.6)'); 
-                }
-
-                drawSkeleton(ctx, actualKps, i === 0 ? '#ff5252' : '#00ffff');
+                if (idealKps) drawSkeleton(ctx, idealKps, 'rgba(0, 191, 255, 0.4)'); 
+                drawSkeleton(ctx, actualKps, i === 0 ? '#ffffff' : '#00ffff'); 
                 runReviewLogic(ctx, (n) => actualKps.find(k => k.name === n), i === 0, canvas);
             }
             ctxComb.drawImage(canvas, i * w, 0);
@@ -479,54 +509,37 @@
     function executePostProcessingStop() {
         isRecording = false; timerDisplay.style.display = "none"; 
         if (recorder && recorder.state !== "inactive") recorder.stop(); 
-
-        if (currentTab.startsWith("dyn_")) {
-            enterPlaybackMode();
-        } else {
+        if (currentTab.startsWith("dyn_")) { enterPlaybackMode(); } 
+        else {
             isPausedForEdit = true;
             for (let mIdx = 0; mIdx < 2; mIdx++) {
                 if (coordinateBuffer[mIdx] && coordinateBuffer[mIdx].length > 0) {
-                    const totalFrames = coordinateBuffer[mIdx].length;
-                    let avgKeypoints = JSON.parse(JSON.stringify(coordinateBuffer[mIdx][0]));
-                    avgKeypoints.forEach((kp, kpIdx) => {
-                        let sumX = 0, sumY = 0;
-                        for (let f = 0; f < totalFrames; f++) { if(coordinateBuffer[mIdx][f][kpIdx]) { sumX += coordinateBuffer[mIdx][f][kpIdx].x; sumY += coordinateBuffer[mIdx][f][kpIdx].y; } }
-                        kp.x = sumX / totalFrames; kp.y = sumY / totalFrames; kp.score = 1.00;
-                    });
+                    const totalFrames = coordinateBuffer[mIdx].length; let avgKeypoints = JSON.parse(JSON.stringify(coordinateBuffer[mIdx][0]));
+                    avgKeypoints.forEach((kp, kpIdx) => { let sumX = 0, sumY = 0; for (let f = 0; f < totalFrames; f++) { if(coordinateBuffer[mIdx][f][kpIdx]) { sumX += coordinateBuffer[mIdx][f][kpIdx].x; sumY += coordinateBuffer[mIdx][f][kpIdx].y; } } kp.x = sumX / totalFrames; kp.y = sumY / totalFrames; kp.score = 1.00; });
                     window.reportDataStore[currentTab][mIdx] = avgKeypoints;
                 }
             }
             const activeCanvas = canvases[0]; const imgElement = document.getElementById(`p-img-${currentTab}`);
             if(imgElement) imgElement.src = activeCanvas.toDataURL("image/png");
-            recBtn.innerText = `⏱️ 録画・計測スタート (${DURATION_MAP[currentTab]/1000}秒)`;
-            recBtn.disabled = false; downloadCsvBtn.disabled = false;
-            refreshReportView(); 
+            recBtn.innerText = `⏱️ 録画・計測スタート (${DURATION_MAP[currentTab]/1000}秒)`; recBtn.disabled = false; downloadCsvBtn.disabled = false; refreshReportView(); 
         }
     }
 
     function getEventPos(canvas, e) {
-        const rect = canvas.getBoundingClientRect();
-        let clientX, clientY;
-        if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; } 
-        else if (e.changedTouches && e.changedTouches.length > 0) { clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY; } 
-        else { clientX = e.clientX; clientY = e.clientY; }
+        const rect = canvas.getBoundingClientRect(); let clientX, clientY;
+        if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; } else if (e.changedTouches && e.changedTouches.length > 0) { clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY; } else { clientX = e.clientX; clientY = e.clientY; }
         if (clientX === undefined) return null;
-        const videoRatio = canvas.width / canvas.height; const containerRatio = rect.width / rect.height;
-        let renderWidth, renderHeight, offsetX, offsetY;
-        if (containerRatio > videoRatio) { renderHeight = rect.height; renderWidth = rect.height * videoRatio; offsetX = (rect.width - renderWidth) / 2; offsetY = 0; } 
-        else { renderWidth = rect.width; renderHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - renderHeight) / 2; }
+        const videoRatio = canvas.width / canvas.height; const containerRatio = rect.width / rect.height; let renderWidth, renderHeight, offsetX, offsetY;
+        if (containerRatio > videoRatio) { renderHeight = rect.height; renderWidth = rect.height * videoRatio; offsetX = (rect.width - renderWidth) / 2; offsetY = 0; } else { renderWidth = rect.width; renderHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - renderHeight) / 2; }
         const xOnImage = clientX - rect.left - offsetX; const yOnImage = clientY - rect.top - offsetY;
-        const scaleX = canvas.width / renderWidth; const scaleY = canvas.height / renderHeight;
-        return { x: xOnImage * scaleX, y: yOnImage * scaleY, renderScale: scaleX };
+        const scaleX = canvas.width / renderWidth; const scaleY = canvas.height / renderHeight; return { x: xOnImage * scaleX, y: yOnImage * scaleY, renderScale: scaleX };
     }
 
     canvases.forEach((canvas, modelIdx) => {
         const handleStart = (e) => {
-            if(e.cancelable) e.preventDefault(); 
-            const pos = getEventPos(canvas, e);
-            if (!pos || pos.x < 0 || pos.y < 0 || pos.x > canvas.width || pos.y > canvas.height) return;
+            if(e.cancelable) e.preventDefault(); const pos = getEventPos(canvas, e); if (!pos || pos.x < 0 || pos.y < 0 || pos.x > canvas.width || pos.y > canvas.height) return;
             const hitRadius = 80 * pos.renderScale; 
-            if (modelIdx === 0 && (currentTab === "front" || currentTab === "back") && window.currentAnchorPos && !isRecording && appMode !== 'playback') {
+            if (modelIdx === 0 && (currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) && window.currentAnchorPos && !isRecording && appMode !== 'playback') {
                 const distToAnchor = Math.hypot(window.currentAnchorPos.x - pos.x, window.currentAnchorPos.y - pos.y);
                 if (distToAnchor < hitRadius * 1.5) { dragTarget = { type: 'anchor' }; window.anchorStatus = "dragging"; return; }
             }
@@ -536,23 +549,12 @@
             if (closestIdx !== -1) { dragTarget = { type: 'joint', modelIdx, keypointIndex: closestIdx }; canvas.style.cursor = 'grabbing'; }
         };
         const handleMove = (e) => {
-            if (!dragTarget) return;
-            if(e.cancelable) e.preventDefault();
-            const pos = getEventPos(canvas, e);
-            if (!pos) return;
+            if (!dragTarget) return; if(e.cancelable) e.preventDefault(); const pos = getEventPos(canvas, e); if (!pos) return;
             const safeX = Math.max(0, Math.min(pos.x, canvas.width)); const safeY = Math.max(0, Math.min(pos.y, canvas.height));
             if (dragTarget.type === 'anchor') { window.customOriginMarkers[currentTab] = { x: safeX, y: safeY }; window.currentAnchorPos = { x: safeX, y: safeY }; if (isPausedForEdit) refreshReportView(); 
-            } else if (dragTarget.type === 'joint' && dragTarget.modelIdx === modelIdx && isPausedForEdit) {
-                const kp = window.reportDataStore[currentTab][modelIdx][dragTarget.keypointIndex]; if (kp) { kp.x = safeX; kp.y = safeY; } refreshReportView();
-            }
+            } else if (dragTarget.type === 'joint' && dragTarget.modelIdx === modelIdx && isPausedForEdit) { const kp = window.reportDataStore[currentTab][modelIdx][dragTarget.keypointIndex]; if (kp) { kp.x = safeX; kp.y = safeY; } refreshReportView(); }
         };
-        const handleEnd = () => { 
-            if (dragTarget) { 
-                if (dragTarget.type === 'anchor') window.anchorStatus = "locked"; 
-                dragTarget = null; canvas.style.cursor = 'default'; 
-                if(isPausedForEdit) { const activeCanvas = canvases[0]; const imgElement = document.getElementById(`p-img-${currentTab}`); if(imgElement) imgElement.src = activeCanvas.toDataURL("image/png"); } 
-            } 
-        };
+        const handleEnd = () => { if (dragTarget) { if (dragTarget.type === 'anchor') window.anchorStatus = "locked"; dragTarget = null; canvas.style.cursor = 'default'; if(isPausedForEdit) { const activeCanvas = canvases[0]; const imgElement = document.getElementById(`p-img-${currentTab}`); if(imgElement) imgElement.src = activeCanvas.toDataURL("image/png"); } } };
         canvas.addEventListener('pointerdown', handleStart); canvas.addEventListener('pointermove', handleMove);
         canvas.addEventListener('pointerup', handleEnd); canvas.addEventListener('pointercancel', handleEnd);
     });
@@ -608,31 +610,20 @@
 
     async function render() {
         if (!isRunning) return;
-        if (appMode === 'playback' || isPausedForEdit) {
-            requestAnimationFrame(render); return; 
-        }
+        if (appMode === 'playback' || isPausedForEdit) { requestAnimationFrame(render); return; }
 
         const w = video.videoWidth, h = video.videoHeight;
         for (let i = 0; i < 2; i++) {
             const ctx = ctxs[i]; const canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); drawCenterGrid(ctx, canvas);
-            
             if (i === 0 && currentTab === "front") {
-                try {
-                    const faces = await detectors[2].estimateFaces(video);
-                    if (faces.length > 0) { window.latestFaceData = faces[0].keypoints; window.currentJawData = drawFaceAndCalculateJawShift(ctx, window.latestFaceData);
-                    } else { window.latestFaceData = null; window.currentJawData = null; }
-                } catch(e) { console.warn("Face error"); }
+                try { const faces = await detectors[2].estimateFaces(video); if (faces.length > 0) { window.latestFaceData = faces[0].keypoints; window.currentJawData = drawFaceAndCalculateJawShift(ctx, window.latestFaceData); } else { window.latestFaceData = null; window.currentJawData = null; } } catch(e) { console.warn("Face error"); }
             }
-
             const poses = await detectors[i].estimatePoses(video);
             if (poses.length > 0) {
                 const kps = poses[0].keypoints; window.reportDataStore[currentTab][i] = kps;
-                if (isRecording) { 
-                    if (!coordinateBuffer[i]) coordinateBuffer[i] = []; coordinateBuffer[i].push(kps); 
-                    poseDataLog.push({ time: Date.now(), model: i===0?"MediaPipe":"MoveNet", mode: currentTab, keypoints: JSON.parse(JSON.stringify(kps)) });
-                }
-                drawSkeleton(ctx, kps, i === 0 ? '#ff5252' : '#00ffff');
-                runReviewLogic(ctx, (n) => kps.find(k => k.name === n), i === 0, canvas);
+                if (isRecording) { if (!coordinateBuffer[i]) coordinateBuffer[i] = []; coordinateBuffer[i].push(kps); poseDataLog.push({ time: Date.now(), model: i===0?"MediaPipe":"MoveNet", mode: currentTab, keypoints: JSON.parse(JSON.stringify(kps)) }); }
+                drawSkeleton(ctx, kps, appMode === 'playback' || currentTab.startsWith('dyn_') ? '#ffffff' : (i === 0 ? '#ff5252' : '#00ffff'));
+                runReviewLogic(ctx, (n) => actualKps.find(k => k.name === n), i === 0, canvas); // Fixed scope issue from previous version
             }
             ctxComb.drawImage(canvas, i * w, 0);
         }
