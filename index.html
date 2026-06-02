@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V37 (Thick Center Line 5px)</title>
+    <title>CONNECT AI - Master Evaluation Engine V38 (iOS Camera Fix)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -148,7 +148,7 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V37</div></div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V38</div></div>
         <div class="print-section-title">■ 静止姿勢・動的評価 総評</div>
         <div id="p-review-static" class="print-full-review">測定完了後、自動出力されます。</div>
     </div>
@@ -428,10 +428,7 @@
         frameCounter.innerText = `${frameIdx} / ${timelineSlider.max}`; const w = video.videoWidth || canvasComb.width/2, h = video.videoHeight || canvasComb.height;
         for (let i = 0; i < 2; i++) {
             const ctx = ctxs[i], canvas = canvases[i]; ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height); 
-            
-            // 🚀 V37: drawCenterGrid を呼び出し（太さ5pxになりました）
             drawCenterGrid(ctx, canvas);
-            
             const dataArray = i === 0 ? playbackDataMP : playbackDataMN;
             if (dataArray[frameIdx]) {
                 const actualKps = dataArray[frameIdx].keypoints;
@@ -536,17 +533,27 @@
             detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
             detectors[1] = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING });
             detectors[2] = await faceLandmarksDetection.createDetector(faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh' });
-            const devices = await navigator.mediaDevices.enumerateDevices(); videoSource.innerHTML = ''; devices.forEach(d => { if(d.kind==='videoinput') videoSource.appendChild(new Option(d.label||'Camera', d.deviceId)); });
+            
+            // 🚀 V38: iOS（iPhone/iPad）対策。カメラのアクセス許可を先に取得する
+            try { const tempStream = await navigator.mediaDevices.getUserMedia({ video: true }); tempStream.getTracks().forEach(t => t.stop()); } catch(e) { console.warn("初期カメラ許可スキップ"); }
+
+            const devices = await navigator.mediaDevices.enumerateDevices(); videoSource.innerHTML = ''; let camCount = 1;
+            devices.forEach(d => { if(d.kind==='videoinput') { const label = d.label || `カメラ ${camCount++} (前面/背面)`; videoSource.appendChild(new Option(label, d.deviceId)); } });
         } catch (e) { startBtn.innerText = "❌ 起動エラー"; console.error(e); }
     }
 
     startBtn.onclick = async () => {
         if(currentStream) currentStream.getTracks().forEach(t=>t.stop());
         try {
-            currentStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, deviceId: videoSource.value ? { exact: videoSource.value } : undefined } });
+            // 🚀 V38: スマホ向けに柔軟な制約に変更（背面カメラ優先）
+            const constraints = { video: { width: { ideal: 1920 }, height: { ideal: 1080 } } };
+            if (videoSource.value) { constraints.video.deviceId = { exact: videoSource.value }; } 
+            else { constraints.video.facingMode = "environment"; }
+            
+            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
             video.srcObject = currentStream;
             video.onloadeddata = () => { canvases.forEach(c=>{c.width=video.videoWidth;c.height=video.videoHeight;}); canvasComb.width=video.videoWidth*2; canvasComb.height=video.videoHeight; isPausedForEdit = false; isRunning=true; render(); recBtn.disabled=false; };
-        } catch(e){ alert("カメラ起動失敗: フルHD対応をご確認ください。"); }
+        } catch(e){ alert("カメラ起動失敗: ブラウザの設定からカメラへのアクセスを許可してください。"); }
     };
 
     async function render() {
@@ -554,10 +561,7 @@
         const w = video.videoWidth, h = video.videoHeight;
         for (let i = 0; i < 2; i++) {
             const ctx = ctxs[i], canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); 
-            
-            // 🚀 V37: センターラインの描画（太さ5px）
             drawCenterGrid(ctx, canvas);
-            
             const poses = await detectors[i].estimatePoses(video);
             if (poses.length > 0) {
                 const kps = poses[0].keypoints; window.reportDataStore[currentTab][i] = kps;
@@ -569,16 +573,8 @@
         adjustAllRadarPositions(); requestAnimationFrame(render);
     }
 
-    // 🚀 V37: センターラインの太さを5pxに変更
     function drawCenterGrid(ctx, canvas) { 
-        ctx.save(); 
-        ctx.strokeStyle="rgba(255,255,255,0.4)"; // 少し透明度も調整して視認性をアップ
-        ctx.lineWidth=5; // ★太さを5ピクセルに設定
-        ctx.beginPath(); 
-        ctx.moveTo(canvas.width/2,0); 
-        ctx.lineTo(canvas.width/2,canvas.height); 
-        ctx.stroke(); 
-        ctx.restore(); 
+        ctx.save(); ctx.strokeStyle="rgba(255,255,255,0.4)"; ctx.lineWidth=5; ctx.beginPath(); ctx.moveTo(canvas.width/2,0); ctx.lineTo(canvas.width/2,canvas.height); ctx.stroke(); ctx.restore(); 
     }
 
     function drawSkeleton(ctx, kps, color) {
