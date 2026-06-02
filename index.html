@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V33 (Perfect Floating Radar)</title>
+    <title>CONNECT AI - Master Evaluation Engine V34 (Custom Duration)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -22,8 +22,11 @@
         .mode-dropdown optgroup { color: #aaa; font-style: normal; font-weight: bold; background: #222; }
         .mode-dropdown option { color: #fff; }
 
+        /* 🚀 新規追加：時間選択用プルダウン */
+        #durationSelect { background: #1976d2; color: #fff; border: 1px solid #0d47a1; padding: 10px 12px; font-size: 15px; outline: none; }
+        
         #startBtn { background: #1976d2; color: white; }
-        #recBtn { background: #d32f2f; color: white; min-width: 220px; }
+        #recBtn { background: #d32f2f; color: white; min-width: 180px; }
         #downloadCsvBtn { background: #2e7d32; color: white; }
         #printReportBtn { background: #ff9100; color: #000; box-shadow: 0 0 10px rgba(255,145,0,0.3); }
         
@@ -40,7 +43,7 @@
         .label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 12px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; pointer-events: none; }
         .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; border: 2px solid #ff5252; display: none; z-index: 100; box-shadow: 0 0 15px rgba(211,47,47,0.5); pointer-events: none; }
         
-        /* 🚀 レーダーのフローティング用スタイル */
+        /* レーダーのフローティング用スタイル */
         .radar-wrapper { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 120px; z-index: 200; touch-action: none; cursor: grab; transition: transform 0.2s, opacity 0.2s; }
         .radar-wrapper.dragging { cursor: grabbing; transform: scale(1.1); opacity: 0.8; z-index: 999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); border-radius: 50%; transition: none; }
         
@@ -73,23 +76,32 @@
     <button id="startBtn">📷 フルHD起動</button>
     <select id="modeSelect" class="mode-dropdown" onchange="switchReportTab(this.value)">
         <optgroup label="■ 静止姿勢アライメント">
-            <option value="front" selected>🧍 前面 (10秒)</option>
-            <option value="back">🧍 後面 (5秒)</option>
-            <option value="l_side">🧍 左側面 (5秒)</option>
-            <option value="r_side">🧍 右側面 (5秒)</option>
+            <option value="front" selected>🧍 前面</option>
+            <option value="back">🧍 後面</option>
+            <option value="l_side">🧍 左側面</option>
+            <option value="r_side">🧍 右側面</option>
         </optgroup>
         <optgroup label="■ 動的機能評価 (キネマティックチェーン)">
-            <option value="dyn_overhead">🏋️ OHS [前面] (15秒)</option>
-            <option value="dyn_overhead_side">🏋️ OHS [側面] (15秒)</option>
-            <option value="dyn_single_r">🦵 片脚バランス [右軸足] (15秒)</option>
-            <option value="dyn_single_l">🦵 片脚バランス [左軸足] (15秒)</option>
-            <option value="dyn_flex_fwd">🙇 立位体前屈 (10秒)</option>
-            <option value="dyn_flex_bwd">🤸 立位体後屈 (10秒)</option>
-            <option value="dyn_shoulder_r">👐 肩複合可動性 [右手上] (10秒)</option>
-            <option value="dyn_shoulder_l">👐 肩複合可動性 [左手上] (10秒)</option>
+            <option value="dyn_overhead">🏋️ OHS [前面]</option>
+            <option value="dyn_overhead_side">🏋️ OHS [側面]</option>
+            <option value="dyn_single_r">🦵 片脚バランス [右軸足]</option>
+            <option value="dyn_single_l">🦵 片脚バランス [左軸足]</option>
+            <option value="dyn_flex_fwd">🙇 立位体前屈</option>
+            <option value="dyn_flex_bwd">🤸 立位体後屈</option>
+            <option value="dyn_shoulder_r">👐 肩複合可動性 [右手上]</option>
+            <option value="dyn_shoulder_l">👐 肩複合可動性 [左手上]</option>
         </optgroup>
     </select>
-    <button id="recBtn" disabled>⏱️ 録画・計測スタート</button>
+    
+    <select id="durationSelect">
+        <option value="5000">⏱️ 5秒間</option>
+        <option value="10000" selected>⏱️ 10秒間</option>
+        <option value="15000">⏱️ 15秒間</option>
+        <option value="20000">⏱️ 20秒間</option>
+        <option value="30000">⏱️ 30秒間</option>
+    </select>
+    
+    <button id="recBtn" disabled>🔴 録画スタート</button>
     <button id="downloadCsvBtn" disabled>📊 CSV出力</button>
     <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 PDFレポート出力</button>
 </div>
@@ -116,7 +128,7 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V33</div></div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V34</div></div>
         <div class="print-section-title">■ 静止姿勢・動的評価 総評</div>
         <div id="p-review-static" class="print-full-review">測定完了後、自動出力されます。</div>
     </div>
@@ -138,6 +150,7 @@
     
     const startBtn = document.getElementById('startBtn');
     const recBtn = document.getElementById('recBtn');
+    const durationSelect = document.getElementById('durationSelect'); // 🚀 新規追加
     const timerDisplay = document.getElementById('timerDisplay');
     const downloadCsvBtn = document.getElementById('downloadCsvBtn');
     
@@ -177,7 +190,7 @@
     
     let dragTarget = null;
     
-    // 🚀 【V33】完璧なグローバル・ドラッグ監視システム
+    // 【V33】完璧なグローバル・ドラッグ監視システム
     let activeRadarDrag = null;
     let isRadarMovedManually = [false, false]; 
     let longPressTimers = [null, null];
@@ -197,13 +210,12 @@
                 activeRadarDrag = {
                     element: wrapper,
                     index: index,
-                    startX: initialTouch.x, // タッチした瞬間の座標を保持
+                    startX: initialTouch.x, 
                     startY: initialTouch.y,
                     startLeft: rect.left,
                     startTop: rect.top
                 };
 
-                // CSS固定
                 wrapper.style.right = 'auto';
                 wrapper.style.bottom = 'auto';
                 wrapper.style.left = `${rect.left}px`;
@@ -214,7 +226,6 @@
             }, 300);
         });
 
-        // 長押し判定中に指が大きく動いたらキャンセル（スワイプと区別）
         wrapper.addEventListener('pointermove', (e) => {
             if (longPressTimers[index] && initialTouch) {
                 const dist = Math.hypot(e.clientX - initialTouch.x, e.clientY - initialTouch.y);
@@ -235,10 +246,9 @@
         wrapper.addEventListener('pointercancel', cancelPress);
     });
 
-    // 🚀 ドラッグ自体は「画面全体（window）」で監視するため絶対に指を見失わない
     window.addEventListener('pointermove', (e) => {
         if (activeRadarDrag) {
-            e.preventDefault(); // スクロール防止
+            e.preventDefault(); 
             const dx = e.clientX - activeRadarDrag.startX;
             const dy = e.clientY - activeRadarDrag.startY;
             activeRadarDrag.element.style.left = `${activeRadarDrag.startLeft + dx}px`;
@@ -277,7 +287,17 @@
         swayHistoryMP = []; swayHistoryMN = []; window.latestFaceData = null; window.currentJawData = null;
         window.anchorStatus = "unlocked";
         clearRadar(ctxRadarMP, "#ff5252"); clearRadar(ctxRadarMN, "#00ffff"); 
-        recBtn.innerText = `⏱️ 録画・計測スタート (${DURATION_MAP[tabName]/1000}秒)`;
+        
+        // 🚀 タブ切り替え時に、プルダウンを推奨秒数に合わせる
+        if(DURATION_MAP[tabName]) {
+            let recommended = DURATION_MAP[tabName].toString();
+            // プルダウン内に存在すればそれに合わせる
+            let options = Array.from(durationSelect.options).map(opt => opt.value);
+            if(options.includes(recommended)) {
+                durationSelect.value = recommended;
+            }
+        }
+
         exitPlaybackMode();
         refreshReportView();
     }
@@ -503,7 +523,10 @@
         isPausedForEdit = false; isRecording = true; coordinateBuffer = []; swayHistoryMP = []; swayHistoryMN = [];
         if(currentTab.startsWith('dyn_')) { poseDataLog = poseDataLog.filter(d => d.mode !== currentTab); }
 
-        recordingStartTime = Date.now(); recordingDuration = DURATION_MAP[currentTab];
+        // 🚀 V34：プルダウンから選択された秒数を取得
+        recordingDuration = parseInt(durationSelect.value);
+        recordingStartTime = Date.now(); 
+
         timerDisplay.style.display = "block"; recBtn.disabled = true; downloadCsvBtn.disabled = true;
         recordedChunks = [];
         try {
@@ -536,7 +559,10 @@
             }
             const activeCanvas = canvases[0]; const imgElement = document.getElementById(`p-img-${currentTab}`);
             if(imgElement) imgElement.src = activeCanvas.toDataURL("image/png");
-            recBtn.innerText = `⏱️ 録画・計測スタート (${DURATION_MAP[currentTab]/1000}秒)`; recBtn.disabled = false; downloadCsvBtn.disabled = false; refreshReportView(); 
+            
+            // 🚀 V34：固定秒数のテキストを削除
+            recBtn.innerText = `🔴 録画スタート`; 
+            recBtn.disabled = false; downloadCsvBtn.disabled = false; refreshReportView(); 
         }
     }
 
@@ -607,7 +633,8 @@
             const devices = await navigator.mediaDevices.enumerateDevices();
             videoSource.innerHTML = '';
             devices.forEach(d => { if(d.kind==='videoinput'){ const o=document.createElement('option'); o.value=d.deviceId; o.text=d.label||'Camera'; videoSource.appendChild(o); }});
-            recBtn.innerText = `⏱️ 録画・計測スタート (${DURATION_MAP[currentTab]/1000}秒)`;
+            // 初期表示
+            document.getElementById('recBtn').innerText = `🔴 録画スタート`;
         } catch (e) { startBtn.innerText = "❌ 起動エラー"; console.error(e); }
     }
 
