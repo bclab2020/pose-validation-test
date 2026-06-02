@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V30 (Floating Radar UI)</title>
+    <title>CONNECT AI - Master Evaluation Engine V31 (Stable Floating Radar)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -40,9 +40,9 @@
         .label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 12px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; pointer-events: none; }
         .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; border: 2px solid #ff5252; display: none; z-index: 100; box-shadow: 0 0 15px rgba(211,47,47,0.5); pointer-events: none; }
         
-        /* 🚀 レーダーのフローティング用スタイル追加 */
+        /* 🚀 レーダーのフローティング用スタイル */
         .radar-wrapper { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 120px; z-index: 200; touch-action: none; cursor: grab; transition: transform 0.2s, opacity 0.2s; }
-        .radar-wrapper.dragging { cursor: grabbing; transform: scale(1.1); opacity: 0.8; z-index: 999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); border-radius: 50%; }
+        .radar-wrapper.dragging { cursor: grabbing; transform: scale(1.1); opacity: 0.8; z-index: 999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); border-radius: 50%; transition: none; }
         
         .radar-box { width: 120px; height: 120px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 12px rgba(0,255,136,0.4); pointer-events: none; }
         #radarWrapperMP .radar-box { border: 2px solid #ff5252; }
@@ -116,7 +116,7 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V30</div></div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V31</div></div>
         <div class="print-section-title">■ 静止姿勢・動的評価 総評</div>
         <div id="p-review-static" class="print-full-review">測定完了後、自動出力されます。</div>
     </div>
@@ -177,10 +177,81 @@
     
     let dragTarget = null;
     
-    // 🚀 レーダーのフローティング管理用変数
+    // 🚀 【V31・超安定版】レーダーのドラッグ＆ドロップ（フローティングUI）処理
     let activeRadarDrag = null;
-    let isRadarMovedManually = [false, false]; // ユーザーが手動で動かしたかのフラグ
+    let isRadarMovedManually = [false, false]; 
     let longPressTimers = [null, null];
+
+    wrappers.forEach((wrapper, index) => {
+        // 🚀 改善1: ブラウザのスクロールやスワイプ操作をこの要素上では完全に無効化
+        wrapper.style.touchAction = "none"; 
+
+        wrapper.addEventListener('pointerdown', (e) => {
+            e.stopPropagation(); 
+            // 0.3秒長押しでドラッグモード起動
+            longPressTimers[index] = setTimeout(() => {
+                // 🚀 改善2: 拡大アニメーションがかかる「前」に、正確な絶対座標を取得する（ジャンプ防止）
+                const rect = wrapper.getBoundingClientRect();
+                
+                activeRadarDrag = {
+                    element: wrapper,
+                    index: index,
+                    pointerId: e.pointerId, // 指のIDを記録
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    startLeft: rect.left,
+                    startTop: rect.top
+                };
+
+                // CSSの配置を固定
+                wrapper.style.right = 'auto';
+                wrapper.style.bottom = 'auto';
+                wrapper.style.left = `${rect.left}px`;
+                wrapper.style.top = `${rect.top}px`;
+                
+                wrapper.classList.add('dragging');
+                
+                // 🚀 改善3: 指がレーダーから少しはみ出しても、システムがその指を強制追従する（ロスト防止）
+                wrapper.setPointerCapture(e.pointerId);
+                
+                isRadarMovedManually[index] = true;
+            }, 300);
+        });
+
+        // 🚀 window全体ではなく、レーダー自身で移動イベントを管理
+        wrapper.addEventListener('pointermove', (e) => {
+            if (!activeRadarDrag && longPressTimers[index]) {
+                // 長押し判定中に指が少しでも動いたら「通常のタッチ」とみなしてキャンセル
+                clearTimeout(longPressTimers[index]);
+                longPressTimers[index] = null;
+            }
+            
+            if (activeRadarDrag && activeRadarDrag.index === index) {
+                e.preventDefault(); 
+                const dx = e.clientX - activeRadarDrag.startX;
+                const dy = e.clientY - activeRadarDrag.startY;
+                
+                // 座標の更新
+                wrapper.style.left = `${activeRadarDrag.startLeft + dx}px`;
+                wrapper.style.top = `${activeRadarDrag.startTop + dy}px`;
+            }
+        });
+
+        const endDrag = (e) => {
+            if(longPressTimers[index]) {
+                clearTimeout(longPressTimers[index]);
+                longPressTimers[index] = null;
+            }
+            if (activeRadarDrag && activeRadarDrag.index === index) {
+                wrapper.classList.remove('dragging');
+                wrapper.releasePointerCapture(activeRadarDrag.pointerId);
+                activeRadarDrag = null;
+            }
+        };
+
+        wrapper.addEventListener('pointerup', endDrag);
+        wrapper.addEventListener('pointercancel', endDrag);
+    });
 
     window.latestFaceData = null; 
     window.currentJawData = null;
@@ -199,61 +270,6 @@
         const d = new Date(); const dStr = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
         document.querySelectorAll('.printDate').forEach(el => el.innerText = dStr);
     });
-
-    // 🚀 レーダーのドラッグ＆ドロップ（フローティングUI）処理
-    wrappers.forEach((wrapper, index) => {
-        wrapper.addEventListener('pointerdown', (e) => {
-            e.stopPropagation(); // キャンバス奥へのイベント貫通を防止
-            // 0.3秒長押しでドラッグモード起動
-            longPressTimers[index] = setTimeout(() => {
-                const rect = wrapper.getBoundingClientRect();
-                activeRadarDrag = {
-                    element: wrapper,
-                    index: index,
-                    startX: e.clientX,
-                    startY: e.clientY,
-                    startLeft: rect.left,
-                    startTop: rect.top
-                };
-                wrapper.classList.add('dragging');
-                // Absolute配置をLeft/Topベースに切り替え（手動モード）
-                wrapper.style.right = 'auto';
-                wrapper.style.bottom = 'auto';
-                wrapper.style.left = `${rect.left}px`;
-                wrapper.style.top = `${rect.top}px`;
-            }, 300);
-        });
-
-        wrapper.addEventListener('pointermove', (e) => {
-            // 長押し前に指が動いたらキャンセル
-            if (!activeRadarDrag && longPressTimers[index]) {
-                clearTimeout(longPressTimers[index]);
-            }
-        });
-
-        wrapper.addEventListener('pointerup', (e) => {
-            if(longPressTimers[index]) clearTimeout(longPressTimers[index]);
-        });
-    });
-
-    window.addEventListener('pointermove', (e) => {
-        if (activeRadarDrag) {
-            e.preventDefault(); // 画面スクロール防止
-            const dx = e.clientX - activeRadarDrag.startX;
-            const dy = e.clientY - activeRadarDrag.startY;
-            activeRadarDrag.element.style.left = `${activeRadarDrag.startLeft + dx}px`;
-            activeRadarDrag.element.style.top = `${activeRadarDrag.startTop + dy}px`;
-            isRadarMovedManually[activeRadarDrag.index] = true; // 手動移動フラグON
-        }
-    }, { passive: false });
-
-    window.addEventListener('pointerup', () => {
-        if (activeRadarDrag) {
-            activeRadarDrag.element.classList.remove('dragging');
-            activeRadarDrag = null;
-        }
-    });
-
 
     function switchReportTab(tabName) {
         if (isRecording) return; 
@@ -408,10 +424,9 @@
         ctx.stroke(); const lastPt = history[history.length - 1]; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(60 + (lastPt.x * 0.7), 60 + (lastPt.y * 0.7), 3, 0, 2*Math.PI); ctx.fill(); ctx.restore();
     }
 
-    // 🚀 オートレイアウト関数を修正（手動移動したレーダーは無視する）
     function adjustAllRadarPositions() {
         for (let i = 0; i < 2; i++) {
-            if (isRadarMovedManually[i]) continue; // 手動で動かした場合はオートリサイズをキャンセル
+            if (isRadarMovedManually[i]) continue; 
             
             const canvas = canvases[i]; const wrapper = wrappers[i]; if (!canvas || !video.videoWidth) continue;
             const rect = canvas.getBoundingClientRect(); const videoRatio = video.videoWidth / video.videoHeight; const containerRatio = rect.width / rect.height;
@@ -419,7 +434,7 @@
             if (containerRatio > videoRatio) { actualHeight = rect.height; offsetX = (rect.width - rect.height * videoRatio) / 2; offsetY = 0; } 
             else { actualHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - actualHeight) / 2; }
             wrapper.style.right = `${offsetX + 15}px`; wrapper.style.bottom = `${offsetY + 15}px`;
-            wrapper.style.left = 'auto'; wrapper.style.top = 'auto'; // デフォルト配置に戻す
+            wrapper.style.left = 'auto'; wrapper.style.top = 'auto'; 
         }
     }
 
@@ -623,7 +638,7 @@
                 const kps = poses[0].keypoints; window.reportDataStore[currentTab][i] = kps;
                 if (isRecording) { if (!coordinateBuffer[i]) coordinateBuffer[i] = []; coordinateBuffer[i].push(kps); poseDataLog.push({ time: Date.now(), model: i===0?"MediaPipe":"MoveNet", mode: currentTab, keypoints: JSON.parse(JSON.stringify(kps)) }); }
                 drawSkeleton(ctx, kps, appMode === 'playback' || currentTab.startsWith('dyn_') ? '#ffffff' : (i === 0 ? '#ff5252' : '#00ffff'));
-                runReviewLogic(ctx, (n) => actualKps.find(k => k.name === n), i === 0, canvas); // Fixed scope issue from previous version
+                runReviewLogic(ctx, (n) => actualKps.find(k => k.name === n), i === 0, canvas);
             }
             ctxComb.drawImage(canvas, i * w, 0);
         }
