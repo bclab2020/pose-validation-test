@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V35 (D-Pad Precision Edit)</title>
+    <title>CONNECT AI - Master Evaluation Engine V36 (Thick Center Line)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -52,7 +52,7 @@
         #radarWrapperMP .radar-title { color: #ff5252; border: 1px solid #ff5252; }
         #radarWrapperMN .radar-title { color: #00ffff; border: 1px solid #00ffff; }
 
-        /* 🚀 新規追加：D-Pad (十字キー) UI */
+        /* D-Pad (十字キー) UI */
         #dpadPanel {
             position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
             background: rgba(15, 15, 15, 0.95); border: 2px solid #00bfff; border-radius: 16px;
@@ -148,7 +148,7 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V35</div></div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V36</div></div>
         <div class="print-section-title">■ 静止姿勢・動的評価 総評</div>
         <div id="p-review-static" class="print-full-review">測定完了後、自動出力されます。</div>
     </div>
@@ -207,14 +207,12 @@
     let recorder;
     let recordedChunks = [];
     
-    let dragTarget = null; // アンカー移動用
+    let dragTarget = null; 
     
-    // 🚀 V35: D-Pad 選択・編集システム
-    let selectedJoint = null; // { modelIdx, keypointIndex }
+    let selectedJoint = null;
     let dpadStepVal = 1;
     let isEditingPlaybackFrame = false;
 
-    // フローティングレーダー管理
     let activeRadarDrag = null;
     let isRadarMovedManually = [false, false]; 
     let longPressTimers = [null, null];
@@ -262,7 +260,6 @@
 
     document.addEventListener('DOMContentLoaded', () => { document.querySelectorAll('.printDate').forEach(el => el.innerText = `${new Date().getFullYear()}年${new Date().getMonth()+1}月${new Date().getDate()}日`); });
 
-    // 🚀 D-Pad コントロールロジック
     document.getElementById('dpadStep').onclick = (e) => { dpadStepVal = dpadStepVal === 1 ? 5 : 1; e.target.innerText = dpadStepVal + 'px'; };
     const moveJoint = (dx, dy) => {
         if(!selectedJoint) return;
@@ -288,10 +285,9 @@
     const closeDpad = () => { selectedJoint = null; document.getElementById('dpadPanel').style.display = 'none'; if(appMode === 'playback') renderPlaybackFrame(parseInt(timelineSlider.value)); else refreshReportView(); };
     document.getElementById('dpadClose').onclick = closeDpad;
 
-    // 🚀 動的評価のキーフレーム編集トグル
     editFrameBtn.onclick = function() {
         if(!isEditingPlaybackFrame) {
-            togglePlay(false); // 再生停止
+            togglePlay(false); 
             isEditingPlaybackFrame = true;
             this.innerText = "✅ 編集完了 (ロック)";
             this.style.background = "#39ff14";
@@ -328,7 +324,6 @@
         ctx.fillStyle = color; ctx.font = "bold 16px sans-serif"; ctx.fillText(`${Math.round(angleVal)}°`, center.x + 40, center.y + 10); ctx.restore();
     }
 
-    // 🚀 クロスヘア（十字線）描画ロジック
     function drawCrosshair(ctx, kp, canvas) {
         if(!kp) return;
         ctx.save();
@@ -410,7 +405,7 @@
     function exitPlaybackMode() { appMode = 'camera'; togglePlay(false); playbackControls.style.display = 'none'; mainControls.style.display = 'flex'; isPausedForEdit = false; closeDpad(); isEditingPlaybackFrame=false; editFrameBtn.innerText = "✂️ このフレームを微調整"; editFrameBtn.style.background = "#ff9100"; }
 
     function togglePlay(forcePlay) {
-        if(isEditingPlaybackFrame && forcePlay !== false) return; // 編集モード中は再生させない
+        if(isEditingPlaybackFrame && forcePlay !== false) return; 
         if (forcePlay === true || !isPlaying) {
             isPlaying = true; playPauseBtn.innerText = "⏸ 停止";
             if (playbackDataMP.length > 1) { let currentIdx = parseInt(timelineSlider.value); if(currentIdx >= playbackDataMP.length) currentIdx = 0; playbackStartTime = Date.now() - (playbackDataMP[currentIdx].time - playbackBaseTime); } else { playbackStartTime = Date.now(); }
@@ -432,14 +427,16 @@
     function renderPlaybackFrame(frameIdx) {
         frameCounter.innerText = `${frameIdx} / ${timelineSlider.max}`; const w = video.videoWidth || canvasComb.width/2, h = video.videoHeight || canvasComb.height;
         for (let i = 0; i < 2; i++) {
-            const ctx = ctxs[i], canvas = canvases[i]; ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height); drawCenterGrid(ctx, canvas);
+            const ctx = ctxs[i], canvas = canvases[i]; ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = "#111"; ctx.fillRect(0, 0, canvas.width, canvas.height); 
+            
+            // 🚀 V36: drawCenterGrid を呼び出し（太さ2pxになりました）
+            drawCenterGrid(ctx, canvas);
+            
             const dataArray = i === 0 ? playbackDataMP : playbackDataMN;
             if (dataArray[frameIdx]) {
                 const actualKps = dataArray[frameIdx].keypoints;
                 if(!isEditingPlaybackFrame) { let ideal = JSON.parse(JSON.stringify(actualKps)); if (ideal) drawSkeleton(ctx, ideal, 'rgba(0, 191, 255, 0.4)'); }
                 drawSkeleton(ctx, actualKps, i === 0 ? '#ffffff' : '#00ffff'); runReviewLogic(ctx, (n) => actualKps.find(k => k.name === n), i === 0, canvas);
-                
-                // 🚀 十字線の描画
                 if (selectedJoint && selectedJoint.modelIdx === i && isEditingPlaybackFrame) { drawCrosshair(ctx, actualKps[selectedJoint.keypointIndex], canvas); }
             }
             ctxComb.drawImage(canvas, i * w, 0);
@@ -482,18 +479,15 @@
         const scaleX = canvas.width / renderWidth, scaleY = canvas.height / renderHeight; return { x: (clientX - rect.left - offsetX) * scaleX, y: (clientY - rect.top - offsetY) * scaleY, renderScale: scaleX };
     }
 
-    // 🚀 キャンバスタッチ（D-Pad呼び出し ＆ アンカー移動）
     canvases.forEach((canvas, modelIdx) => {
         const handleStart = (e) => {
             if(e.cancelable) e.preventDefault(); const pos = getEventPos(canvas, e); if (!pos || pos.x < 0 || pos.y < 0 || pos.x > canvas.width || pos.y > canvas.height) return;
             const hitRadius = 80 * pos.renderScale; 
             
-            // アンカー移動（従来通りドラッグ）
             if (modelIdx === 0 && (currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) && window.currentAnchorPos && !isRecording && appMode !== 'playback') {
                 if (Math.hypot(window.currentAnchorPos.x - pos.x, window.currentAnchorPos.y - pos.y) < hitRadius * 1.5) { dragTarget = { type: 'anchor' }; window.anchorStatus = "dragging"; closeDpad(); return; }
             }
             
-            // 🚀 関節の選択（D-Pad起動）
             let kpsToSearch = null;
             if (appMode === 'playback' && isEditingPlaybackFrame) { const dArray = modelIdx === 0 ? playbackDataMP : playbackDataMN; const fIdx = parseInt(timelineSlider.value); if (dArray[fIdx]) kpsToSearch = dArray[fIdx].keypoints; }
             else if (isPausedForEdit && appMode !== 'playback') { kpsToSearch = window.reportDataStore[currentTab][modelIdx]; }
@@ -505,7 +499,7 @@
                     selectedJoint = { modelIdx, keypointIndex: closestIdx };
                     document.getElementById('dpadPanel').style.display = 'flex';
                 } else {
-                    closeDpad(); // 何もない場所をタップしたら閉じる
+                    closeDpad();
                 }
                 if (appMode === 'playback') renderPlaybackFrame(parseInt(timelineSlider.value)); else refreshReportView();
             }
@@ -527,7 +521,7 @@
             const ctx = ctxs[i], canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); drawCenterGrid(ctx, canvas);
             if (window.reportDataStore[currentTab][i]) {
                 const kps = window.reportDataStore[currentTab][i]; drawSkeleton(ctx, kps, i === 0 ? '#ff5252' : '#00ffff'); runReviewLogic(ctx, (n) => kps.find(k => k.name === n), i === 0, canvas);
-                if (selectedJoint && selectedJoint.modelIdx === i) drawCrosshair(ctx, kps[selectedJoint.keypointIndex], canvas); // 🚀 十字線
+                if (selectedJoint && selectedJoint.modelIdx === i) drawCrosshair(ctx, kps[selectedJoint.keypointIndex], canvas);
             }
             ctxComb.drawImage(canvas, i * w, 0);
         }
@@ -559,7 +553,11 @@
         if (!isRunning || appMode === 'playback' || isPausedForEdit) { if(isRunning) requestAnimationFrame(render); return; }
         const w = video.videoWidth, h = video.videoHeight;
         for (let i = 0; i < 2; i++) {
-            const ctx = ctxs[i], canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); drawCenterGrid(ctx, canvas);
+            const ctx = ctxs[i], canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); 
+            
+            // 🚀 V36: drawCenterGrid を呼び出し（太さ2pxになりました）
+            drawCenterGrid(ctx, canvas);
+            
             const poses = await detectors[i].estimatePoses(video);
             if (poses.length > 0) {
                 const kps = poses[0].keypoints; window.reportDataStore[currentTab][i] = kps;
@@ -571,7 +569,18 @@
         adjustAllRadarPositions(); requestAnimationFrame(render);
     }
 
-    function drawCenterGrid(ctx, canvas) { ctx.save(); ctx.strokeStyle="rgba(255,255,255,0.2)"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(canvas.width/2,0); ctx.lineTo(canvas.width/2,canvas.height); ctx.stroke(); ctx.restore(); }
+    // 🚀 V36: センターラインの太さを2pxに変更
+    function drawCenterGrid(ctx, canvas) { 
+        ctx.save(); 
+        ctx.strokeStyle="rgba(255,255,255,0.2)"; 
+        ctx.lineWidth=2; // ★ここを1から2に変更
+        ctx.beginPath(); 
+        ctx.moveTo(canvas.width/2,0); 
+        ctx.lineTo(canvas.width/2,canvas.height); 
+        ctx.stroke(); 
+        ctx.restore(); 
+    }
+
     function drawSkeleton(ctx, kps, color) {
         ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 3; const isMP = kps.length > 20; 
         const pairs = isMP ? [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]] : [[5,6],[5,11],[6,12],[11,12],[5,7],[7,9],[6,8],[8,10],[11,13],[13,15],[12,14],[14,16]];
