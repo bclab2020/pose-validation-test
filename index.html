@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V38 (iOS Camera Fix)</title>
+    <title>CONNECT AI - Master Evaluation Engine V39 (Freeze & Memory Fix)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -148,7 +148,7 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V38</div></div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V39</div></div>
         <div class="print-section-title">■ 静止姿勢・動的評価 総評</div>
         <div id="p-review-static" class="print-full-review">測定完了後、自動出力されます。</div>
     </div>
@@ -195,6 +195,7 @@
     let playbackDataMN = [];
     
     let playbackRafId = null;
+    let mainRenderId = null; // 🚀 V39: AI計算ループの管理用変数
     let playbackStartTime = 0;
     let playbackTotalDuration = 0;
     let playbackBaseTime = 0;
@@ -534,7 +535,6 @@
             detectors[1] = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING });
             detectors[2] = await faceLandmarksDetection.createDetector(faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh' });
             
-            // 🚀 V38: iOS（iPhone/iPad）対策。カメラのアクセス許可を先に取得する
             try { const tempStream = await navigator.mediaDevices.getUserMedia({ video: true }); tempStream.getTracks().forEach(t => t.stop()); } catch(e) { console.warn("初期カメラ許可スキップ"); }
 
             const devices = await navigator.mediaDevices.enumerateDevices(); videoSource.innerHTML = ''; let camCount = 1;
@@ -543,21 +543,48 @@
     }
 
     startBtn.onclick = async () => {
-        if(currentStream) currentStream.getTracks().forEach(t=>t.stop());
+        // 🚀 V39: AI計算ループを強制リセットして大渋滞を防ぐ
+        if (mainRenderId) {
+            cancelAnimationFrame(mainRenderId);
+            mainRenderId = null;
+        }
+
+        if(currentStream) {
+            currentStream.getTracks().forEach(t=>t.stop());
+            video.pause(); // 🚀 V39: 古い映像の処理を確実にストップ
+            video.srcObject = null;
+        }
+
         try {
-            // 🚀 V38: スマホ向けに柔軟な制約に変更（背面カメラ優先）
             const constraints = { video: { width: { ideal: 1920 }, height: { ideal: 1080 } } };
             if (videoSource.value) { constraints.video.deviceId = { exact: videoSource.value }; } 
             else { constraints.video.facingMode = "environment"; }
             
             currentStream = await navigator.mediaDevices.getUserMedia(constraints);
             video.srcObject = currentStream;
-            video.onloadeddata = () => { canvases.forEach(c=>{c.width=video.videoWidth;c.height=video.videoHeight;}); canvasComb.width=video.videoWidth*2; canvasComb.height=video.videoHeight; isPausedForEdit = false; isRunning=true; render(); recBtn.disabled=false; };
+            video.onloadeddata = () => { 
+                canvases.forEach(c=>{c.width=video.videoWidth;c.height=video.videoHeight;}); 
+                canvasComb.width=video.videoWidth*2; canvasComb.height=video.videoHeight; 
+                isPausedForEdit = false; isRunning=true; 
+                video.play();
+                render(); // 新しいループをスタート
+                recBtn.disabled=false; 
+            };
         } catch(e){ alert("カメラ起動失敗: ブラウザの設定からカメラへのアクセスを許可してください。"); }
     };
 
     async function render() {
-        if (!isRunning || appMode === 'playback' || isPausedForEdit) { if(isRunning) requestAnimationFrame(render); return; }
+        if (!isRunning || appMode === 'playback' || isPausedForEdit) { 
+            if(isRunning) mainRenderId = requestAnimationFrame(render); 
+            return; 
+        }
+
+        // 🚀 V39: カメラ切り替え中の一瞬の暗転時に計算してフリーズするのを防ぐ
+        if (video.readyState < 2) {
+            mainRenderId = requestAnimationFrame(render);
+            return;
+        }
+
         const w = video.videoWidth, h = video.videoHeight;
         for (let i = 0; i < 2; i++) {
             const ctx = ctxs[i], canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); 
@@ -570,7 +597,10 @@
             }
             ctxComb.drawImage(canvas, i * w, 0);
         }
-        adjustAllRadarPositions(); requestAnimationFrame(render);
+        adjustAllRadarPositions(); 
+        
+        // 🚀 V39: ループIDを記録
+        mainRenderId = requestAnimationFrame(render);
     }
 
     function drawCenterGrid(ctx, canvas) { 
