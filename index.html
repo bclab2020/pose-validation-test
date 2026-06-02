@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V31 (Stable Floating Radar)</title>
+    <title>CONNECT AI - Master Evaluation Engine V32 (Stable Floating Radar & Bug Fix)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -116,7 +116,7 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V31</div></div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V32</div></div>
         <div class="print-section-title">■ 静止姿勢・動的評価 総評</div>
         <div id="p-review-static" class="print-full-review">測定完了後、自動出力されます。</div>
     </div>
@@ -177,51 +177,43 @@
     
     let dragTarget = null;
     
-    // 🚀 【V31・超安定版】レーダーのドラッグ＆ドロップ（フローティングUI）処理
+    // 🚀 【V32】レーダーのドラッグ＆ドロップ（フローティングUI）処理
     let activeRadarDrag = null;
     let isRadarMovedManually = [false, false]; 
     let longPressTimers = [null, null];
 
     wrappers.forEach((wrapper, index) => {
-        // 🚀 改善1: ブラウザのスクロールやスワイプ操作をこの要素上では完全に無効化
         wrapper.style.touchAction = "none"; 
 
         wrapper.addEventListener('pointerdown', (e) => {
             e.stopPropagation(); 
-            // 0.3秒長押しでドラッグモード起動
             longPressTimers[index] = setTimeout(() => {
-                // 🚀 改善2: 拡大アニメーションがかかる「前」に、正確な絶対座標を取得する（ジャンプ防止）
                 const rect = wrapper.getBoundingClientRect();
                 
                 activeRadarDrag = {
                     element: wrapper,
                     index: index,
-                    pointerId: e.pointerId, // 指のIDを記録
+                    pointerId: e.pointerId, 
                     startX: e.clientX,
                     startY: e.clientY,
                     startLeft: rect.left,
                     startTop: rect.top
                 };
 
-                // CSSの配置を固定
                 wrapper.style.right = 'auto';
                 wrapper.style.bottom = 'auto';
                 wrapper.style.left = `${rect.left}px`;
                 wrapper.style.top = `${rect.top}px`;
                 
                 wrapper.classList.add('dragging');
-                
-                // 🚀 改善3: 指がレーダーから少しはみ出しても、システムがその指を強制追従する（ロスト防止）
                 wrapper.setPointerCapture(e.pointerId);
                 
                 isRadarMovedManually[index] = true;
             }, 300);
         });
 
-        // 🚀 window全体ではなく、レーダー自身で移動イベントを管理
         wrapper.addEventListener('pointermove', (e) => {
             if (!activeRadarDrag && longPressTimers[index]) {
-                // 長押し判定中に指が少しでも動いたら「通常のタッチ」とみなしてキャンセル
                 clearTimeout(longPressTimers[index]);
                 longPressTimers[index] = null;
             }
@@ -231,7 +223,6 @@
                 const dx = e.clientX - activeRadarDrag.startX;
                 const dy = e.clientY - activeRadarDrag.startY;
                 
-                // 座標の更新
                 wrapper.style.left = `${activeRadarDrag.startLeft + dx}px`;
                 wrapper.style.top = `${activeRadarDrag.startTop + dy}px`;
             }
@@ -546,7 +537,7 @@
         if (clientX === undefined) return null;
         const videoRatio = canvas.width / canvas.height; const containerRatio = rect.width / rect.height; let renderWidth, renderHeight, offsetX, offsetY;
         if (containerRatio > videoRatio) { renderHeight = rect.height; renderWidth = rect.height * videoRatio; offsetX = (rect.width - renderWidth) / 2; offsetY = 0; } else { renderWidth = rect.width; renderHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - renderHeight) / 2; }
-        const xOnImage = clientX - rect.left - offsetX; const yOnImage = clientY - rect.top - offsetY;
+        const xOnImage = clientX - rect.left - offsetX; const yOnImage = clientY - top - offsetY;
         const scaleX = canvas.width / renderWidth; const scaleY = canvas.height / renderHeight; return { x: xOnImage * scaleX, y: yOnImage * scaleY, renderScale: scaleX };
     }
 
@@ -638,7 +629,8 @@
                 const kps = poses[0].keypoints; window.reportDataStore[currentTab][i] = kps;
                 if (isRecording) { if (!coordinateBuffer[i]) coordinateBuffer[i] = []; coordinateBuffer[i].push(kps); poseDataLog.push({ time: Date.now(), model: i===0?"MediaPipe":"MoveNet", mode: currentTab, keypoints: JSON.parse(JSON.stringify(kps)) }); }
                 drawSkeleton(ctx, kps, appMode === 'playback' || currentTab.startsWith('dyn_') ? '#ffffff' : (i === 0 ? '#ff5252' : '#00ffff'));
-                runReviewLogic(ctx, (n) => actualKps.find(k => k.name === n), i === 0, canvas);
+                // 🚀 V32修正箇所: 変数名を kps に正しく修正しました
+                runReviewLogic(ctx, (n) => kps.find(k => k.name === n), i === 0, canvas);
             }
             ctxComb.drawImage(canvas, i * w, 0);
         }
