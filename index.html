@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V39 (Freeze & Memory Fix)</title>
+    <title>CONNECT AI - Master Evaluation Engine V40 (COP Radar Activated)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -148,7 +148,7 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V39</div></div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V40</div></div>
         <div class="print-section-title">■ 静止姿勢・動的評価 総評</div>
         <div id="p-review-static" class="print-full-review">測定完了後、自動出力されます。</div>
     </div>
@@ -195,7 +195,7 @@
     let playbackDataMN = [];
     
     let playbackRafId = null;
-    let mainRenderId = null; // 🚀 V39: AI計算ループの管理用変数
+    let mainRenderId = null;
     let playbackStartTime = 0;
     let playbackTotalDuration = 0;
     let playbackBaseTime = 0;
@@ -213,6 +213,10 @@
     let selectedJoint = null;
     let dpadStepVal = 1;
     let isEditingPlaybackFrame = false;
+
+    // レーダー履歴管理
+    let swayHistoryMP = [];
+    let swayHistoryMN = [];
 
     let activeRadarDrag = null;
     let isRadarMovedManually = [false, false]; 
@@ -302,16 +306,81 @@
 
     function switchReportTab(tabName) {
         if (isRecording) return; currentTab = tabName; window.latestFaceData = null; window.anchorStatus = "unlocked";
+        swayHistoryMP = []; swayHistoryMN = []; // 履歴リセット
         clearRadar(ctxRadarMP, "#ff5252"); clearRadar(ctxRadarMN, "#00ffff"); 
         closeDpad(); isEditingPlaybackFrame = false; editFrameBtn.innerText = "✂️ このフレームを微調整"; editFrameBtn.style.background = "#ff9100";
         if(DURATION_MAP[tabName]) { let recommended = DURATION_MAP[tabName].toString(); if(Array.from(durationSelect.options).map(opt => opt.value).includes(recommended)) durationSelect.value = recommended; }
         exitPlaybackMode(); refreshReportView();
     }
 
+    // 🚀 V40: スケールを最適化して描画
+    function drawSpecificRadar(ctx, history, color) {
+        clearRadar(ctx, color); if (history.length < 2) return;
+        const scale = 0.4; // レーダー枠内に収める倍率
+        ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
+        history.forEach((pt, idx) => { const rX = 60 + (pt.x * scale); const rY = 60 + (pt.y * scale); if (idx === 0) ctx.moveTo(rX, rY); else ctx.lineTo(rX, rY); });
+        ctx.stroke(); const lastPt = history[history.length - 1]; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(60 + (lastPt.x * scale), 60 + (lastPt.y * scale), 3, 0, 2*Math.PI); ctx.fill(); ctx.restore();
+    }
+
     function clearRadar(ctx, color) {
         if (!ctx) return; ctx.clearRect(0, 0, 120, 120); ctx.strokeStyle = color + "33"; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(60, 60, 25, 0, 2*Math.PI); ctx.stroke(); ctx.beginPath(); ctx.arc(60, 60, 45, 0, 2*Math.PI); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(60, 5); ctx.lineTo(60, 115); ctx.moveTo(5, 60); ctx.lineTo(115, 60); ctx.stroke(); 
+    }
+
+    // 🚀 V40: リアルタイムレーダー更新ロジック
+    function updateRadar(kps, isMP, canvas) {
+        const history = isMP ? swayHistoryMP : swayHistoryMN;
+        const radarCtx = isMP ? ctxRadarMP : ctxRadarMN;
+        const color = isMP ? "#ff5252" : "#00ffff";
+        const nose = kps.find(k => k.name === 'nose');
+        let originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2;
+        let originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
+        
+        if (nose) {
+            let copX = nose.x - originX;
+            let hDist = originY - nose.y;
+            if (history.length === 0 || history.baseHDist === undefined) history.baseHDist = hDist;
+            let copY = history.baseHDist - hDist; // しゃがむとプラスに（下に動く）
+            
+            if (currentTab.includes("side")) {
+                const shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder');
+                if (shoulder) copX = nose.x - shoulder.x; // 側面の時は前傾角度
+            }
+            
+            history.push({ x: copX, y: copY });
+            if (history.length > 150) history.shift();
+            drawSpecificRadar(radarCtx, history, color);
+        }
+    }
+
+    // 🚀 V40: プレイバック再生用のレーダー同期ロジック
+    function drawPlaybackRadar(dataArray, currentFrameIdx, isMP, canvas) {
+        const radarCtx = isMP ? ctxRadarMP : ctxRadarMN;
+        const color = isMP ? "#ff5252" : "#00ffff";
+        clearRadar(radarCtx, color);
+        let history = []; let baseHDist = null;
+        
+        for (let i = 0; i <= currentFrameIdx; i++) {
+            const frameData = dataArray[i]; if (!frameData) continue;
+            const kps = frameData.keypoints; const nose = kps.find(k => k.name === 'nose');
+            let originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2;
+            let originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
+            
+            if (nose) {
+                let copX = nose.x - originX; 
+                let hDist = originY - nose.y;
+                if (baseHDist === null) baseHDist = hDist;
+                let copY = baseHDist - hDist;
+                
+                if (currentTab.includes("side")) {
+                    const shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder');
+                    if (shoulder) copX = nose.x - shoulder.x;
+                }
+                history.push({ x: copX, y: copY });
+            }
+        }
+        if (history.length > 0) drawSpecificRadar(radarCtx, history, color);
     }
 
     function getAngle(A, B, C) { let AB = Math.hypot(B.x - A.x, B.y - A.y), BC = Math.hypot(B.x - C.x, B.y - C.y), AC = Math.hypot(C.x - A.x, C.y - A.y); return Math.acos((AB*AB + BC*BC - AC*AC) / (2 * AB * BC)) * 180 / Math.PI; }
@@ -436,6 +505,9 @@
                 if(!isEditingPlaybackFrame) { let ideal = JSON.parse(JSON.stringify(actualKps)); if (ideal) drawSkeleton(ctx, ideal, 'rgba(0, 191, 255, 0.4)'); }
                 drawSkeleton(ctx, actualKps, i === 0 ? '#ffffff' : '#00ffff'); runReviewLogic(ctx, (n) => actualKps.find(k => k.name === n), i === 0, canvas);
                 if (selectedJoint && selectedJoint.modelIdx === i && isEditingPlaybackFrame) { drawCrosshair(ctx, actualKps[selectedJoint.keypointIndex], canvas); }
+                
+                // 🚀 V40: 再生中のレーダー描画
+                drawPlaybackRadar(dataArray, frameIdx, i === 0, canvas);
             }
             ctxComb.drawImage(canvas, i * w, 0);
         }
@@ -444,6 +516,9 @@
     recBtn.onclick = () => {
         isPausedForEdit = false; isRecording = true; closeDpad(); coordinateBuffer = []; poseDataLog = poseDataLog.filter(d => d.mode !== currentTab);
         recordingDuration = parseInt(durationSelect.value); recordingStartTime = Date.now(); 
+        
+        swayHistoryMP = []; swayHistoryMN = []; // 録画開始時にレーダー履歴リセット
+        
         timerDisplay.style.display = "block"; recBtn.disabled = true; downloadCsvBtn.disabled = true; recordedChunks = [];
         try { const stream = canvasComb.captureStream(30); recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' }); recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); }; recorder.onstop = () => { const b = new Blob(recordedChunks, { type: 'video/webm' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `connect_ai_${currentTab}_${Date.now()}.webm`; a.click(); }; recorder.start(); } catch (e) { console.error(e); }
         const timerInterval = setInterval(() => {
@@ -543,17 +618,8 @@
     }
 
     startBtn.onclick = async () => {
-        // 🚀 V39: AI計算ループを強制リセットして大渋滞を防ぐ
-        if (mainRenderId) {
-            cancelAnimationFrame(mainRenderId);
-            mainRenderId = null;
-        }
-
-        if(currentStream) {
-            currentStream.getTracks().forEach(t=>t.stop());
-            video.pause(); // 🚀 V39: 古い映像の処理を確実にストップ
-            video.srcObject = null;
-        }
+        if (mainRenderId) { cancelAnimationFrame(mainRenderId); mainRenderId = null; }
+        if(currentStream) { currentStream.getTracks().forEach(t=>t.stop()); video.pause(); video.srcObject = null; }
 
         try {
             const constraints = { video: { width: { ideal: 1920 }, height: { ideal: 1080 } } };
@@ -567,7 +633,7 @@
                 canvasComb.width=video.videoWidth*2; canvasComb.height=video.videoHeight; 
                 isPausedForEdit = false; isRunning=true; 
                 video.play();
-                render(); // 新しいループをスタート
+                render(); 
                 recBtn.disabled=false; 
             };
         } catch(e){ alert("カメラ起動失敗: ブラウザの設定からカメラへのアクセスを許可してください。"); }
@@ -579,7 +645,6 @@
             return; 
         }
 
-        // 🚀 V39: カメラ切り替え中の一瞬の暗転時に計算してフリーズするのを防ぐ
         if (video.readyState < 2) {
             mainRenderId = requestAnimationFrame(render);
             return;
@@ -589,17 +654,20 @@
         for (let i = 0; i < 2; i++) {
             const ctx = ctxs[i], canvas = canvases[i]; ctx.drawImage(video, 0, 0, w, h); 
             drawCenterGrid(ctx, canvas);
+            
             const poses = await detectors[i].estimatePoses(video);
             if (poses.length > 0) {
                 const kps = poses[0].keypoints; window.reportDataStore[currentTab][i] = kps;
                 if (isRecording) { if (!coordinateBuffer[i]) coordinateBuffer[i] = []; coordinateBuffer[i].push(kps); poseDataLog.push({ time: Date.now(), model: i===0?"MediaPipe":"MoveNet", mode: currentTab, keypoints: JSON.parse(JSON.stringify(kps)) }); }
-                drawSkeleton(ctx, kps, currentTab.startsWith('dyn_') ? '#ffffff' : (i === 0 ? '#ff5252' : '#00ffff')); runReviewLogic(ctx, (n) => kps.find(k => k.name === n), i === 0, canvas);
+                drawSkeleton(ctx, kps, currentTab.startsWith('dyn_') ? '#ffffff' : (i === 0 ? '#ff5252' : '#00ffff')); 
+                runReviewLogic(ctx, (n) => kps.find(k => k.name === n), i === 0, canvas);
+                
+                // 🚀 V40: リアルタイムレーダー更新
+                updateRadar(kps, i === 0, canvas);
             }
             ctxComb.drawImage(canvas, i * w, 0);
         }
         adjustAllRadarPositions(); 
-        
-        // 🚀 V39: ループIDを記録
         mainRenderId = requestAnimationFrame(render);
     }
 
