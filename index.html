@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V42 (Radar Calibration Fix)</title>
+    <title>CONNECT AI - Master Evaluation Engine V43 (Toggle Sway Alert)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -28,6 +28,10 @@
         #downloadCsvBtn { background: #2e7d32; color: white; }
         #printReportBtn { background: #ff9100; color: #000; box-shadow: 0 0 10px rgba(255,145,0,0.3); }
         
+        /* 🚀 V43: チェックボックスのスタイル */
+        .toggle-label { color: #00bfff; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; background: #222; padding: 8px 12px; border-radius: 6px; border: 1px solid #00bfff; }
+        .toggle-label input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+
         .playback-controls { display: none; padding: 12px 15px; background: #002233; justify-content: center; gap: 15px; align-items: center; border-bottom: 2px solid #00bfff; width: 100%; box-sizing: border-box; }
         #timelineSlider { flex: 1; max-width: 500px; cursor: pointer; }
         #playPauseBtn { background: #00bfff; color: #000; min-width: 90px; }
@@ -105,6 +109,10 @@
         <option value="30000">⏱️ 30秒間</option>
     </select>
     
+    <label class="toggle-label">
+        <input type="checkbox" id="showSwayAlert" checked> 警告表示
+    </label>
+
     <button id="recBtn" disabled>🔴 録画スタート</button>
     <button id="downloadCsvBtn" disabled>📊 CSV出力</button>
     <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 PDFレポート出力</button>
@@ -144,7 +152,7 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V42</div></div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V43</div></div>
         <div class="print-section-title">■ 静止姿勢・動的評価 総評</div>
         <div id="p-review-static" class="print-full-review">測定完了後、自動出力されます。</div>
     </div>
@@ -170,6 +178,9 @@
     const timerDisplay = document.getElementById('timerDisplay');
     const downloadCsvBtn = document.getElementById('downloadCsvBtn');
     
+    // 🚀 V43: トグルスイッチの取得
+    const showSwayAlertCheckbox = document.getElementById('showSwayAlert');
+
     const mainControls = document.getElementById('mainControls');
     const playbackControls = document.getElementById('playbackControls');
     const playPauseBtn = document.getElementById('playPauseBtn');
@@ -208,7 +219,6 @@
     let dpadStepVal = 1;
     let isEditingPlaybackFrame = false;
 
-    // レーダー履歴管理
     let swayHistoryMP = [];
 
     let activeRadarDrag = null;
@@ -295,52 +305,30 @@
     };
 
     function switchReportTab(tabName) {
-        if (isRecording) return; 
-        currentTab = tabName; 
-        
-        // 🚀 V42: タブ切り替え時に基準点を完全リセット
-        window.anchorStatus = "unlocked";
-        window.currentAnchorPos = null;
+        if (isRecording) return; currentTab = tabName; 
+        window.anchorStatus = "unlocked"; window.currentAnchorPos = null;
         if(window.customOriginMarkers[tabName]) window.customOriginMarkers[tabName] = null;
-        swayHistoryMP = []; 
-        clearRadar(ctxRadarMP, "#ff5252");
-        
+        swayHistoryMP = []; clearRadar(ctxRadarMP, "#ff5252");
         closeDpad(); isEditingPlaybackFrame = false; editFrameBtn.innerText = "✂️ このフレームを微調整"; editFrameBtn.style.background = "#ff9100";
         if(DURATION_MAP[tabName]) { let recommended = DURATION_MAP[tabName].toString(); if(Array.from(durationSelect.options).map(opt => opt.value).includes(recommended)) durationSelect.value = recommended; }
         exitPlaybackMode(); refreshReportView();
     }
 
-    // 🚀 V42: レーダーの飛び出し防止（リミッター機能）
     function drawSpecificRadar(ctx, history, color) {
         clearRadar(ctx, color); if (history.length < 2) return;
-        const scale = 0.5; // レーダー拡大
-        const maxRadius = 65; // レーダー円の最大半径（少し余裕を持たせる）
-        
+        const scale = 0.5; const maxRadius = 65; 
         ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
         history.forEach((pt, idx) => { 
-            let rX = 75 + (pt.x * scale); 
-            let rY = 75 + (pt.y * scale); 
-            
-            // 中心(75,75)からの距離を計算し、円の外に出ないようにクリップ
+            let rX = 75 + (pt.x * scale); let rY = 75 + (pt.y * scale); 
             let dist = Math.hypot(rX - 75, rY - 75);
-            if (dist > maxRadius) {
-                rX = 75 + ((rX - 75) * maxRadius / dist);
-                rY = 75 + ((rY - 75) * maxRadius / dist);
-            }
-            
+            if (dist > maxRadius) { rX = 75 + ((rX - 75) * maxRadius / dist); rY = 75 + ((rY - 75) * maxRadius / dist); }
             if (idx === 0) ctx.moveTo(rX, rY); else ctx.lineTo(rX, rY); 
         });
         ctx.stroke(); 
-        
-        // 最新のポイントを描画
         const lastPt = history[history.length - 1]; 
-        let lastRX = 75 + (lastPt.x * scale);
-        let lastRY = 75 + (lastPt.y * scale);
+        let lastRX = 75 + (lastPt.x * scale); let lastRY = 75 + (lastPt.y * scale);
         let lastDist = Math.hypot(lastRX - 75, lastRY - 75);
-        if (lastDist > maxRadius) {
-            lastRX = 75 + ((lastRX - 75) * maxRadius / lastDist);
-            lastRY = 75 + ((lastRY - 75) * maxRadius / lastDist);
-        }
+        if (lastDist > maxRadius) { lastRX = 75 + ((lastRX - 75) * maxRadius / lastDist); lastRY = 75 + ((lastRY - 75) * maxRadius / lastDist); }
         ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(lastRX, lastRY, 4, 0, 2*Math.PI); ctx.fill(); ctx.restore();
     }
 
@@ -351,52 +339,27 @@
     }
 
     function updateRadar(kps, canvas) {
-        const history = swayHistoryMP;
-        const radarCtx = ctxRadarMP;
-        const color = "#ff5252";
-        const nose = kps.find(k => k.name === 'nose');
-        let originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2;
-        let originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
-        
+        const history = swayHistoryMP; const radarCtx = ctxRadarMP; const color = "#ff5252"; const nose = kps.find(k => k.name === 'nose');
+        let originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2; let originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
         if (nose) {
-            let copX = nose.x - originX;
-            let hDist = originY - nose.y;
+            let copX = nose.x - originX; let hDist = originY - nose.y;
             if (history.length === 0 || history.baseHDist === undefined) history.baseHDist = hDist;
             let copY = history.baseHDist - hDist;
-            
-            if (currentTab.includes("side")) {
-                const shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder');
-                if (shoulder) copX = nose.x - shoulder.x;
-            }
-            
-            history.push({ x: copX, y: copY });
-            if (history.length > 150) history.shift();
-            drawSpecificRadar(radarCtx, history, color);
+            if (currentTab.includes("side")) { const shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (shoulder) copX = nose.x - shoulder.x; }
+            history.push({ x: copX, y: copY }); if (history.length > 150) history.shift(); drawSpecificRadar(radarCtx, history, color);
         }
     }
 
     function drawPlaybackRadar(dataArray, currentFrameIdx, canvas) {
-        const radarCtx = ctxRadarMP;
-        const color = "#ff5252";
-        clearRadar(radarCtx, color);
-        let history = []; let baseHDist = null;
-        
+        const radarCtx = ctxRadarMP; const color = "#ff5252"; clearRadar(radarCtx, color); let history = []; let baseHDist = null;
         for (let i = 0; i <= currentFrameIdx; i++) {
             const frameData = dataArray[i]; if (!frameData) continue;
             const kps = frameData.keypoints; const nose = kps.find(k => k.name === 'nose');
-            let originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2;
-            let originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
-            
+            let originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2; let originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
             if (nose) {
-                let copX = nose.x - originX; 
-                let hDist = originY - nose.y;
-                if (baseHDist === null) baseHDist = hDist;
-                let copY = baseHDist - hDist;
-                
-                if (currentTab.includes("side")) {
-                    const shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder');
-                    if (shoulder) copX = nose.x - shoulder.x;
-                }
+                let copX = nose.x - originX; let hDist = originY - nose.y;
+                if (baseHDist === null) baseHDist = hDist; let copY = baseHDist - hDist;
+                if (currentTab.includes("side")) { const shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (shoulder) copX = nose.x - shoulder.x; }
                 history.push({ x: copX, y: copY });
             }
         }
@@ -416,12 +379,10 @@
 
     function drawCrosshair(ctx, kp, canvas) {
         if(!kp) return;
-        ctx.save();
-        ctx.strokeStyle = "rgba(0, 191, 255, 0.7)"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+        ctx.save(); ctx.strokeStyle = "rgba(0, 191, 255, 0.7)"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
         ctx.beginPath(); ctx.moveTo(0, kp.y); ctx.lineTo(canvas.width, kp.y); ctx.moveTo(kp.x, 0); ctx.lineTo(kp.x, canvas.height); ctx.stroke();
         ctx.beginPath(); ctx.arc(kp.x, kp.y, 14, 0, 2*Math.PI); ctx.strokeStyle = "#00bfff"; ctx.lineWidth = 3; ctx.setLineDash([]); ctx.stroke();
-        ctx.fillStyle = "rgba(0, 191, 255, 0.3)"; ctx.fill();
-        ctx.restore();
+        ctx.fillStyle = "rgba(0, 191, 255, 0.3)"; ctx.fill(); ctx.restore();
     }
 
     function runReviewLogic(ctx, getK, canvas) {
@@ -436,13 +397,20 @@
         if (originX !== undefined && originY !== undefined) {
             window.currentAnchorPos = { x: originX, y: originY };
             let anchorColor = window.anchorStatus === "dragging" ? "rgba(255, 165, 0, 0.8)" : "rgba(0, 191, 255, 0.8)";
+            
+            // 🚀 V43: アンカー（丸）は常に描画する
             ctx.save(); ctx.fillStyle = anchorColor; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3;
             ctx.beginPath(); ctx.arc(originX, originY, 20, 0, 2*Math.PI); ctx.fill(); ctx.stroke(); 
-            ctx.strokeStyle = anchorColor; ctx.lineWidth = 3; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.moveTo(originX, originY); ctx.lineTo(originX, 0); ctx.stroke(); ctx.restore();
             
-            let sway = nose ? (nose.x - originX) : 0; let corridorColor = Math.abs(sway) > 30 ? "rgba(255, 0, 0, 0.15)" : "rgba(0, 255, 0, 0.1)";
-            ctx.save(); ctx.fillStyle = corridorColor; ctx.fillRect(originX - 30, 0, 60, originY);
-            if (Math.abs(sway) > 30) { ctx.fillStyle = "#ff5252"; ctx.font = "bold 20px sans-serif"; ctx.fillText(`⚠️ 体幹スウェイ: ${sway > 0 ? "左" : "右"}へ ${Math.abs(sway).toFixed(1)}px`, originX + 40, originY - 150); } ctx.restore();
+            // 🚀 V43: チェックボックスがONの時だけ破線と帯（警告システム）を描画
+            if (showSwayAlertCheckbox.checked) {
+                ctx.strokeStyle = anchorColor; ctx.lineWidth = 3; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.moveTo(originX, originY); ctx.lineTo(originX, 0); ctx.stroke(); 
+                
+                let sway = nose ? (nose.x - originX) : 0; let corridorColor = Math.abs(sway) > 30 ? "rgba(255, 0, 0, 0.15)" : "rgba(0, 255, 0, 0.1)";
+                ctx.fillStyle = corridorColor; ctx.fillRect(originX - 30, 0, 60, originY);
+                if (Math.abs(sway) > 30) { ctx.fillStyle = "#ff5252"; ctx.font = "bold 20px sans-serif"; ctx.fillText(`⚠️ 体幹スウェイ: ${sway > 0 ? "左" : "右"}へ ${Math.abs(sway).toFixed(1)}px`, originX + 40, originY - 150); }
+            }
+            ctx.restore();
         }
 
         if (currentTab === "dyn_overhead") {
@@ -525,6 +493,12 @@
         }
         ctxComb.drawImage(canvasMP, 0, 0, w, h);
     }
+
+    // 🚀 V43: チェックボックスを切り替えたら即座に再描画する
+    showSwayAlertCheckbox.addEventListener('change', () => {
+        if (appMode === 'playback') { renderPlaybackFrame(parseInt(timelineSlider.value)); } 
+        else if (isPausedForEdit) { refreshReportView(); }
+    });
 
     recBtn.onclick = () => {
         isPausedForEdit = false; isRecording = true; closeDpad(); coordinateBufferMP = []; poseDataLog = poseDataLog.filter(d => d.mode !== currentTab);
@@ -621,7 +595,6 @@
         if (mainRenderId) { cancelAnimationFrame(mainRenderId); mainRenderId = null; }
         if(currentStream) { currentStream.getTracks().forEach(t=>t.stop()); video.pause(); video.srcObject = null; }
         
-        // 🚀 V42: カメラ起動時に全ての基準点を完全リセット（レーダーの飛び出しを防ぐ）
         swayHistoryMP = [];
         window.currentAnchorPos = null;
         window.customOriginMarkers = {};
