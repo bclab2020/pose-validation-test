@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V45 (Full Integration)</title>
+    <title>CONNECT AI - Master Evaluation Engine V45.1 (Camera Fix)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -148,7 +148,7 @@
 
     <div class="view-port">
         <canvas id="canvasMP"></canvas>
-        <div class="label">CONNECT AI - Master V45</div>
+        <div class="label">CONNECT AI - Master V45.1</div>
         <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
         <div id="radarWrapperMP" class="radar-wrapper"><canvas id="canvasRadarMP" class="radar-box" width="150" height="150"></canvas></div>
     </div>
@@ -203,8 +203,6 @@
     const DURATION_MAP = { 'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 'dyn_overhead': 15000, 'dyn_overhead_side': 15000, 'dyn_single_r': 15000, 'dyn_single_l': 15000, 'dyn_flex_fwd': 10000, 'dyn_flex_bwd': 10000, 'dyn_shoulder_r': 10000, 'dyn_shoulder_l': 10000 };
     window.reportDataStore = {};
     ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_overhead_side', 'dyn_single_r', 'dyn_single_l', 'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'].forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
-
-    // --- Core Logic ---
 
     function updateInfoPanel() {
         let scaleText = pxToCmRatio ? `校正済 (1px = ${pxToCmRatio.toFixed(3)}cm)` : "⚠️ スケール未校正";
@@ -263,7 +261,6 @@
         exitPlaybackMode(); refreshReportView();
     }
 
-    // --- Pointer Events (Merge Mat Calib + Anchor Drag + Dpad) ---
     function getEventPos(canvas, e) {
         const rect = canvas.getBoundingClientRect(); 
         let clientX = e.clientX, clientY = e.clientY;
@@ -315,7 +312,6 @@
     });
     canvasMP.addEventListener('pointerup', () => { if (dragTarget) { window.anchorStatus = "locked"; dragTarget = null; } });
 
-    // D-Pad Control
     document.getElementById('dpadStep').onclick = (e) => { dpadStepVal = dpadStepVal === 1 ? 5 : 1; e.target.innerText = dpadStepVal + 'px'; };
     const moveJoint = (dx, dy) => {
         if(selectedJointIndex === null) return; let kp = null;
@@ -333,7 +329,46 @@
         else { isEditingPlaybackFrame = false; this.innerText = "✂️ このフレーム微調整"; this.style.background = "#ff9100"; closeDpad(); }
     };
 
-    // --- Render & Core Functions ---
+    // 🚀 バグ修正済みの初期化関数（ここが治りました）
+    async function init() {
+        try {
+            await tf.setBackend('webgl'); await tf.ready();
+            detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
+            
+            // 削除してしまっていた「カメラ使用許可の事前リクエスト」を復旧
+            try { const tempStream = await navigator.mediaDevices.getUserMedia({ video: true }); tempStream.getTracks().forEach(t => t.stop()); } catch(e) { console.warn("初期カメラ許可スキップ"); }
+            
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoSource = document.getElementById('videoSource');
+            videoSource.innerHTML = ''; 
+            let camCount = 1;
+            devices.forEach(d => { 
+                if(d.kind==='videoinput') { 
+                    const label = d.label || `カメラ ${camCount++} (前面/背面)`; 
+                    videoSource.appendChild(new Option(label, d.deviceId)); 
+                } 
+            });
+            updateInfoPanel();
+        } catch (e) { 
+            document.getElementById('startBtn').innerText = "❌ 起動エラー"; 
+            console.error(e); 
+        }
+    }
+
+    document.getElementById('startBtn').onclick = async () => {
+        const constraints = { video: { width: { ideal: 1920 }, height: { ideal: 1080 } } };
+        const videoSource = document.getElementById('videoSource');
+        if (videoSource.value) { constraints.video.deviceId = { exact: videoSource.value }; } else { constraints.video.facingMode = "environment"; }
+        
+        try {
+            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+            video.srcObject = currentStream;
+            video.onloadeddata = () => { canvasMP.width=video.videoWidth; canvasMP.height=video.videoHeight; canvasComb.width=video.videoWidth; canvasComb.height=video.videoHeight; isRunning=true; document.getElementById('recBtn').disabled = false; render(); };
+        } catch (e) {
+            alert("カメラへのアクセスがブロックされています。ブラウザの設定でカメラを許可してください。");
+        }
+    };
+
     async function render() {
         if (!isRunning || appMode === 'playback' || isPausedForEdit) { if(isRunning) mainRenderId = requestAnimationFrame(render); return; }
         ctxMP.drawImage(video, 0, 0, canvasMP.width, canvasMP.height); 
@@ -364,7 +399,6 @@
         
         kps.forEach(k=>{ if(k && k.score > 0.0 && !k.name?.includes('virtual')){ ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(k.x,k.y,4,0,2*Math.PI); ctx.fill(); }});
         
-        // Virtual ASIS Draw
         let asisL = kps.find(k => k.name === 'virtual_asis_l'), asisR = kps.find(k => k.name === 'virtual_asis_r');
         let lHip = kps.find(k => k.name === 'left_hip' || k.name === '23'), rHip = kps.find(k => k.name === 'right_hip' || k.name === '24');
         if(asisL && lHip) { ctx.strokeStyle="#39ff14"; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(lHip.x, lHip.y); ctx.lineTo(asisL.x, asisL.y); ctx.stroke(); ctx.fillStyle="#39ff14"; ctx.beginPath(); ctx.arc(asisL.x, asisL.y, 8, 0, 2*Math.PI); ctx.fill(); }
@@ -399,7 +433,6 @@
         }
     }
 
-    // --- Radar & Playback ---
     function updateRadar(kps, canvas) {
         const history = swayHistoryMP, radarCtx = ctxRadarMP, color = "#ff5252", nose = kps.find(k => k.name === 'nose');
         let originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2, originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
@@ -457,7 +490,6 @@
     }
     showSwayAlertCheckbox.addEventListener('change', () => { if (appMode === 'playback') { renderPlaybackFrame(parseInt(timelineSlider.value)); } else if (isPausedForEdit) { refreshReportView(); } });
 
-    // --- Record Logic ---
     document.getElementById('recBtn').onclick = () => {
         isPausedForEdit = false; isRecording = true; closeDpad(); coordinateBufferMP = []; poseDataLog = poseDataLog.filter(d => d.mode !== currentTab);
         recordingDuration = parseInt(durationSelect.value); recordingStartTime = Date.now(); swayHistoryMP = []; 
