@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V41 (MediaPipe Only)</title>
+    <title>CONNECT AI - Master Evaluation Engine V42 (Radar Calibration Fix)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -144,7 +144,7 @@
 
 <div id="printReportView">
     <div class="print-page">
-        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V41</div></div>
+        <div class="print-header"><div class="print-title">CONNECT AI 臨床アライメント診断書</div><div class="print-meta">発行日: <span class="printDate"></span><br>解析システム: Master Engine V42</div></div>
         <div class="print-section-title">■ 静止姿勢・動的評価 総評</div>
         <div id="p-review-static" class="print-full-review">測定完了後、自動出力されます。</div>
     </div>
@@ -204,7 +204,6 @@
     let recordedChunks = [];
     
     let dragTarget = null; 
-    
     let selectedJointIndex = null;
     let dpadStepVal = 1;
     let isEditingPlaybackFrame = false;
@@ -217,7 +216,6 @@
     let longPressTimer = null;
     let initialTouch = null;
 
-    // フローティングレーダー管理 (単一)
     radarWrapperMP.style.touchAction = "none"; 
     radarWrapperMP.addEventListener('pointerdown', (e) => {
         e.stopPropagation(); 
@@ -297,20 +295,53 @@
     };
 
     function switchReportTab(tabName) {
-        if (isRecording) return; currentTab = tabName; window.anchorStatus = "unlocked";
+        if (isRecording) return; 
+        currentTab = tabName; 
+        
+        // 🚀 V42: タブ切り替え時に基準点を完全リセット
+        window.anchorStatus = "unlocked";
+        window.currentAnchorPos = null;
+        if(window.customOriginMarkers[tabName]) window.customOriginMarkers[tabName] = null;
         swayHistoryMP = []; 
         clearRadar(ctxRadarMP, "#ff5252");
+        
         closeDpad(); isEditingPlaybackFrame = false; editFrameBtn.innerText = "✂️ このフレームを微調整"; editFrameBtn.style.background = "#ff9100";
         if(DURATION_MAP[tabName]) { let recommended = DURATION_MAP[tabName].toString(); if(Array.from(durationSelect.options).map(opt => opt.value).includes(recommended)) durationSelect.value = recommended; }
         exitPlaybackMode(); refreshReportView();
     }
 
+    // 🚀 V42: レーダーの飛び出し防止（リミッター機能）
     function drawSpecificRadar(ctx, history, color) {
         clearRadar(ctx, color); if (history.length < 2) return;
         const scale = 0.5; // レーダー拡大
+        const maxRadius = 65; // レーダー円の最大半径（少し余裕を持たせる）
+        
         ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
-        history.forEach((pt, idx) => { const rX = 75 + (pt.x * scale); const rY = 75 + (pt.y * scale); if (idx === 0) ctx.moveTo(rX, rY); else ctx.lineTo(rX, rY); });
-        ctx.stroke(); const lastPt = history[history.length - 1]; ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(75 + (lastPt.x * scale), 75 + (lastPt.y * scale), 4, 0, 2*Math.PI); ctx.fill(); ctx.restore();
+        history.forEach((pt, idx) => { 
+            let rX = 75 + (pt.x * scale); 
+            let rY = 75 + (pt.y * scale); 
+            
+            // 中心(75,75)からの距離を計算し、円の外に出ないようにクリップ
+            let dist = Math.hypot(rX - 75, rY - 75);
+            if (dist > maxRadius) {
+                rX = 75 + ((rX - 75) * maxRadius / dist);
+                rY = 75 + ((rY - 75) * maxRadius / dist);
+            }
+            
+            if (idx === 0) ctx.moveTo(rX, rY); else ctx.lineTo(rX, rY); 
+        });
+        ctx.stroke(); 
+        
+        // 最新のポイントを描画
+        const lastPt = history[history.length - 1]; 
+        let lastRX = 75 + (lastPt.x * scale);
+        let lastRY = 75 + (lastPt.y * scale);
+        let lastDist = Math.hypot(lastRX - 75, lastRY - 75);
+        if (lastDist > maxRadius) {
+            lastRX = 75 + ((lastRX - 75) * maxRadius / lastDist);
+            lastRY = 75 + ((lastRY - 75) * maxRadius / lastDist);
+        }
+        ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(lastRX, lastRY, 4, 0, 2*Math.PI); ctx.fill(); ctx.restore();
     }
 
     function clearRadar(ctx, color) {
@@ -589,6 +620,14 @@
     startBtn.onclick = async () => {
         if (mainRenderId) { cancelAnimationFrame(mainRenderId); mainRenderId = null; }
         if(currentStream) { currentStream.getTracks().forEach(t=>t.stop()); video.pause(); video.srcObject = null; }
+        
+        // 🚀 V42: カメラ起動時に全ての基準点を完全リセット（レーダーの飛び出しを防ぐ）
+        swayHistoryMP = [];
+        window.currentAnchorPos = null;
+        window.customOriginMarkers = {};
+        selectedJointIndex = null;
+        clearRadar(ctxRadarMP, "#ff5252");
+
         try {
             const constraints = { video: { width: { ideal: 1920 }, height: { ideal: 1080 } } };
             if (videoSource.value) { constraints.video.deviceId = { exact: videoSource.value }; } else { constraints.video.facingMode = "environment"; }
