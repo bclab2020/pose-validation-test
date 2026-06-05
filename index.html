@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V47 (Stable ASIS + Side View Fix)</title>
+    <title>CONNECT AI - Master Evaluation Engine V48 (D-Pad Mat Calibration)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -27,14 +27,12 @@
         
         .toggle-label { color: #00bfff; font-size: 13px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px; background: #222; padding: 6px 10px; border-radius: 6px; border: 1px solid #00bfff; }
 
-        /* V47 キャリブレーションUI */
         .input-group { display: flex; align-items: center; gap: 5px; background: #333; padding: 4px 10px; border-radius: 6px; border: 1px solid #555; }
         .input-group input[type="number"] { width: 60px; background: #222; color: #00bfff; text-align: right; border: 1px solid #444; font-weight: bold; }
         #calibrateMatBtn { background: #673ab7; color: white; }
         #calibrateMatBtn.active { background: #ffeb3b; color: black; box-shadow: 0 0 15px rgba(255,235,59,0.8); animation: pulse 1s infinite; }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
-        /* V47 骨盤傾斜スライダー (画面上部に移動して干渉防止) */
         #tiltPanel { display: none; position: absolute; top: 120px; left: 15px; background: rgba(15,15,15,0.9); border: 2px solid #ff9100; border-radius: 12px; padding: 15px; z-index: 500; box-shadow: 0 5px 20px rgba(255,145,0,0.3); }
         .tilt-header { color: #ff9100; font-size: 14px; font-weight: bold; margin-bottom: 10px; text-align: center; }
         .tilt-slider { width: 200px; cursor: pointer; }
@@ -55,13 +53,12 @@
         .info-panel { position: absolute; top: 55px; left: 15px; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 4px; color: #fff; font-size: 12px; z-index: 10; border-left: 3px solid #673ab7; pointer-events: none; }
         .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; display: none; z-index: 100; pointer-events: none; }
         
-        /* レーダー復旧 */
         .radar-wrapper { position: absolute; bottom: 20px; right: 20px; width: 150px; height: 150px; z-index: 200; touch-action: none; cursor: grab; transition: transform 0.2s, opacity 0.2s; }
         .radar-wrapper.dragging { cursor: grabbing; transform: scale(1.1); opacity: 0.8; z-index: 999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); border-radius: 50%; transition: none; }
         .radar-box { width: 150px; height: 150px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 15px rgba(255,82,82,0.5); border: 2px solid #ff5252; pointer-events: none; }
         .radar-title { position: absolute; top: -20px; left: 15px; font-size: 12px; background: rgba(0,0,0,0.8); padding: 3px 8px; border-radius: 4px; font-weight: bold; white-space: nowrap; pointer-events: none; color: #ff5252; border: 1px solid #ff5252; }
 
-        /* D-Pad 復旧 */
+        /* D-Pad */
         #dpadPanel { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); background: rgba(15, 15, 15, 0.95); border: 2px solid #00bfff; border-radius: 16px; padding: 15px 25px; z-index: 1000; display: none; flex-direction: column; align-items: center; }
         .dpad-header { color: #00bfff; font-size: 14px; font-weight: bold; margin-bottom: 12px; }
         .dpad-row { display: flex; justify-content: center; gap: 8px; margin: 4px 0; }
@@ -150,7 +147,7 @@
 
     <div class="view-port">
         <canvas id="canvasMP"></canvas>
-        <div class="label">CONNECT AI - V47 Stable</div>
+        <div class="label">CONNECT AI - V48 Precision Calib</div>
         <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
         <div id="radarWrapperMP" class="radar-wrapper">
             <div class="radar-title">COP RADAR</div>
@@ -180,7 +177,7 @@
     const showSwayAlertCheckbox = document.getElementById('showSwayAlert');
     const videoSource = document.getElementById('videoSource');
 
-    // V47 Calibration Elements
+    // V48 Calibration Elements
     const heightInput = document.getElementById('patientHeight');
     const calibrateMatBtn = document.getElementById('calibrateMatBtn');
     const infoPanel = document.getElementById('infoPanel');
@@ -216,10 +213,10 @@
     let longPressTimer = null;
     let initialTouch = null;
 
-    // V47 Calibration Vars
+    // 🌟 V48 State Machine for Calibration
     let pxToCmRatio = null; 
     let estimatedPelvicTilt = 0; 
-    let isCalibratingMat = false;
+    let calibState = "idle"; // "idle", "wait_left", "adjust_left", "wait_right", "adjust_right"
     let calibrationPoints = [];
 
     window.currentAnchorPos = null; window.customOriginMarkers = {}; window.anchorStatus = "unlocked";
@@ -227,17 +224,30 @@
     window.reportDataStore = {};
     ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_overhead_side', 'dyn_single_r', 'dyn_single_l', 'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'].forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
 
-    // V47 UI Updates
+    // UI Updates
     function updateInfoPanel() {
         let scaleText = pxToCmRatio ? `校正済 (1px = ${pxToCmRatio.toFixed(3)}cm)` : "⚠️ スケール未校正";
         infoPanel.innerHTML = `${scaleText}<br>記録された骨盤傾斜: ${estimatedPelvicTilt > 0 ? '+' : ''}${estimatedPelvicTilt}°`;
     }
 
+    // 🌟 V48 ボタンによるステート遷移
     calibrateMatBtn.onclick = () => {
-        if (isCalibratingMat) {
-            isCalibratingMat = false; calibrateMatBtn.classList.remove('active'); calibrateMatBtn.innerText = "📏 マット幅校正(45cm)"; calibrationPoints = [];
+        if (calibState === "idle") {
+            calibState = "wait_left"; calibrationPoints = [];
+            calibrateMatBtn.classList.add('active'); calibrateMatBtn.innerText = "📍 左端をタップ";
+        } else if (calibState === "adjust_left") {
+            calibState = "wait_right"; document.getElementById('dpadPanel').style.display = 'none';
+            calibrateMatBtn.innerText = "📍 右端をタップ";
+        } else if (calibState === "adjust_right") {
+            let distPx = Math.hypot(calibrationPoints[1].x - calibrationPoints[0].x, calibrationPoints[1].y - calibrationPoints[0].y);
+            if(distPx > 10) pxToCmRatio = 45.0 / distPx; 
+            calibState = "idle"; calibrateMatBtn.classList.remove('active'); document.getElementById('dpadPanel').style.display = 'none';
+            calibrateMatBtn.innerText = "✅ 校正完了"; updateInfoPanel();
+            setTimeout(()=> { if(calibState==="idle") calibrateMatBtn.innerText = "📏 マット幅校正(45cm)"; }, 2000);
         } else {
-            isCalibratingMat = true; calibrateMatBtn.classList.add('active'); calibrateMatBtn.innerText = "📍 マットの左端をタップ"; calibrationPoints = [];
+            // キャンセル
+            calibState = "idle"; calibrationPoints = []; calibrateMatBtn.classList.remove('active');
+            document.getElementById('dpadPanel').style.display = 'none'; calibrateMatBtn.innerText = "📏 マット幅校正(45cm)";
         }
     };
 
@@ -248,7 +258,7 @@
         updateInfoPanel();
     };
 
-    // V47 Virtual ASIS Logic
+    // Virtual ASIS Logic
     function generateVirtualASIS(kps) {
         if(!kps) return kps;
         let height = parseFloat(heightInput.value) || 170;
@@ -278,7 +288,7 @@
         return kps;
     }
 
-    // --- Radar Logic (Restored V43 version) ---
+    // Radar Logic
     function updateRadar(kps, canvas) {
         const history = swayHistoryMP; const radarCtx = ctxRadarMP; const color = "#ff5252"; const nose = kps.find(k => k.name === 'nose');
         let originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2; let originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
@@ -331,7 +341,7 @@
         ctx.beginPath(); ctx.moveTo(75, 10); ctx.lineTo(75, 140); ctx.moveTo(10, 75); ctx.lineTo(140, 75); ctx.stroke(); 
     }
 
-    // --- Interaction ---
+    // Interaction
     radarWrapperMP.style.touchAction = "none"; 
     radarWrapperMP.addEventListener('pointerdown', (e) => {
         e.stopPropagation(); 
@@ -361,24 +371,41 @@
     }, { passive: false });
     window.addEventListener('pointerup', () => { if (activeRadarDrag) { activeRadarDrag.element.classList.remove('dragging'); activeRadarDrag = null; } });
 
+    // 🌟 V48 D-Pad 移動ロジック
     document.getElementById('dpadStep').onclick = (e) => { dpadStepVal = dpadStepVal === 1 ? 5 : 1; e.target.innerText = dpadStepVal + 'px'; };
     const moveJoint = (dx, dy) => {
-        if(selectedJointIndex === null) return;
-        let kp = null;
-        if(appMode === 'playback' && isEditingPlaybackFrame) {
-            const fIdx = parseInt(document.getElementById('timelineSlider').value);
-            if(playbackDataMP[fIdx]) kp = playbackDataMP[fIdx].keypoints[selectedJointIndex];
-        } else if (isPausedForEdit) {
-            kp = window.reportDataStore[currentTab][selectedJointIndex];
+        if (calibState === "adjust_left" && calibrationPoints[0]) {
+            calibrationPoints[0].x += dx; calibrationPoints[0].y += dy;
+        } else if (calibState === "adjust_right" && calibrationPoints[1]) {
+            calibrationPoints[1].x += dx; calibrationPoints[1].y += dy;
+        } else if (selectedJointIndex !== null) {
+            let kp = null;
+            if(appMode === 'playback' && isEditingPlaybackFrame) {
+                const fIdx = parseInt(document.getElementById('timelineSlider').value);
+                if(playbackDataMP[fIdx]) kp = playbackDataMP[fIdx].keypoints[selectedJointIndex];
+            } else if (isPausedForEdit) {
+                kp = window.reportDataStore[currentTab][selectedJointIndex];
+            }
+            if(kp) { kp.x += dx; kp.y += dy; }
         }
-        if(kp) { kp.x += dx; kp.y += dy; if(appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); else refreshReportView(); }
+        
+        if(appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); 
+        else if (isPausedForEdit) refreshReportView();
     };
     document.getElementById('dpadUp').onclick = () => moveJoint(0, -dpadStepVal);
     document.getElementById('dpadDown').onclick = () => moveJoint(0, dpadStepVal);
     document.getElementById('dpadLeft').onclick = () => moveJoint(-dpadStepVal, 0);
     document.getElementById('dpadRight').onclick = () => moveJoint(dpadStepVal, 0);
     
-    const closeDpad = () => { selectedJointIndex = null; document.getElementById('dpadPanel').style.display = 'none'; if(appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); else refreshReportView(); };
+    // 🌟 V48 D-Pad 閉じる処理
+    const closeDpad = () => { 
+        if (calibState === "adjust_left") { calibState = "wait_left"; calibrateMatBtn.innerText = "📍 左端をタップ"; calibrationPoints=[]; document.getElementById('dpadPanel').style.display = 'none'; if(isPausedForEdit) refreshReportView(); return; }
+        if (calibState === "adjust_right") { calibState = "wait_right"; calibrateMatBtn.innerText = "📍 右端をタップ"; calibrationPoints.pop(); document.getElementById('dpadPanel').style.display = 'none'; if(isPausedForEdit) refreshReportView(); return; }
+
+        selectedJointIndex = null; document.getElementById('dpadPanel').style.display = 'none'; 
+        if(appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); 
+        else if(isPausedForEdit) refreshReportView(); 
+    };
     document.getElementById('dpadClose').onclick = closeDpad;
 
     document.getElementById('editFrameBtn').onclick = function() {
@@ -404,12 +431,10 @@
         ctx.save(); ctx.strokeStyle="rgba(255,255,255,0.4)"; ctx.lineWidth=5; ctx.beginPath(); ctx.moveTo(canvas.width/2,0); ctx.lineTo(canvas.width/2,canvas.height); ctx.stroke(); ctx.restore(); 
     }
 
-    // 🌟 V47 側面撮影時の対側ライン消去ロジック追加
     function drawSkeleton(ctx, kps, color) {
         ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 4;
         let pairs = [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]];
         
-        // 側面時のペアフィルタリング
         if (currentTab === 'r_side') {
             pairs = pairs.filter(p => ![[11,13],[13,15],[23,25],[25,27]].some(exclude => exclude[0] === p[0] && exclude[1] === p[1]));
         } else if (currentTab === 'l_side') {
@@ -423,19 +448,17 @@
             }
         });
         
-        // 側面時のポイントフィルタリング
         kps.forEach((k, i)=>{ 
             if(k && k.score > 0.0 && !k.name?.includes('virtual')){ 
                 let shouldDraw = true;
-                if (currentTab === 'r_side' && [11,13,15,23,25,27,29,31].includes(i)) shouldDraw = false; // 左半身を隠す
-                if (currentTab === 'l_side' && [12,14,16,24,26,28,30,32].includes(i)) shouldDraw = false; // 右半身を隠す
+                if (currentTab === 'r_side' && [11,13,15,23,25,27,29,31].includes(i)) shouldDraw = false; 
+                if (currentTab === 'l_side' && [12,14,16,24,26,28,30,32].includes(i)) shouldDraw = false; 
                 if (shouldDraw) {
                     ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(k.x,k.y,4,0,2*Math.PI); ctx.fill(); 
                 }
             }
         }); 
 
-        // Virtual ASIS Drawing
         let asisL = null; let asisR = null; let lHip = null; let rHip = null;
         for(let i=0; i<kps.length; i++){
             if(kps[i].name === 'virtual_asis_l') asisL = kps[i];
@@ -564,21 +587,21 @@
         const scaleX = canvas.width / renderWidth, scaleY = canvas.height / renderHeight; return { x: (clientX - rect.left - offsetX) * scaleX, y: (clientY - rect.top - offsetY) * scaleY, renderScale: scaleX };
     }
 
-    // 🌟 V47 D-Pad 完全復旧 (pointerdown イベント)
+    // 🌟 V48 Pointer Down Logic
     canvasMP.addEventListener('pointerdown', (e) => {
         const pos = getEventPos(canvasMP, e); if (!pos) return;
-        
-        // 校正モード
-        if (isCalibratingMat) {
-            calibrationPoints.push(pos);
-            if (calibrationPoints.length === 1) { calibrateMatBtn.innerText = "📍 マットの右端をタップ"; } 
-            else if (calibrationPoints.length === 2) {
-                let distPx = Math.hypot(calibrationPoints[1].x - calibrationPoints[0].x, calibrationPoints[1].y - calibrationPoints[0].y);
-                pxToCmRatio = 45.0 / distPx; 
-                isCalibratingMat = false; calibrateMatBtn.classList.remove('active'); calibrateMatBtn.innerText = "✅ 校正完了";
-                updateInfoPanel(); setTimeout(()=> { calibrateMatBtn.innerText = "📏 マット幅校正(45cm)"; }, 2000);
+
+        // V48 キャリブレーションモードの時はポイントを打って十字キーを出す
+        if (calibState !== "idle") {
+            if (calibState === "wait_left" || calibState === "adjust_left") {
+                calibrationPoints[0] = pos; calibState = "adjust_left";
+                calibrateMatBtn.innerText = "✅ 左端を確定"; document.getElementById('dpadPanel').style.display = 'flex';
+            } else if (calibState === "wait_right" || calibState === "adjust_right") {
+                calibrationPoints[1] = pos; calibState = "adjust_right";
+                calibrateMatBtn.innerText = "✅ 右端を確定"; document.getElementById('dpadPanel').style.display = 'flex';
             }
-            return;
+            if (isPausedForEdit) refreshReportView();
+            return; // ここで終了。アンカーや骨格の判定はしない
         }
 
         const hitRadius = 80 * pos.renderScale; 
@@ -588,7 +611,6 @@
             if (Math.hypot(window.currentAnchorPos.x - pos.x, window.currentAnchorPos.y - pos.y) < hitRadius * 1.5) { dragTarget = { type: 'anchor' }; window.anchorStatus = "dragging"; closeDpad(); return; }
         }
         
-        // 🌟 十字キー(D-Pad)用 ジョイント選択ロジック完全復旧
         let kpsToSearch = null;
         if (appMode === 'playback' && isEditingPlaybackFrame) { 
             const fIdx = parseInt(document.getElementById('timelineSlider').value); 
@@ -624,9 +646,17 @@
     function refreshReportView() {
         if(appMode === 'playback') return; const w = video.videoWidth, h = video.videoHeight;
         ctxMP.drawImage(video, 0, 0, w, h); drawCenterGrid(ctxMP, canvasMP);
+
+        // 🌟 V48 キャリブレーション中の静止画描画
+        if (calibState !== "idle") {
+            ctxMP.fillStyle = "#ffeb3b";
+            if (calibrationPoints[0]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[0].x, calibrationPoints[0].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_left") drawCrosshair(ctxMP, calibrationPoints[0], canvasMP); }
+            if (calibrationPoints[1]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[1].x, calibrationPoints[1].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_right") drawCrosshair(ctxMP, calibrationPoints[1], canvasMP); }
+        }
+
         if (window.reportDataStore[currentTab]) {
             const kps = window.reportDataStore[currentTab]; drawSkeleton(ctxMP, kps, '#ff5252'); runReviewLogic(ctxMP, (n) => kps.find(k => k.name === n), canvasMP);
-            if (selectedJointIndex !== null) drawCrosshair(ctxMP, kps[selectedJointIndex], canvasMP); // D-pad crosshair restore
+            if (selectedJointIndex !== null) drawCrosshair(ctxMP, kps[selectedJointIndex], canvasMP); 
         }
         ctxComb.drawImage(canvasMP, 0, 0, w, h);
     }
@@ -668,8 +698,11 @@
         ctxMP.drawImage(video, 0, 0, w, h); 
         drawCenterGrid(ctxMP, canvasMP);
 
-        if (isCalibratingMat && calibrationPoints.length === 1) {
-            ctxMP.fillStyle = "#ffeb3b"; ctxMP.beginPath(); ctxMP.arc(calibrationPoints[0].x, calibrationPoints[0].y, 10, 0, 2*Math.PI); ctxMP.fill();
+        // 🌟 V48 キャリブレーション中のリアルタイム描画
+        if (calibState !== "idle") {
+            ctxMP.fillStyle = "#ffeb3b";
+            if (calibrationPoints[0]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[0].x, calibrationPoints[0].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_left") drawCrosshair(ctxMP, calibrationPoints[0], canvasMP); }
+            if (calibrationPoints[1]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[1].x, calibrationPoints[1].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_right") drawCrosshair(ctxMP, calibrationPoints[1], canvasMP); }
         }
         
         const poses = await detectors[0].estimatePoses(video);
@@ -682,7 +715,7 @@
             
             drawSkeleton(ctxMP, kps, currentTab.startsWith('dyn_') ? '#ffffff' : '#ff5252'); 
             runReviewLogic(ctxMP, (n) => { for(let i=0;i<kps.length;i++){ if(kps[i].name===n) return kps[i]; } return null; }, canvasMP);
-            updateRadar(kps, canvasMP); // 🌟 V47 レーダー関数復旧
+            updateRadar(kps, canvasMP); 
         }
         ctxComb.drawImage(canvasMP, 0, 0, w, h);
         mainRenderId = requestAnimationFrame(render);
