@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V48 (D-Pad Mat Calibration)</title>
+    <title>CONNECT AI - Master Evaluation Engine V49 (D-Pad UI Fix)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -58,16 +58,16 @@
         .radar-box { width: 150px; height: 150px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 15px rgba(255,82,82,0.5); border: 2px solid #ff5252; pointer-events: none; }
         .radar-title { position: absolute; top: -20px; left: 15px; font-size: 12px; background: rgba(0,0,0,0.8); padding: 3px 8px; border-radius: 4px; font-weight: bold; white-space: nowrap; pointer-events: none; color: #ff5252; border: 1px solid #ff5252; }
 
-        /* D-Pad */
-        #dpadPanel { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); background: rgba(15, 15, 15, 0.95); border: 2px solid #00bfff; border-radius: 16px; padding: 15px 25px; z-index: 1000; display: none; flex-direction: column; align-items: center; }
+        /* 🌟 V49 D-Pad 全体が綺麗に見えるよう右上に配置変更 */
+        #dpadPanel { position: absolute; top: 30px; right: 30px; background: rgba(15, 15, 15, 0.95); border: 2px solid #00bfff; border-radius: 16px; padding: 15px 25px; z-index: 1000; display: none; flex-direction: column; align-items: center; box-shadow: 0 5px 20px rgba(0, 191, 255, 0.3); }
         .dpad-header { color: #00bfff; font-size: 14px; font-weight: bold; margin-bottom: 12px; }
         .dpad-row { display: flex; justify-content: center; gap: 8px; margin: 4px 0; }
         .dpad-btn { width: 55px; height: 55px; border-radius: 12px; background: #2a2a2a; color: white; font-size: 24px; border: 1px solid #444; cursor: pointer; }
         .dpad-btn:active { background: #00bfff; color: black; }
         .dpad-step-btn { font-size: 14px; background: #1976d2; border: none; font-weight: bold; }
-        .dpad-close { position: absolute; right: -10px; top: -5px; width: 30px; height: 30px; border-radius: 50%; background: #ff5252; color: white; border: none; cursor: pointer; }
+        .dpad-close { position: absolute; right: -10px; top: -10px; width: 32px; height: 32px; border-radius: 50%; background: #ff5252; color: white; border: none; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
 
-        @media print { body { background: white; color: black; overflow: visible; } .controls, .playback-controls, .container, #tiltPanel { display: none !important; } }
+        @media print { body { background: white; color: black; overflow: visible; } .controls, .playback-controls, .container, #tiltPanel, #dpadPanel { display: none !important; } }
     </style>
 </head>
 <body>
@@ -127,8 +127,9 @@
 <div class="container">
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     
+    <!-- 🌟 V49 D-Pad 右上配置 -->
     <div id="dpadPanel">
-        <div class="dpad-header">🎯 ポイント微調整モード <button class="dpad-close" id="dpadClose">✖</button></div>
+        <div class="dpad-header">🎯 ポイント微調整 <button class="dpad-close" id="dpadClose">✖</button></div>
         <div class="dpad-row"><button class="dpad-btn" id="dpadUp">▲</button></div>
         <div class="dpad-row">
             <button class="dpad-btn" id="dpadLeft">◀</button>
@@ -147,7 +148,7 @@
 
     <div class="view-port">
         <canvas id="canvasMP"></canvas>
-        <div class="label">CONNECT AI - V48 Precision Calib</div>
+        <div class="label">CONNECT AI - V49 Master</div>
         <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
         <div id="radarWrapperMP" class="radar-wrapper">
             <div class="radar-title">COP RADAR</div>
@@ -177,7 +178,6 @@
     const showSwayAlertCheckbox = document.getElementById('showSwayAlert');
     const videoSource = document.getElementById('videoSource');
 
-    // V48 Calibration Elements
     const heightInput = document.getElementById('patientHeight');
     const calibrateMatBtn = document.getElementById('calibrateMatBtn');
     const infoPanel = document.getElementById('infoPanel');
@@ -207,13 +207,11 @@
     let isEditingPlaybackFrame = false;
     let swayHistoryMP = [];
 
-    // Radar Drag vars
     let activeRadarDrag = null;
     let isRadarMovedManually = false; 
     let longPressTimer = null;
     let initialTouch = null;
 
-    // 🌟 V48 State Machine for Calibration
     let pxToCmRatio = null; 
     let estimatedPelvicTilt = 0; 
     let calibState = "idle"; // "idle", "wait_left", "adjust_left", "wait_right", "adjust_right"
@@ -224,13 +222,11 @@
     window.reportDataStore = {};
     ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_overhead_side', 'dyn_single_r', 'dyn_single_l', 'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'].forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
 
-    // UI Updates
     function updateInfoPanel() {
         let scaleText = pxToCmRatio ? `校正済 (1px = ${pxToCmRatio.toFixed(3)}cm)` : "⚠️ スケール未校正";
         infoPanel.innerHTML = `${scaleText}<br>記録された骨盤傾斜: ${estimatedPelvicTilt > 0 ? '+' : ''}${estimatedPelvicTilt}°`;
     }
 
-    // 🌟 V48 ボタンによるステート遷移
     calibrateMatBtn.onclick = () => {
         if (calibState === "idle") {
             calibState = "wait_left"; calibrationPoints = [];
@@ -245,7 +241,6 @@
             calibrateMatBtn.innerText = "✅ 校正完了"; updateInfoPanel();
             setTimeout(()=> { if(calibState==="idle") calibrateMatBtn.innerText = "📏 マット幅校正(45cm)"; }, 2000);
         } else {
-            // キャンセル
             calibState = "idle"; calibrationPoints = []; calibrateMatBtn.classList.remove('active');
             document.getElementById('dpadPanel').style.display = 'none'; calibrateMatBtn.innerText = "📏 マット幅校正(45cm)";
         }
@@ -258,7 +253,6 @@
         updateInfoPanel();
     };
 
-    // Virtual ASIS Logic
     function generateVirtualASIS(kps) {
         if(!kps) return kps;
         let height = parseFloat(heightInput.value) || 170;
@@ -288,7 +282,6 @@
         return kps;
     }
 
-    // Radar Logic
     function updateRadar(kps, canvas) {
         const history = swayHistoryMP; const radarCtx = ctxRadarMP; const color = "#ff5252"; const nose = kps.find(k => k.name === 'nose');
         let originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2; let originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
@@ -341,7 +334,6 @@
         ctx.beginPath(); ctx.moveTo(75, 10); ctx.lineTo(75, 140); ctx.moveTo(10, 75); ctx.lineTo(140, 75); ctx.stroke(); 
     }
 
-    // Interaction
     radarWrapperMP.style.touchAction = "none"; 
     radarWrapperMP.addEventListener('pointerdown', (e) => {
         e.stopPropagation(); 
@@ -371,7 +363,6 @@
     }, { passive: false });
     window.addEventListener('pointerup', () => { if (activeRadarDrag) { activeRadarDrag.element.classList.remove('dragging'); activeRadarDrag = null; } });
 
-    // 🌟 V48 D-Pad 移動ロジック
     document.getElementById('dpadStep').onclick = (e) => { dpadStepVal = dpadStepVal === 1 ? 5 : 1; e.target.innerText = dpadStepVal + 'px'; };
     const moveJoint = (dx, dy) => {
         if (calibState === "adjust_left" && calibrationPoints[0]) {
@@ -397,7 +388,6 @@
     document.getElementById('dpadLeft').onclick = () => moveJoint(-dpadStepVal, 0);
     document.getElementById('dpadRight').onclick = () => moveJoint(dpadStepVal, 0);
     
-    // 🌟 V48 D-Pad 閉じる処理
     const closeDpad = () => { 
         if (calibState === "adjust_left") { calibState = "wait_left"; calibrateMatBtn.innerText = "📍 左端をタップ"; calibrationPoints=[]; document.getElementById('dpadPanel').style.display = 'none'; if(isPausedForEdit) refreshReportView(); return; }
         if (calibState === "adjust_right") { calibState = "wait_right"; calibrateMatBtn.innerText = "📍 右端をタップ"; calibrationPoints.pop(); document.getElementById('dpadPanel').style.display = 'none'; if(isPausedForEdit) refreshReportView(); return; }
@@ -587,11 +577,9 @@
         const scaleX = canvas.width / renderWidth, scaleY = canvas.height / renderHeight; return { x: (clientX - rect.left - offsetX) * scaleX, y: (clientY - rect.top - offsetY) * scaleY, renderScale: scaleX };
     }
 
-    // 🌟 V48 Pointer Down Logic
     canvasMP.addEventListener('pointerdown', (e) => {
         const pos = getEventPos(canvasMP, e); if (!pos) return;
 
-        // V48 キャリブレーションモードの時はポイントを打って十字キーを出す
         if (calibState !== "idle") {
             if (calibState === "wait_left" || calibState === "adjust_left") {
                 calibrationPoints[0] = pos; calibState = "adjust_left";
@@ -601,12 +589,11 @@
                 calibrateMatBtn.innerText = "✅ 右端を確定"; document.getElementById('dpadPanel').style.display = 'flex';
             }
             if (isPausedForEdit) refreshReportView();
-            return; // ここで終了。アンカーや骨格の判定はしない
+            return; 
         }
 
         const hitRadius = 80 * pos.renderScale; 
         
-        // アンカードラッグ判定
         if ((currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) && window.currentAnchorPos && !isRecording && appMode !== 'playback') {
             if (Math.hypot(window.currentAnchorPos.x - pos.x, window.currentAnchorPos.y - pos.y) < hitRadius * 1.5) { dragTarget = { type: 'anchor' }; window.anchorStatus = "dragging"; closeDpad(); return; }
         }
@@ -647,7 +634,6 @@
         if(appMode === 'playback') return; const w = video.videoWidth, h = video.videoHeight;
         ctxMP.drawImage(video, 0, 0, w, h); drawCenterGrid(ctxMP, canvasMP);
 
-        // 🌟 V48 キャリブレーション中の静止画描画
         if (calibState !== "idle") {
             ctxMP.fillStyle = "#ffeb3b";
             if (calibrationPoints[0]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[0].x, calibrationPoints[0].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_left") drawCrosshair(ctxMP, calibrationPoints[0], canvasMP); }
@@ -698,7 +684,6 @@
         ctxMP.drawImage(video, 0, 0, w, h); 
         drawCenterGrid(ctxMP, canvasMP);
 
-        // 🌟 V48 キャリブレーション中のリアルタイム描画
         if (calibState !== "idle") {
             ctxMP.fillStyle = "#ffeb3b";
             if (calibrationPoints[0]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[0].x, calibrationPoints[0].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_left") drawCrosshair(ctxMP, calibrationPoints[0], canvasMP); }
