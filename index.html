@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V56 (Android & AR Fix)</title>
+    <title>CONNECT AI - Master Evaluation Engine V57 (Multi-CDN Auto Fallback)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -11,9 +11,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
     
-    <script src="https://cdn.jsdelivr.net/gh/juj/jsaruco@master/src/cv.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/juj/jsaruco@master/src/aruco.js"></script>
-
     <style>
         body { margin: 0; font-family: sans-serif; background: #0a0a0a; color: white; overflow: hidden; }
         .controls { padding: 12px 15px; background: #1a1a1a; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; align-items: center; border-bottom: 2px solid #333; }
@@ -41,7 +38,7 @@
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
         .info-panel { position: absolute; top: 55px; left: 15px; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 4px; color: #fff; font-size: 12px; z-index: 10; border-left: 3px solid #673ab7; pointer-events: none; }
-        .debug-panel { position: absolute; top: 110px; left: 15px; background: rgba(0,0,0,0.85); padding: 10px; border-radius: 6px; font-size: 14px; color: #00e676; border: 2px solid #00e676; z-index: 50; font-family: monospace; pointer-events: none; box-shadow: 0 0 15px rgba(0,230,118,0.4); }
+        .debug-panel { position: absolute; top: 110px; left: 15px; background: rgba(0,0,0,0.85); padding: 10px; border-radius: 6px; font-size: 14px; color: #ffeb3b; border: 2px solid #ffeb3b; z-index: 50; font-family: monospace; pointer-events: none; box-shadow: 0 0 15px rgba(255,235,59,0.4); }
         #tiltPanel { display: none; position: absolute; top: 170px; left: 15px; background: rgba(15,15,15,0.9); border: 2px solid #ff9100; border-radius: 12px; padding: 15px; z-index: 500; box-shadow: 0 5px 20px rgba(255,145,0,0.3); }
         .tilt-header { color: #ff9100; font-size: 14px; font-weight: bold; margin-bottom: 10px; text-align: center; }
         .tilt-slider { width: 200px; cursor: pointer; }
@@ -53,7 +50,6 @@
         #backToCamBtn { background: #555; color: white; }
         #editFrameBtn { background: #ff9100; color: #000; font-weight: bold; }
         
-        /* 🌟 V56: 100dvh を採用しモバイルのURLバー表示に完全追従 */
         .container { display: flex; width: 100vw; height: calc(100dvh - 70px); position: relative; background: #000; justify-content: center; align-items: center; }
         .view-port { width: 100%; height: 100%; position: relative; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; }
         video { display: none; }
@@ -62,7 +58,6 @@
         .label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 14px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; font-weight: bold; pointer-events: none; }
         .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; display: none; z-index: 100; pointer-events: none; }
         
-        /* 🌟 V56: レーダーを絶対に隠れない「右上（top: 60px）」へ移動 */
         .radar-wrapper { position: absolute; top: 60px; right: 15px; width: 150px; height: 150px; z-index: 200; touch-action: none; cursor: grab; transition: transform 0.2s, opacity 0.2s; }
         .radar-wrapper.dragging { cursor: grabbing; transform: scale(1.1); opacity: 0.8; z-index: 999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); border-radius: 50%; transition: none; }
         .radar-box { width: 150px; height: 150px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 15px rgba(255,82,82,0.5); border: 2px solid #ff5252; pointer-events: none; }
@@ -163,10 +158,10 @@
 
     <div class="view-port">
         <canvas id="canvasMP"></canvas>
-        <div class="label">CONNECT AI - V56 Mobile Fix</div>
+        <div class="label">CONNECT AI - V57 Multi-CDN AR</div>
         <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
         
-        <div class="debug-panel" id="debugLog">AR Status: Initializing...</div>
+        <div class="debug-panel" id="debugLog">AR Status: Initializing Engine...</div>
 
         <div id="radarWrapperMP" class="radar-wrapper">
             <div class="radar-title">COP RADAR</div>
@@ -234,7 +229,40 @@
     window.reportDataStore = {};
     ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_overhead_side', 'dyn_single_r', 'dyn_single_l', 'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'].forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
 
-    // 🌟 V56: window.onload で確実にライブラリが読み込まれてから初期化
+    // 🌟 V57: 動的スクリプト読み込み関数（プロミス化）
+    function loadScript(src) {
+        return new Promise(function(resolve, reject) {
+            let s = document.createElement('script');
+            s.src = src;
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
+        });
+    }
+
+    // 🌟 V57: マルチCDN オートフォールバックエンジン
+    async function loadARLibrary() {
+        const arCdns = [
+            ["https://raw.githack.com/juj/jsaruco/master/src/cv.js", "https://raw.githack.com/juj/jsaruco/master/src/aruco.js"],
+            ["https://cdn.statically.io/gh/juj/jsaruco/master/src/cv.js", "https://cdn.statically.io/gh/juj/jsaruco/master/src/aruco.js"],
+            ["https://cdn.jsdelivr.net/gh/juj/jsaruco/master/src/cv.js", "https://cdn.jsdelivr.net/gh/juj/jsaruco/master/src/aruco.js"]
+        ];
+        
+        for (let i = 0; i < arCdns.length; i++) {
+            try {
+                debugLog.innerText = "AR Status: Fetching Server " + (i+1) + "...";
+                await loadScript(arCdns[i][0]);
+                await loadScript(arCdns[i][1]);
+                if (typeof AR !== 'undefined') {
+                    return true;
+                }
+            } catch (e) {
+                console.warn("CDN " + (i+1) + " failed. Trying next...");
+            }
+        }
+        return false;
+    }
+
     async function init() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
             videoSource.innerHTML = '<option value="">⚠️ セキュリティ制限 (HTTPS必須)</option>';
@@ -257,22 +285,21 @@
             });
             if(!hasCam) videoSource.innerHTML = '<option value="">カメラが見つかりません</option>';
             
-            startBtn.innerText = "⏳ AIモデル読込中...";
+            startBtn.innerText = "⏳ AI/AR読込中...";
             startBtn.disabled = true;
 
-            // 🌟 V56: ARライブラリ遅延読み込み用リトライ処理
-            if (typeof AR === 'undefined') {
-                console.warn("AR object not ready, waiting 1s...");
-                await new Promise(r => setTimeout(r, 1000));
-            }
-
-            if (typeof AR !== 'undefined') {
+            // 🌟 V57: 通信ブロックを回避してARライブラリをロード
+            let arLoaded = await loadARLibrary();
+            
+            if (arLoaded) {
                 arDetector = new AR.Detector();
                 debugLog.innerText = "AR Status: Ready\nWait for Camera...";
                 debugLog.style.color = "#00e676";
+                debugLog.style.borderColor = "#00e676";
             } else {
-                debugLog.innerText = "AR Status: Library Load Failed\nCheck Internet Connection.";
+                debugLog.innerText = "AR Status: Failed\nAll servers blocked by ISP.";
                 debugLog.style.color = "#ff5252";
+                debugLog.style.borderColor = "#ff5252";
             }
 
             await tf.setBackend('webgl'); await tf.ready();
@@ -764,7 +791,6 @@
         ctxComb.drawImage(canvasMP, 0, 0, w, h);
     }
 
-    // 🌟 起動の安全トリガーを window.onload に設定
     window.addEventListener('load', init); 
 
     startBtn.onclick = async function() {
@@ -817,13 +843,16 @@
                     
                     debugLog.innerText = "AR Status: Running (" + video.videoWidth + "x" + video.videoHeight + ") - Found " + latestDetectedMarkers.length;
                     debugLog.style.color = "#00e676";
+                    debugLog.style.borderColor = "#00e676";
                 } else {
                     debugLog.innerText = "AR Status: Running (" + video.videoWidth + "x" + video.videoHeight + ") - No Markers";
                     debugLog.style.color = "#ffeb3b";
+                    debugLog.style.borderColor = "#ffeb3b";
                 }
             } catch(e) { 
                 debugLog.innerText = "AR Error: " + e.message;
                 debugLog.style.color = "#ff5252";
+                debugLog.style.borderColor = "#ff5252";
             }
         }
 
