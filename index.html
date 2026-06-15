@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V55 (Android UI Fix)</title>
+    <title>CONNECT AI - Master Evaluation Engine V56 (Android & AR Fix)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -40,13 +40,8 @@
         
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
-        /* 🌟 V55: Android見切れ対策で全体を下にシフト */
         .info-panel { position: absolute; top: 55px; left: 15px; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 4px; color: #fff; font-size: 12px; z-index: 10; border-left: 3px solid #673ab7; pointer-events: none; }
-        
-        /* 🌟 デバッグモニターを確実に表示できる左上に移動 */
         .debug-panel { position: absolute; top: 110px; left: 15px; background: rgba(0,0,0,0.85); padding: 10px; border-radius: 6px; font-size: 14px; color: #00e676; border: 2px solid #00e676; z-index: 50; font-family: monospace; pointer-events: none; box-shadow: 0 0 15px rgba(0,230,118,0.4); }
-        
-        /* 🌟 骨盤スライダーもさらに下へ移動し、絶対被らないように */
         #tiltPanel { display: none; position: absolute; top: 170px; left: 15px; background: rgba(15,15,15,0.9); border: 2px solid #ff9100; border-radius: 12px; padding: 15px; z-index: 500; box-shadow: 0 5px 20px rgba(255,145,0,0.3); }
         .tilt-header { color: #ff9100; font-size: 14px; font-weight: bold; margin-bottom: 10px; text-align: center; }
         .tilt-slider { width: 200px; cursor: pointer; }
@@ -58,7 +53,8 @@
         #backToCamBtn { background: #555; color: white; }
         #editFrameBtn { background: #ff9100; color: #000; font-weight: bold; }
         
-        .container { display: flex; width: 100vw; height: calc(100vh - 70px); position: relative; background: #000; justify-content: center; align-items: center; }
+        /* 🌟 V56: 100dvh を採用しモバイルのURLバー表示に完全追従 */
+        .container { display: flex; width: 100vw; height: calc(100dvh - 70px); position: relative; background: #000; justify-content: center; align-items: center; }
         .view-port { width: 100%; height: 100%; position: relative; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; }
         video { display: none; }
         canvas { width: 100%; height: 100%; object-fit: contain; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -66,7 +62,8 @@
         .label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 14px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; font-weight: bold; pointer-events: none; }
         .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; display: none; z-index: 100; pointer-events: none; }
         
-        .radar-wrapper { position: absolute; bottom: 20px; right: 20px; width: 150px; height: 150px; z-index: 200; touch-action: none; cursor: grab; transition: transform 0.2s, opacity 0.2s; }
+        /* 🌟 V56: レーダーを絶対に隠れない「右上（top: 60px）」へ移動 */
+        .radar-wrapper { position: absolute; top: 60px; right: 15px; width: 150px; height: 150px; z-index: 200; touch-action: none; cursor: grab; transition: transform 0.2s, opacity 0.2s; }
         .radar-wrapper.dragging { cursor: grabbing; transform: scale(1.1); opacity: 0.8; z-index: 999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); border-radius: 50%; transition: none; }
         .radar-box { width: 150px; height: 150px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 15px rgba(255,82,82,0.5); border: 2px solid #ff5252; pointer-events: none; }
         .radar-title { position: absolute; top: -20px; left: 15px; font-size: 12px; background: rgba(0,0,0,0.8); padding: 3px 8px; border-radius: 4px; font-weight: bold; white-space: nowrap; pointer-events: none; color: #ff5252; border: 1px solid #ff5252; }
@@ -166,7 +163,7 @@
 
     <div class="view-port">
         <canvas id="canvasMP"></canvas>
-        <div class="label">CONNECT AI - V55 Debug View</div>
+        <div class="label">CONNECT AI - V56 Mobile Fix</div>
         <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
         
         <div class="debug-panel" id="debugLog">AR Status: Initializing...</div>
@@ -237,6 +234,7 @@
     window.reportDataStore = {};
     ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_overhead_side', 'dyn_single_r', 'dyn_single_l', 'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'].forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
 
+    // 🌟 V56: window.onload で確実にライブラリが読み込まれてから初期化
     async function init() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
             videoSource.innerHTML = '<option value="">⚠️ セキュリティ制限 (HTTPS必須)</option>';
@@ -262,13 +260,19 @@
             startBtn.innerText = "⏳ AIモデル読込中...";
             startBtn.disabled = true;
 
+            // 🌟 V56: ARライブラリ遅延読み込み用リトライ処理
+            if (typeof AR === 'undefined') {
+                console.warn("AR object not ready, waiting 1s...");
+                await new Promise(r => setTimeout(r, 1000));
+            }
+
             if (typeof AR !== 'undefined') {
                 arDetector = new AR.Detector();
                 debugLog.innerText = "AR Status: Ready\nWait for Camera...";
+                debugLog.style.color = "#00e676";
             } else {
                 debugLog.innerText = "AR Status: Library Load Failed\nCheck Internet Connection.";
                 debugLog.style.color = "#ff5252";
-                console.warn("ARライブラリの読み込みに失敗しました。");
             }
 
             await tf.setBackend('webgl'); await tf.ready();
@@ -760,7 +764,8 @@
         ctxComb.drawImage(canvasMP, 0, 0, w, h);
     }
 
-    window.addEventListener('DOMContentLoaded', init); 
+    // 🌟 起動の安全トリガーを window.onload に設定
+    window.addEventListener('load', init); 
 
     startBtn.onclick = async function() {
         if (mainRenderId) { cancelAnimationFrame(mainRenderId); mainRenderId = null; }
@@ -810,7 +815,6 @@
                     });
                     drawARMarkers(ctxMP, latestDetectedMarkers);
                     
-                    // 🌟 解像度も出力してデバッグを強化
                     debugLog.innerText = "AR Status: Running (" + video.videoWidth + "x" + video.videoHeight + ") - Found " + latestDetectedMarkers.length;
                     debugLog.style.color = "#00e676";
                 } else {
