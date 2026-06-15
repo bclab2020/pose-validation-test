@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V57 (Multi-CDN Auto Fallback)</title>
+    <title>CONNECT AI - Master Evaluation Engine V58 (NPM CDN Bypass)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -158,7 +158,7 @@
 
     <div class="view-port">
         <canvas id="canvasMP"></canvas>
-        <div class="label">CONNECT AI - V57 Multi-CDN AR</div>
+        <div class="label">CONNECT AI - V58 NPM Bypass</div>
         <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
         
         <div class="debug-panel" id="debugLog">AR Status: Initializing Engine...</div>
@@ -229,7 +229,6 @@
     window.reportDataStore = {};
     ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_overhead_side', 'dyn_single_r', 'dyn_single_l', 'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'].forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
 
-    // 🌟 V57: 動的スクリプト読み込み関数（プロミス化）
     function loadScript(src) {
         return new Promise(function(resolve, reject) {
             let s = document.createElement('script');
@@ -240,17 +239,17 @@
         });
     }
 
-    // 🌟 V57: マルチCDN オートフォールバックエンジン
+    // 🌟 V58: GitHubプロキシではなく、公式NPMレジストリCDN群を使用
     async function loadARLibrary() {
         const arCdns = [
-            ["https://raw.githack.com/juj/jsaruco/master/src/cv.js", "https://raw.githack.com/juj/jsaruco/master/src/aruco.js"],
-            ["https://cdn.statically.io/gh/juj/jsaruco/master/src/cv.js", "https://cdn.statically.io/gh/juj/jsaruco/master/src/aruco.js"],
-            ["https://cdn.jsdelivr.net/gh/juj/jsaruco/master/src/cv.js", "https://cdn.jsdelivr.net/gh/juj/jsaruco/master/src/aruco.js"]
+            ["https://cdn.jsdelivr.net/npm/js-aruco@0.1.0/src/cv.js", "https://cdn.jsdelivr.net/npm/js-aruco@0.1.0/src/aruco.js"],
+            ["https://unpkg.com/js-aruco@0.1.0/src/cv.js", "https://unpkg.com/js-aruco@0.1.0/src/aruco.js"],
+            ["https://raw.githack.com/juj/jsaruco/master/src/cv.js", "https://raw.githack.com/juj/jsaruco/master/src/aruco.js"]
         ];
         
         for (let i = 0; i < arCdns.length; i++) {
             try {
-                debugLog.innerText = "AR Status: Fetching Server " + (i+1) + "...";
+                debugLog.innerText = "AR Status: Fetching Server " + (i+1) + " (NPM)...";
                 await loadScript(arCdns[i][0]);
                 await loadScript(arCdns[i][1]);
                 if (typeof AR !== 'undefined') {
@@ -288,7 +287,7 @@
             startBtn.innerText = "⏳ AI/AR読込中...";
             startBtn.disabled = true;
 
-            // 🌟 V57: 通信ブロックを回避してARライブラリをロード
+            // V58: 通信ブロックを回避してARライブラリをロード
             let arLoaded = await loadARLibrary();
             
             if (arLoaded) {
@@ -593,295 +592,4 @@
     function drawCrosshair(ctx, kp, canvas) {
         if(!kp) return;
         ctx.save(); ctx.strokeStyle = "rgba(0, 191, 255, 0.7)"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
-        ctx.beginPath(); ctx.moveTo(0, kp.y); ctx.lineTo(canvas.width, kp.y); ctx.moveTo(kp.x, 0); ctx.lineTo(kp.x, canvas.height); ctx.stroke();
-        ctx.beginPath(); ctx.arc(kp.x, kp.y, 14, 0, 2*Math.PI); ctx.strokeStyle = "#00bfff"; ctx.lineWidth = 3; ctx.setLineDash([]); ctx.stroke();
-        ctx.fillStyle = "rgba(0, 191, 255, 0.3)"; ctx.fill(); ctx.restore();
-    }
-
-    function drawARMarkers(ctx, markers) {
-        if (!markers || markers.length === 0) return;
-        ctx.save();
-        ctx.strokeStyle = "#00e676";
-        ctx.lineWidth = 3;
-        ctx.font = "bold 14px sans-serif";
-        ctx.fillStyle = "#00e676";
-        
-        for (let i = 0; i < markers.length; i++) {
-            let m = markers[i];
-            ctx.beginPath();
-            ctx.moveTo(m.corners[0].x, m.corners[0].y);
-            for (let j = 1; j < m.corners.length; j++) {
-                ctx.lineTo(m.corners[j].x, m.corners[j].y);
-            }
-            ctx.closePath();
-            ctx.stroke();
-            ctx.fillText("AR ID: " + m.id, m.corners[0].x, m.corners[0].y - 10);
-        }
-        ctx.restore();
-    }
-
-    function runReviewLogic(ctx, getK, canvas) {
-        ctx.fillStyle = "#deff9a"; ctx.font = "bold 24px sans-serif"; const nose = getK('nose'); let originX, originY;
-        if (currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) {
-            if (window.customOriginMarkers[currentTab]) { originX = window.customOriginMarkers[currentTab].x; originY = window.customOriginMarkers[currentTab].y; } else {
-                let footPtsX = [], footPtsY = []; ['left_ankle', 'right_ankle', 'left_heel', 'right_heel', 'left_foot_index', 'right_foot_index'].forEach(function(name) { let p = getK(name); if (p && p.score > 0.1) { footPtsX.push(p.x); footPtsY.push(p.y); } });
-                if (footPtsX.length >= 2) { originX = (Math.min(...footPtsX) + Math.max(...footPtsX)) / 2; originY = Math.max(...footPtsY); }
-            }
-        }
-        if (originX !== undefined && originY !== undefined) {
-            window.currentAnchorPos = { x: originX, y: originY };
-            let anchorColor = window.anchorStatus === "dragging" ? "rgba(255, 165, 0, 0.8)" : "rgba(0, 191, 255, 0.8)";
-            ctx.save(); ctx.fillStyle = anchorColor; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(originX, originY, 20, 0, 2*Math.PI); ctx.fill(); ctx.stroke(); 
-            if (showSwayAlertCheckbox.checked) {
-                ctx.strokeStyle = anchorColor; ctx.lineWidth = 3; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.moveTo(originX, originY); ctx.lineTo(originX, 0); ctx.stroke(); 
-                let sway = nose ? (nose.x - originX) : 0; let corridorColor = Math.abs(sway) > 30 ? "rgba(255, 0, 0, 0.15)" : "rgba(0, 255, 0, 0.1)";
-                ctx.fillStyle = corridorColor; ctx.fillRect(originX - 30, 0, 60, originY);
-            }
-            ctx.restore();
-        }
-    }
-
-    recBtn.onclick = function() {
-        isPausedForEdit = false; staticBackgroundData = null; isRecording = true; closeDpad(); coordinateBufferMP = []; poseDataLog = poseDataLog.filter(d => d.mode !== currentTab);
-        recordingDuration = parseInt(durationSelect.value); recordingStartTime = Date.now(); swayHistoryMP = []; 
-        timerDisplay.style.display = "block"; recBtn.disabled = true; downloadCsvBtn.disabled = true; recordedChunks = [];
-        try { 
-            const stream = canvasComb.captureStream(30); recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' }); 
-            recorder.ondataavailable = function(e) { if (e.data.size > 0) recordedChunks.push(e.data); }; 
-            recorder.onstop = function() { 
-                const b = new Blob(recordedChunks, { type: 'video/webm' }); 
-                const videoUrl = URL.createObjectURL(b);
-                playbackVideo.src = videoUrl;
-                const a = document.createElement('a'); a.href = videoUrl; a.download = "connect_ai_" + currentTab + "_" + Date.now() + ".webm"; a.click(); 
-            }; 
-            recorder.start(); 
-        } catch (e) { console.error(e); }
-        const timerInterval = setInterval(function() {
-            const elapsed = Date.now() - recordingStartTime; timerDisplay.innerText = "REC " + Math.max(0, (recordingDuration - elapsed) / 1000).toFixed(1) + "s";
-            if (elapsed >= recordingDuration) { clearInterval(timerInterval); executePostProcessingStop(); }
-        }, 100);
-    };
-
-    function executePostProcessingStop() {
-        isRecording = false; timerDisplay.style.display = "none"; if (recorder && recorder.state !== "inactive") recorder.stop(); 
-        if (currentTab.startsWith("dyn_")) { enterPlaybackMode(); } 
-        else {
-            isPausedForEdit = true;
-            const bgCanvas = document.createElement('canvas'); bgCanvas.width = canvasMP.width; bgCanvas.height = canvasMP.height;
-            bgCanvas.getContext('2d').drawImage(video, 0, 0, canvasMP.width, canvasMP.height); staticBackgroundData = bgCanvas;
-            if (coordinateBufferMP.length > 0) {
-                const totalFrames = coordinateBufferMP.length; let avgKeypoints = JSON.parse(JSON.stringify(coordinateBufferMP[0]));
-                avgKeypoints.forEach(function(kp, kpIdx) { let sumX = 0, sumY = 0; for (let f = 0; f < totalFrames; f++) { if(coordinateBufferMP[f][kpIdx]) { sumX += coordinateBufferMP[f][kpIdx].x; sumY += coordinateBufferMP[f][kpIdx].y; } } kp.x = sumX / totalFrames; kp.y = sumY / totalFrames; kp.score = 1.00; });
-                window.reportDataStore[currentTab] = avgKeypoints;
-            }
-            recBtn.disabled = false; downloadCsvBtn.disabled = false; refreshReportView(); 
-        }
-    }
-
-    function enterPlaybackMode() {
-        appMode = 'playback'; document.getElementById('mainControls').style.display = 'none'; document.getElementById('playbackControls').style.display = 'flex';
-        playbackDataMP = poseDataLog.filter(d => d.mode === currentTab);
-        if (playbackDataMP.length > 1) { playbackBaseTime = playbackDataMP[0].time; playbackTotalDuration = playbackDataMP[playbackDataMP.length - 1].time - playbackBaseTime; } else { playbackBaseTime = 0; playbackTotalDuration = 0; }
-        const maxFrames = playbackDataMP.length - 1; document.getElementById('timelineSlider').max = maxFrames > 0 ? maxFrames : 0; document.getElementById('timelineSlider').value = 0; document.getElementById('frameCounter').innerText = "0 / " + document.getElementById('timelineSlider').max;
-        playbackVideo.pause(); playbackVideo.currentTime = 0;
-        renderPlaybackFrame(0); togglePlay(true);
-    }
-    
-    function exitPlaybackMode() { appMode = 'camera'; togglePlay(false); document.getElementById('playbackControls').style.display = 'none'; document.getElementById('mainControls').style.display = 'flex'; isPausedForEdit = false; closeDpad(); isEditingPlaybackFrame=false; document.getElementById('editFrameBtn').innerText = "✂️ このフレームを微調整"; document.getElementById('editFrameBtn').style.background = "#ff9100"; }
-    
-    function togglePlay(forcePlay) {
-        if(isEditingPlaybackFrame && forcePlay !== false) return; 
-        if (forcePlay === true || !isPlaying) {
-            isPlaying = true; document.getElementById('playPauseBtn').innerText = "⏸ 停止";
-            if (playbackDataMP.length > 1) { 
-                let currentIdx = parseInt(document.getElementById('timelineSlider').value); 
-                if(currentIdx >= playbackDataMP.length) currentIdx = 0; 
-                playbackStartTime = Date.now() - (playbackDataMP[currentIdx].time - playbackBaseTime); 
-                playbackVideo.currentTime = (playbackDataMP[currentIdx].time - playbackBaseTime) / 1000.0;
-            } else { playbackStartTime = Date.now(); }
-            playbackVideo.play(); playbackLoop();
-        } else { isPlaying = false; document.getElementById('playPauseBtn').innerText = "▶ 再生"; playbackVideo.pause(); cancelAnimationFrame(playbackRafId); }
-    }
-    
-    function playbackLoop() {
-        if (!isPlaying) return; let now = Date.now(), elapsed = now - playbackStartTime;
-        if (elapsed > playbackTotalDuration) { playbackStartTime = now; elapsed = 0; }
-        let targetTime = playbackBaseTime + elapsed, targetIdx = playbackDataMP.length - 1;
-        for (let i = 0; i < playbackDataMP.length; i++) { if (playbackDataMP[i].time >= targetTime) { targetIdx = i; break; } }
-        document.getElementById('timelineSlider').value = targetIdx; renderPlaybackFrame(targetIdx); playbackRafId = requestAnimationFrame(playbackLoop);
-    }
-
-    document.getElementById('playPauseBtn').onclick = function() { togglePlay(); }; 
-    document.getElementById('backToCamBtn').onclick = function() { exitPlaybackMode(); };
-    document.getElementById('timelineSlider').oninput = function() { 
-        togglePlay(false); 
-        const fIdx = parseInt(document.getElementById('timelineSlider').value);
-        if (playbackDataMP[fIdx]) { playbackVideo.currentTime = (playbackDataMP[fIdx].time - playbackBaseTime) / 1000.0; }
-        renderPlaybackFrame(fIdx); 
-    };
-
-    playbackVideo.addEventListener('seeked', function() { if (!isPlaying && appMode === 'playback') { renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); } });
-
-    function renderPlaybackFrame(frameIdx) {
-        document.getElementById('frameCounter').innerText = frameIdx + " / " + document.getElementById('timelineSlider').max; const w = canvasMP.width, h = canvasMP.height;
-        ctxMP.clearRect(0, 0, w, h); 
-        if (playbackVideo.readyState >= 2) { ctxMP.drawImage(playbackVideo, 0, 0, w, h); } else { ctxMP.fillStyle = "#111"; ctxMP.fillRect(0, 0, w, h); }
-        drawCenterGrid(ctxMP, canvasMP);
-        if (playbackDataMP[frameIdx]) {
-            const actualKps = playbackDataMP[frameIdx].keypoints;
-            drawSkeleton(ctxMP, actualKps, '#ffffff'); runReviewLogic(ctxMP, (n) => actualKps.find(k => k.name === n), canvasMP);
-            if (selectedJointIndex !== null && isEditingPlaybackFrame) { drawCrosshair(ctxMP, actualKps[selectedJointIndex], canvasMP); }
-            drawPlaybackRadar(playbackDataMP, frameIdx, canvasMP);
-        }
-        ctxComb.drawImage(canvasMP, 0, 0, w, h);
-    }
-
-    canvasMP.addEventListener('pointerdown', function(e) {
-        const pos = getEventPos(canvasMP, e); if (!pos) return;
-
-        if (calibState !== "idle") {
-            if (calibState === "wait_left" || calibState === "adjust_left") { calibrationPoints[0] = pos; calibState = "adjust_left"; calibrateMatBtn.innerText = "✅ 左端を確定"; document.getElementById('dpadPanel').style.display = 'flex'; } 
-            else if (calibState === "wait_right" || calibState === "adjust_right") { calibrationPoints[1] = pos; calibState = "adjust_right"; calibrateMatBtn.innerText = "✅ 右端を確定"; document.getElementById('dpadPanel').style.display = 'flex'; }
-            if (isPausedForEdit) refreshReportView();
-            return; 
-        }
-
-        const hitRadius = 80 * pos.renderScale; 
-        if ((currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) && window.currentAnchorPos && !isRecording && appMode !== 'playback') {
-            if (Math.hypot(window.currentAnchorPos.x - pos.x, window.currentAnchorPos.y - pos.y) < hitRadius * 1.5) { dragTarget = { type: 'anchor' }; window.anchorStatus = "dragging"; closeDpad(); return; }
-        }
-        
-        let kpsToSearch = null;
-        if (appMode === 'playback' && isEditingPlaybackFrame) { const fIdx = parseInt(document.getElementById('timelineSlider').value); if (playbackDataMP[fIdx]) kpsToSearch = playbackDataMP[fIdx].keypoints; }
-        else if (isPausedForEdit && appMode !== 'playback') { kpsToSearch = window.reportDataStore[currentTab]; }
-        
-        if (kpsToSearch) {
-            let closestIdx = -1, minDist = hitRadius;
-            kpsToSearch.forEach(function(kp, idx) { if (kp && kp.score > 0.0) { const dist = Math.hypot(kp.x - pos.x, kp.y - pos.y); if (dist < minDist) { minDist = dist; closestIdx = idx; } } });
-            if (closestIdx !== -1) { selectedJointIndex = closestIdx; document.getElementById('dpadPanel').style.display = 'flex'; } else { closeDpad(); }
-            if (appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); else refreshReportView();
-        }
-    });
-
-    canvasMP.addEventListener('pointermove', function(e) {
-        if (dragTarget && dragTarget.type === 'anchor') {
-            if(e.cancelable) e.preventDefault(); const pos = getEventPos(canvasMP, e); if (!pos) return;
-            const safeX = Math.max(0, Math.min(pos.x, canvasMP.width)), safeY = Math.max(0, Math.min(pos.y, canvasMP.height));
-            window.customOriginMarkers[currentTab] = { x: safeX, y: safeY }; window.currentAnchorPos = { x: safeX, y: safeY }; if (isPausedForEdit) refreshReportView(); 
-        }
-    });
-    const handleEnd = function() { if (dragTarget && dragTarget.type === 'anchor') { window.anchorStatus = "locked"; dragTarget = null; canvasMP.style.cursor = 'default'; } };
-    canvasMP.addEventListener('pointerup', handleEnd); canvasMP.addEventListener('pointercancel', handleEnd);
-
-    function refreshReportView() {
-        if(appMode === 'playback') return; const w = video.videoWidth, h = video.videoHeight;
-        if (isPausedForEdit && staticBackgroundData) { ctxMP.drawImage(staticBackgroundData, 0, 0, w, h); } else { ctxMP.drawImage(video, 0, 0, w, h); }
-        drawCenterGrid(ctxMP, canvasMP);
-
-        if (calibState !== "idle") {
-            ctxMP.fillStyle = "#ffeb3b";
-            if (calibrationPoints[0]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[0].x, calibrationPoints[0].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_left") drawCrosshair(ctxMP, calibrationPoints[0], canvasMP); }
-            if (calibrationPoints[1]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[1].x, calibrationPoints[1].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_right") drawCrosshair(ctxMP, calibrationPoints[1], canvasMP); }
-        }
-
-        if (window.reportDataStore[currentTab]) {
-            const kps = window.reportDataStore[currentTab]; drawSkeleton(ctxMP, kps, '#ff5252'); runReviewLogic(ctxMP, (n) => kps.find(k => k.name === n), canvasMP);
-            if (selectedJointIndex !== null) drawCrosshair(ctxMP, kps[selectedJointIndex], canvasMP); 
-        }
-        ctxComb.drawImage(canvasMP, 0, 0, w, h);
-    }
-
-    window.addEventListener('load', init); 
-
-    startBtn.onclick = async function() {
-        if (mainRenderId) { cancelAnimationFrame(mainRenderId); mainRenderId = null; }
-        if(currentStream) { currentStream.getTracks().forEach(t=>t.stop()); video.pause(); video.srcObject = null; }
-        swayHistoryMP = []; window.currentAnchorPos = null; window.customOriginMarkers = {}; selectedJointIndex = null; clearRadar(ctxRadarMP, "#ff5252"); latestDetectedMarkers = [];
-
-        try {
-            const constraints = { video: { width: { ideal: 1920 }, height: { ideal: 1080 } } };
-            if (videoSource.value) { constraints.video.deviceId = { exact: videoSource.value }; } else { constraints.video.facingMode = "environment"; }
-            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-            video.srcObject = currentStream;
-            video.onloadeddata = function() { 
-                canvasMP.width=video.videoWidth; canvasMP.height=video.videoHeight; 
-                canvasComb.width=video.videoWidth; canvasComb.height=video.videoHeight; 
-                isPausedForEdit = false; staticBackgroundData = null; isRunning=true; video.play(); render(); recBtn.disabled=false; 
-            };
-        } catch(e){ alert("カメラへのアクセスが許可されていません。"); }
-    };
-
-    async function render() {
-        if (!isRunning || appMode === 'playback' || isPausedForEdit) { if(isRunning) mainRenderId = requestAnimationFrame(render); return; }
-        if (video.readyState < 2) { mainRenderId = requestAnimationFrame(render); return; }
-        const w = video.videoWidth, h = video.videoHeight;
-        
-        ctxMP.drawImage(video, 0, 0, w, h); 
-        drawCenterGrid(ctxMP, canvasMP);
-
-        if (appMode === "camera" && !isRecording && arDetector) {
-            try {
-                const arScale = 640 / w; 
-                const arW = 640;
-                const arH = h * arScale;
-                
-                arCanvas.width = arW;
-                arCanvas.height = arH;
-                arCtx.drawImage(video, 0, 0, arW, arH);
-                
-                let imageData = arCtx.getImageData(0, 0, arW, arH);
-                latestDetectedMarkers = arDetector.detect(imageData);
-                
-                if (latestDetectedMarkers.length > 0) {
-                    latestDetectedMarkers.forEach(function(m) {
-                        m.corners.forEach(function(c) {
-                            c.x = c.x / arScale;
-                            c.y = c.y / arScale;
-                        });
-                    });
-                    drawARMarkers(ctxMP, latestDetectedMarkers);
-                    
-                    debugLog.innerText = "AR Status: Running (" + video.videoWidth + "x" + video.videoHeight + ") - Found " + latestDetectedMarkers.length;
-                    debugLog.style.color = "#00e676";
-                    debugLog.style.borderColor = "#00e676";
-                } else {
-                    debugLog.innerText = "AR Status: Running (" + video.videoWidth + "x" + video.videoHeight + ") - No Markers";
-                    debugLog.style.color = "#ffeb3b";
-                    debugLog.style.borderColor = "#ffeb3b";
-                }
-            } catch(e) { 
-                debugLog.innerText = "AR Error: " + e.message;
-                debugLog.style.color = "#ff5252";
-                debugLog.style.borderColor = "#ff5252";
-            }
-        }
-
-        if (calibState !== "idle") {
-            ctxMP.fillStyle = "#ffeb3b";
-            if (calibrationPoints[0]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[0].x, calibrationPoints[0].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_left") drawCrosshair(ctxMP, calibrationPoints[0], canvasMP); }
-            if (calibrationPoints[1]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[1].x, calibrationPoints[1].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_right") drawCrosshair(ctxMP, calibrationPoints[1], canvasMP); }
-        }
-        
-        const poses = await detectors[0].estimatePoses(video);
-        if (poses.length > 0) {
-            let kps = poses[0].keypoints; 
-            kps = generateVirtualASIS(kps); 
-            window.reportDataStore[currentTab] = kps;
-            if (isRecording) { if (!coordinateBufferMP) coordinateBufferMP = []; coordinateBufferMP.push(kps); poseDataLog.push({ time: Date.now(), mode: currentTab, keypoints: JSON.parse(JSON.stringify(kps)) }); }
-            drawSkeleton(ctxMP, kps, currentTab.startsWith('dyn_') ? '#ffffff' : '#ff5252'); 
-            runReviewLogic(ctxMP, (n) => { for(let i=0;i<kps.length;i++){ if(kps[i].name===n) return kps[i]; } return null; }, canvasMP);
-            updateRadar(kps, canvasMP); 
-        }
-        ctxComb.drawImage(canvasMP, 0, 0, w, h);
-        mainRenderId = requestAnimationFrame(render);
-    }
-    
-    function prepareAndPrintReport() { window.print(); }
-    downloadCsvBtn.onclick = function() { 
-        let c="Timestamp,Mode,PointID,PointName,X,Y\n"; 
-        poseDataLog.forEach(function(d){ d.keypoints.forEach(function(kp, idx){ if(kp) c+=d.time + "," + d.mode + "," + idx + "," + kp.name + "," + kp.x.toFixed(1) + "," + kp.y.toFixed(1) + "\n"; }); }); 
-        const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([c],{type:'text/csv'})); a.download="connect_ai_data_" + Date.now() + ".csv"; a.click(); 
-    };
-</script>
-</body>
-</html>
+        ctx.beginPath(); ctx.moveTo(0, kp.y); ctx.lineTo(canvas.width, kp
