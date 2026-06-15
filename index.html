@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V62 (OHS Full Analysis)</title>
+    <title>CONNECT AI - Master Evaluation Engine V62-v2 (Head Analysis)</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
@@ -111,7 +111,7 @@
     </div>
     <div class="view-port">
         <canvas id="canvasMP"></canvas>
-        <div class="label">CONNECT AI - V62 OHS Full Engine</div>
+        <div class="label">CONNECT AI - V62-v2 Master</div>
         <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
         <div id="radarWrapperMP" class="radar-wrapper">
             <div class="radar-title">COP RADAR</div>
@@ -139,12 +139,10 @@
 
     window.currentAnchorPos = null; window.customOriginMarkers = {}; window.anchorStatus = "unlocked";
     const DURATION_MAP = { 'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 'dyn_overhead': 15000, 'dyn_overhead_side': 15000, 'dyn_single_r': 15000, 'dyn_single_l': 15000, 'dyn_flex_fwd': 10000, 'dyn_flex_bwd': 10000, 'dyn_shoulder_r': 10000, 'dyn_shoulder_l': 10000 };
-    window.reportDataStore = {};
-    Object.keys(DURATION_MAP).forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
+    window.reportDataStore = {}; Object.keys(DURATION_MAP).forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
 
     function getEventPos(canvas, e) {
-        const r = canvas.getBoundingClientRect(); let cX = e.clientX, cY = e.clientY;
-        if (e.touches && e.touches.length > 0) { cX = e.touches[0].clientX; cY = e.touches[0].clientY; }
+        const r = canvas.getBoundingClientRect(); let cX = e.clientX, cY = e.clientY; if (e.touches && e.touches.length > 0) { cX = e.touches[0].clientX; cY = e.touches[0].clientY; }
         const vRatio = canvas.width / canvas.height, cRatio = r.width / r.height;
         let rW = cRatio > vRatio ? r.height * vRatio : r.width, rH = cRatio > vRatio ? r.height : r.width / vRatio;
         let oX = cRatio > vRatio ? (r.width - rW) / 2 : 0, oY = cRatio > vRatio ? 0 : (r.height - rH) / 2;
@@ -166,7 +164,7 @@
     }
 
     function updateInfoPanel() {
-        infoPanel.innerHTML = (pxToCmRatio ? "校正済 (1px = " + pxToCmRatio.toFixed(3) + "cm)" : "⚠️ スケール未校正") + "<br>記録された骨盤傾斜: " + (estimatedPelvicTilt > 0 ? '+' : '') + estimatedPelvicTilt + "°";
+        infoPanel.innerHTML = (pxToCmRatio ? "校校正済 (1px = " + pxToCmRatio.toFixed(3) + "cm)" : "⚠️ スケール未校正") + "<br>記録された骨盤傾斜: " + (estimatedPelvicTilt > 0 ? '+' : '') + estimatedPelvicTilt + "°";
     }
 
     calibrateMatBtn.onclick = function() {
@@ -186,11 +184,10 @@
         let dPx = ((parseFloat(heightInput.value) || 170) * 0.085) / (pxToCmRatio || 0.15), aRad = (45 - estimatedPelvicTilt) * (Math.PI / 180);
         let upPx = dPx * Math.sin(aRad), fwdPx = dPx * Math.cos(aRad), lH = kps.find(k=>k.name==='left_hip'||k.name==='23'), rH = kps.find(k=>k.name==='right_hip'||k.name==='24');
         if (lH && rH && lH.score > 0.5 && rH.score > 0.5) {
-            let aL = { x: lH.x, y: lH.y - upPx, score: 1.0, name: 'virtual_asis_l' }, aR = { x: rH.x, y: rHip = rH.y - upPx, score: 1.0, name: 'virtual_asis_r' };
+            let aL = { x: lH.x, y: lH.y - upPx, score: 1.0, name: 'virtual_asis_l' }, aR = { x: rH.x, y: rH.y - upPx, score: 1.0, name: 'virtual_asis_r' };
             if (currentTab === 'r_side') { aL.x += fwdPx; aR.x += fwdPx; } else if (currentTab === 'l_side') { aL.x -= fwdPx; aR.x -= fwdPx; }
             let nKps = JSON.parse(JSON.stringify(kps)); nKps.push(aL); nKps.push(aR); return nKps;
-        }
-        return kps;
+        } return kps;
     }
 
     function updateRadar(kps, canvas) {
@@ -198,7 +195,7 @@
         let oX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2, oY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
         if (nose) {
             let cX = nose.x - oX, hD = oY - nose.y; if (!hist.baseHDist) hist.baseHDist = hD; let cY = hist.baseHDist - hD;
-            if (currentTab.includes("side")) { const sh = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (sh) cX = nose.x - sh.x; }
+            if (currentTab.includes("side") || currentTab.includes("overhead_side")) { const sh = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (sh) cX = nose.x - sh.x; }
             hist.push({ x: cX, y: cY }); if (hist.length > 150) hist.shift(); drawSpecificRadar(ctxRadarMP, hist, "#ff5252");
         }
     }
@@ -210,7 +207,7 @@
             let oX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2, oY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
             if (nose) {
                 let cX = nose.x - oX, hD = oY - nose.y; if (bHD === null) bHD = hD; let cY = bHD - hD;
-                if (currentTab.includes("side")) { const sh = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (sh) cX = nose.x - sh.x; }
+                if (currentTab.includes("side") || currentTab.includes("overhead_side")) { const sh = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (sh) cX = nose.x - sh.x; }
                 hist.push({ x: cX, y: cY });
             }
         }
@@ -257,8 +254,7 @@
             let kp = null; if (appMode === 'playback' && isEditingPlaybackFrame) { let f = parseInt(document.getElementById('timelineSlider').value); if(playbackDataMP[f]) kp = playbackDataMP[f].keypoints[selectedJointIndex]; }
             else if (isPausedForEdit) kp = window.reportDataStore[currentTab][selectedJointIndex];
             if (kp) { kp.x += dx; kp.y += dy; }
-        }
-        appMode === 'playback' ? renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)) : refreshReportView();
+        } appMode === 'playback' ? renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)) : refreshReportView();
     };
     document.getElementById('dpadUp').onclick = () => moveJoint(0, -dpadStepVal); document.getElementById('dpadDown').onclick = () => moveJoint(0, dpadStepVal);
     document.getElementById('dpadLeft').onclick = () => moveJoint(-dpadStepVal, 0); document.getElementById('dpadRight').onclick = () => moveJoint(dpadStepVal, 0);
@@ -285,7 +281,6 @@
         let pairs = [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]];
         if (currentTab === 'r_side' || currentTab === 'dyn_overhead_side') pairs = pairs.filter(p => ![[11,13],[13,15],[23,25],[25,27]].some(e => e[0]===p[0]));
         else if (currentTab === 'l_side') pairs = pairs.filter(p => ![[12,14],[14,16],[24,26],[26,28]].some(e => e[0]===p[0]));
-
         pairs.forEach(([s,e])=>{ const p1=kps[s], p2=kps[e]; if(p1 && p2 && p1.score>0.3 && p2.score>0.3){ ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); }});
         
         let aL=kps.find(k=>k.name==='virtual_asis_l'), aR=kps.find(k=>k.name==='virtual_asis_r'), lH=kps.find(k=>k.name==='left_hip'||k.name==='23'), rH=kps.find(k=>k.name==='right_hip'||k.name==='24');
@@ -294,7 +289,6 @@
         ctx.restore();
     }
 
-    // 🌟 V61: 前面OHS解析エンジン
     function drawOHSFrontAnalysis(ctx, kps) {
         if (currentTab !== 'dyn_overhead') return;
         const evaluateSide = (hIdx, kIdx, aIdx, label) => {
@@ -302,45 +296,73 @@
             let refX = h.x + (a.x - h.x) * ((k.y - h.y) / (a.y - h.y));
             let angle = Math.abs(180 - Math.abs(Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI);
             if(angle > 2.0) {
-                let isIn = label==='R' ? k.x > refX : k.x < refX;
-                ctx.fillStyle = isIn ? "#ff5252" : "#ff9100";
+                let isIn = label==='R' ? k.x > refX : k.x < refX; ctx.fillStyle = isIn ? "#ff5252" : "#ff9100";
                 ctx.fillText((isIn?"ニーイン ":"ニーアウト ") + angle.toFixed(1)+"°", k.x+(label==='R'?-120:20), k.y);
             }
         };
         ctx.save(); ctx.font="bold 16px sans-serif"; evaluateSide(24, 26, 28, 'R'); evaluateSide(23, 25, 27, 'L'); ctx.restore();
     }
 
-    // 🌟 V62: 側面OHS解析エンジン（新規搭載）
     function drawOHSSideAnalysis(ctx, kps) {
         if (currentTab !== 'dyn_overhead_side') return;
-        let lS = kps[11], lH = kps[23], lK = kps[25], lA = kps[27], lW = kps[15];
-        let rS = kps[12], rH = kps[24], rK = kps[26], rA = kps[28], rW = kps[16];
+        let lS = kps[11], lH = kps[23], lK = kps[25], lA = kps[27], lW = kps[15], rS = kps[12], rH = kps[24], rK = kps[26], rA = kps[28], rW = kps[16];
         let isLeftActive = (lS.score + lH.score + lK.score) > (rS.score + rH.score + rK.score);
         let s = isLeftActive ? lS : rS, h = isLeftActive ? lH : rH, k = isLeftActive ? lK : rK, a = isLeftActive ? lA : rA, w = isLeftActive ? lW : rW;
         if (!s || !h || !k || !a || s.score < 0.4 || h.score < 0.4 || k.score < 0.4) return;
 
-        // 1. 体幹前傾角 (垂直線からの傾き)
         let trunkLean = Math.abs(Math.atan2(s.x - h.x, h.y - s.y) * 180 / Math.PI);
-        // 2. 膝関節角度
-        let kneeAng = Math.abs((Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI);
-        if(kneeAng > 180) kneeAng = 360 - kneeAng;
-        // 3. 腕・体幹アライメント角
-        let armAng = Math.abs((Math.atan2(w.y-s.y, w.x-s.x) - Math.atan2(h.y-s.y, h.x-s.x)) * 180 / Math.PI);
-        if(armAng > 180) armAng = 360 - armAng;
+        let kneeAng = Math.abs((Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI); if(kneeAng > 180) kneeAng = 360 - kneeAng;
+        let armAng = Math.abs((Math.atan2(w.y-s.y, w.x-s.x) - Math.atan2(h.y-s.y, h.x-s.x)) * 180 / Math.PI); if(armAng > 180) armAng = 360 - armAng;
 
         ctx.save(); ctx.font = "bold 16px sans-serif";
-        // 体幹描画
-        ctx.fillStyle = trunkLean > 45 ? "#ff5252" : "#39ff14";
-        ctx.fillText("体幹前傾: " + trunkLean.toFixed(1) + "°", s.x - 30, s.y - 30);
-        // 膝描画
-        ctx.fillStyle = "#00bfff";
-        ctx.fillText("膝屈曲: " + kneeAng.toFixed(1) + "°", k.x + 20, k.y);
-        // 腕描画
+        ctx.fillStyle = trunkLean > 45 ? "#ff5252" : "#39ff14"; ctx.fillText("体幹前傾: " + trunkLean.toFixed(1) + "°", s.x - 30, s.y - 30);
+        ctx.fillStyle = "#00bfff"; ctx.fillText("膝屈曲: " + kneeAng.toFixed(1) + "°", k.x + 20, k.y);
         if(w && w.score > 0.4) {
-            ctx.fillStyle = armAng < 160 ? "#ff5252" : "#39ff14";
-            ctx.fillText("上腕・体幹アライメント: " + armAng.toFixed(1) + "°", s.x + 40, s.y + 20);
+            ctx.fillStyle = armAng < 160 ? "#ff5252" : "#39ff14"; ctx.fillText("上腕アライメント: " + armAng.toFixed(1) + "°", s.x + 40, s.y + 20);
             ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(w.x, w.y); ctx.stroke();
+        } ctx.restore();
+    }
+
+    // 🌟 V62-v2: 頭部位置関係可視化・解析エンジン（追加項目）
+    function drawHeadAnalysis(ctx, kps) {
+        let nose = kps[0], lEar = kps[7], rEar = kps[8]; if (!nose || nose.score < 0.4) return;
+        ctx.save();
+        
+        let isSide = currentTab.includes('side') || currentTab.includes('overhead_side');
+        if (!isSide) {
+            // 前面・後面システム
+            if (lEar && rEar && lEar.score > 0.4 && rEar.score > 0.4) {
+                let cX = (lEar.x + rEar.x) / 2, cY = (lEar.y + rEar.y) / 2, rad = Math.hypot(lEar.x - rEar.x, lEar.y - rEar.y) * 0.65;
+                ctx.strokeStyle = "rgba(57, 255, 20, 0.4)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cX, cY, rad, 0, 2*Math.PI); ctx.stroke();
+                ctx.strokeStyle = "#deff9a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cX, cY); ctx.lineTo(nose.x, nose.y); ctx.stroke(); // 正中線
+                
+                let tilt = Math.atan2(rEar.y - lEar.y, rEar.x - lEar.x) * 180 / Math.PI;
+                if (tilt > 90) tilt -= 180; else if (tilt < -90) tilt += 180;
+                ctx.font = "bold 14px sans-serif"; ctx.style = Math.abs(tilt) > 4 ? "#ff5252" : "#39ff14"; ctx.fillStyle = ctx.style;
+                ctx.fillText("頭部傾斜: " + Math.abs(tilt).toFixed(1) + "°", cX - 40, cY - rad - 10);
+            }
+        } else {
+            // 側面システム
+            let isLeft = currentTab === 'l_side' || (currentTab === 'dyn_overhead_side' && kps[11].score > kps[12].score);
+            let ear = isLeft ? lEar : rEar, sh = isLeft ? kps[11] : kps[12];
+            if (ear && ear.score > 0.4) {
+                let cX = (ear.x + nose.x) / 2, cY = (ear.y + nose.y) / 2, rad = Math.hypot(ear.x - nose.x, ear.y - nose.y) * 0.75;
+                ctx.strokeStyle = "rgba(0, 191, 255, 0.4)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cX, cY, rad, 0, 2*Math.PI); ctx.stroke();
+                ctx.strokeStyle = "#deff9a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ear.x, ear.y); ctx.lineTo(nose.x, nose.y); ctx.stroke();
+                
+                if (sh && sh.score > 0.4) {
+                    ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(sh.x, sh.y); ctx.lineTo(sh.x, ear.y); ctx.stroke(); // 肩垂直線
+                    ctx.strokeStyle = "#ff9100"; ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(sh.x, ear.y); ctx.lineTo(ear.x, ear.y); ctx.stroke(); // 変位
+                    if (pxToCmRatio) {
+                        let fhp = (ear.x - sh.x) * (isLeft ? -1 : 1) * pxToCmRatio;
+                        ctx.font = "bold 14px sans-serif"; ctx.fillStyle = fhp > 6 ? "#ff5252" : "#39ff14";
+                        ctx.fillText("頭部前突: " + fhp.toFixed(1) + "cm", cX - 45, cY - rad - 10);
+                    }
+                }
+            }
         }
+        // 特徴点プロット
+        [0, 2, 5, 7, 8].forEach(i => { if (kps[i] && kps[i].score > 0.4) { ctx.fillStyle = "#39ff14"; ctx.beginPath(); ctx.arc(kps[i].x, kps[i].y, 3, 0, 2*Math.PI); ctx.fill(); } });
         ctx.restore();
     }
 
@@ -358,8 +380,7 @@
             if (showSwayAlertCheckbox.checked && nose) {
                 ctx.strokeStyle = ctx.fillStyle; ctx.setLineDash([6,6]); ctx.beginPath(); ctx.moveTo(oX, oY); ctx.lineTo(oX, 0); ctx.stroke(); 
                 ctx.fillStyle = Math.abs(nose.x-oX)>30?"rgba(255,0,0,0.15)":"rgba(0,255,0,0.1)"; ctx.fillRect(oX-30, 0, 60, oY);
-            }
-            ctx.restore();
+            } ctx.restore();
         }
     }
 
@@ -388,8 +409,7 @@
                 const tot = coordinateBufferMP.length; let avgK = JSON.parse(JSON.stringify(coordinateBufferMP[0]));
                 avgK.forEach((kp, idx) => { let sX=0, sY=0; for(let f=0;f<tot;f++){if(coordinateBufferMP[f][idx]){sX+=coordinateBufferMP[f][idx].x; sY+=coordinateBufferMP[f][idx].y;}} kp.x=sX/tot; kp.y=sY/tot; kp.score=1; });
                 window.reportDataStore[currentTab] = avgK;
-            }
-            recBtn.disabled = false; downloadCsvBtn.disabled = false; refreshReportView(); 
+            } recBtn.disabled = false; downloadCsvBtn.disabled = false; refreshReportView(); 
         }
     }
 
@@ -428,30 +448,13 @@
         drawCenterGrid(ctxMP, canvasMP);
         if (playbackDataMP[fIdx]) {
             const aKps = playbackDataMP[fIdx].keypoints; drawSkeleton(ctxMP, aKps, '#ffffff'); 
-            drawOHSFrontAnalysis(ctxMP, aKps); drawOHSSideAnalysis(ctxMP, aKps); // 🌟 V62
+            drawOHSFrontAnalysis(ctxMP, aKps); drawOHSSideAnalysis(ctxMP, aKps); 
+            drawHeadAnalysis(ctxMP, aKps); // 🌟 V62-v2
             runReviewLogic(ctxMP, n=>aKps.find(k=>k.name===n), canvasMP);
             if (selectedJointIndex !== null && isEditingPlaybackFrame) drawCrosshair(ctxMP, aKps[selectedJointIndex], canvasMP);
             drawPlaybackRadar(playbackDataMP, fIdx, canvasMP);
-        }
-        ctxComb.drawImage(canvasMP, 0, 0, w, h);
+        } ctxBand = ctxComb.drawImage(canvasMP, 0, 0, w, h);
     }
-
-    canvasMP.addEventListener('pointerdown', function(e) {
-        const pos = getEventPos(canvasMP, e); if (!pos) return;
-        if (calibState !== "idle") {
-            if (calibState === "wait_left" || calibState === "adjust_left") { calibrationPoints[0]=pos; calibState="adjust_left"; calibrateMatBtn.innerText="✅ 左端を確定"; document.getElementById('dpadPanel').style.display='flex'; } 
-            else if (calibState === "wait_right" || calibState === "adjust_right") { calibrationPoints[1]=pos; calibState="adjust_right"; calibrateMatBtn.innerText="✅ 右端を確定"; document.getElementById('dpadPanel').style.display='flex'; }
-            if (isPausedForEdit) refreshReportView(); return; 
-        }
-        let kps = null; if (appMode === 'playback' && isEditingPlaybackFrame) { let f = parseInt(document.getElementById('timelineSlider').value); if (playbackDataMP[f]) kps = playbackDataMP[f].keypoints; }
-        else if (isPausedForEdit) kps = window.reportDataStore[currentTab];
-        if (kps) {
-            let cIdx = -1, mDist = 80 * pos.renderScale;
-            kps.forEach((kp, idx) => { if(kp && kp.score>0){ const d=Math.hypot(kp.x-pos.x, kp.y-pos.y); if(d<mDist){mDist=d; cIdx=idx;} } });
-            if (cIdx !== -1) { selectedJointIndex = cIdx; document.getElementById('dpadPanel').style.display='flex'; }
-            appMode === 'playback' ? renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)) : refreshReportView();
-        }
-    });
 
     function refreshReportView() {
         if(appMode === 'playback') return; const w = video.videoWidth, h = video.videoHeight;
@@ -459,10 +462,10 @@
         drawCenterGrid(ctxMP, canvasMP);
         if (window.reportDataStore[currentTab]) {
             const kps = window.reportDataStore[currentTab]; drawSkeleton(ctxMP, kps, '#ff5252'); 
-            drawOHSFrontAnalysis(ctxMP, kps); drawOHSSideAnalysis(ctxMP, kps); // 🌟 V62
+            drawOHSFrontAnalysis(ctxMP, kps); drawOHSSideAnalysis(ctxMP, kps); 
+            drawHeadAnalysis(ctxMP, kps); // 🌟 V62-v2
             runReviewLogic(ctxMP, n=>kps.find(k=>k.name===n), canvasMP);
-        }
-        ctxComb.drawImage(canvasMP, 0, 0, w, h);
+        } ctxComb.drawImage(canvasMP, 0, 0, w, h);
     }
 
     window.addEventListener('load', init); 
@@ -482,10 +485,10 @@
             let kps = generateVirtualASIS(poses[0].keypoints); window.reportDataStore[currentTab] = kps;
             if (isRecording) { coordinateBufferMP.push(kps); poseDataLog.push({ time: Date.now(), mode: currentTab, keypoints: JSON.parse(JSON.stringify(kps)) }); }
             drawSkeleton(ctxMP, kps, currentTab.startsWith('dyn_') ? '#ffffff' : '#ff5252'); 
-            drawOHSFrontAnalysis(ctxMP, kps); drawOHSSideAnalysis(ctxMP, kps); // 🌟 V62
+            drawOHSFrontAnalysis(ctxMP, kps); drawOHSSideAnalysis(ctxMP, kps); 
+            drawHeadAnalysis(ctxMP, kps); // 🌟 V62-v2
             runReviewLogic(ctxMP, n=>kps.find(k=>k.name===n), canvasMP); updateRadar(kps, canvasMP);
-        }
-        ctxComb.drawImage(canvasMP, 0, 0, w, h); mainRenderId = requestAnimationFrame(render);
+        } ctxComb.drawImage(canvasMP, 0, 0, w, h); mainRenderId = requestAnimationFrame(render);
     }
     function prepareAndPrintReport() { window.print(); }
 </script>
