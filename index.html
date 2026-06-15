@@ -3,13 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V50 (Background Sync Fix)</title>
+    <title>CONNECT AI - Master Evaluation Engine V51 (AR Marker Integration)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+    
+    <script src="https://cdn.jsdelivr.net/gh/juj/jsaruco@master/src/cv.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/juj/jsaruco@master/src/aruco.js"></script>
 
     <style>
         body { margin: 0; font-family: sans-serif; background: #0a0a0a; color: white; overflow: hidden; }
@@ -29,8 +32,12 @@
 
         .input-group { display: flex; align-items: center; gap: 5px; background: #333; padding: 4px 10px; border-radius: 6px; border: 1px solid #555; }
         .input-group input[type="number"] { width: 60px; background: #222; color: #00bfff; text-align: right; border: 1px solid #444; font-weight: bold; }
+        
+        /* 校正ボタン系 */
         #calibrateMatBtn { background: #673ab7; color: white; }
         #calibrateMatBtn.active { background: #ffeb3b; color: black; box-shadow: 0 0 15px rgba(255,235,59,0.8); animation: pulse 1s infinite; }
+        #arCalibrateBtn { background: #00e676; color: black; font-weight: bold; box-shadow: 0 0 10px rgba(0,230,118,0.3); }
+        
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
         #tiltPanel { display: none; position: absolute; top: 120px; left: 15px; background: rgba(15,15,15,0.9); border: 2px solid #ff9100; border-radius: 12px; padding: 15px; z-index: 500; box-shadow: 0 5px 20px rgba(255,145,0,0.3); }
@@ -81,7 +88,14 @@
         <input type="number" id="patientHeight" value="170" min="100" max="220">
         <span style="color:#aaa; font-size:12px;">cm</span>
     </div>
-    <button id="calibrateMatBtn">📏 マット幅校正(45cm)</button>
+    
+    <div class="input-group">
+        <span style="color:#aaa; font-size:12px;">ARｻｲｽﾞ</span>
+        <input type="number" id="arMarkerSize" value="22.0" min="5" max="50" step="0.1">
+        <span style="color:#aaa; font-size:12px;">cm</span>
+    </div>
+    <button id="arCalibrateBtn">📷 AR自動空間校正</button>
+    <button id="calibrateMatBtn">📏 手動マット校正</button>
 
     <select id="modeSelect" class="mode-dropdown" onchange="switchReportTab(this.value)">
         <optgroup label="■ 静止姿勢アライメント">
@@ -147,7 +161,7 @@
 
     <div class="view-port">
         <canvas id="canvasMP"></canvas>
-        <div class="label">CONNECT AI - V50 Sync Vision</div>
+        <div class="label">CONNECT AI - V51 AR Engine</div>
         <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
         <div id="radarWrapperMP" class="radar-wrapper">
             <div class="radar-title">COP RADAR</div>
@@ -162,7 +176,7 @@
 
 <script>
     const video = document.getElementById('video');
-    const playbackVideo = document.getElementById('playbackVideo'); // 🌟 Sync Video
+    const playbackVideo = document.getElementById('playbackVideo'); 
     const canvasMP = document.getElementById('canvasMP');
     const ctxMP = canvasMP.getContext('2d');
     const canvasComb = document.getElementById('canvasCombined');
@@ -182,45 +196,31 @@
 
     const heightInput = document.getElementById('patientHeight');
     const calibrateMatBtn = document.getElementById('calibrateMatBtn');
+    const arCalibrateBtn = document.getElementById('arCalibrateBtn');
+    const arMarkerSizeInput = document.getElementById('arMarkerSize');
     const infoPanel = document.getElementById('infoPanel');
     const tiltPanel = document.getElementById('tiltPanel');
     const pelvicTiltSlider = document.getElementById('pelvicTiltSlider');
     const tiltValDisplay = document.getElementById('tiltValDisplay');
 
     let detectors = []; 
-    let isRunning = false;
-    let isRecording = false;
-    let isPausedForEdit = false; 
-    let currentTab = "front"; 
-    let currentStream = null;
-    let appMode = "camera"; 
-    let isPlaying = false;
-    let playbackDataMP = [];
-    
-    let mainRenderId = null;
-    let recordingDuration = 10000; 
-    let coordinateBufferMP = []; 
-    let poseDataLog = [];
-    let recorder;
-    let recordedChunks = [];
-    
-    let selectedJointIndex = null;
-    let dpadStepVal = 1;
-    let isEditingPlaybackFrame = false;
-    let swayHistoryMP = [];
+    let isRunning = false, isRecording = false, isPausedForEdit = false; 
+    let currentTab = "front", currentStream = null, appMode = "camera", isPlaying = false;
+    let playbackDataMP = [], mainRenderId = null, recordingDuration = 10000; 
+    let coordinateBufferMP = [], poseDataLog = [], recorder, recordedChunks = [];
+    let selectedJointIndex = null, dpadStepVal = 1, isEditingPlaybackFrame = false, swayHistoryMP = [];
+    let activeRadarDrag = null, isRadarMovedManually = false, longPressTimer = null, initialTouch = null;
 
-    let activeRadarDrag = null;
-    let isRadarMovedManually = false; 
-    let longPressTimer = null;
-    let initialTouch = null;
-
+    // 校正・AR変数
     let pxToCmRatio = null; 
     let estimatedPelvicTilt = 0; 
     let calibState = "idle";
     let calibrationPoints = [];
-
-    // 🌟 V50 静止画モードの背景固定用
     let staticBackgroundData = null; 
+    
+    // 🌟 V51: ArUcoディテクターの初期化
+    let arDetector = new AR.Detector();
+    let latestDetectedMarkers = [];
 
     window.currentAnchorPos = null; window.customOriginMarkers = {}; window.anchorStatus = "unlocked";
     const DURATION_MAP = { 'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 'dyn_overhead': 15000, 'dyn_overhead_side': 15000, 'dyn_single_r': 15000, 'dyn_single_l': 15000, 'dyn_flex_fwd': 10000, 'dyn_flex_bwd': 10000, 'dyn_shoulder_r': 10000, 'dyn_shoulder_l': 10000 };
@@ -228,11 +228,53 @@
     ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_overhead_side', 'dyn_single_r', 'dyn_single_l', 'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'].forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
 
     function updateInfoPanel() {
-        let scaleText = pxToCmRatio ? `校正済 (1px = ${pxToCmRatio.toFixed(3)}cm)` : "⚠️ スケール未校正";
-        infoPanel.innerHTML = `${scaleText}<br>記録された骨盤傾斜: ${estimatedPelvicTilt > 0 ? '+' : ''}${estimatedPelvicTilt}°`;
+        let scaleText = pxToCmRatio ? "校正済 (1px = " + pxToCmRatio.toFixed(3) + "cm)" : "⚠️ スケール未校正";
+        infoPanel.innerHTML = scaleText + "<br>記録された骨盤傾斜: " + (estimatedPelvicTilt > 0 ? '+' : '') + estimatedPelvicTilt + "°";
     }
 
-    calibrateMatBtn.onclick = () => {
+    // 🌟 V51: AR自動校正の実行処理
+    arCalibrateBtn.onclick = function() {
+        if (latestDetectedMarkers.length === 0) {
+            alert("画面内にARマーカーが検出されていません。カメラにマットの四隅を映してください。");
+            return;
+        }
+        
+        let physicalSizeCm = parseFloat(arMarkerSizeInput.value) || 22.0;
+        let sumRatio = 0;
+        let count = 0;
+        
+        // 検出されたすべてのマーカーの外周ピクセル長から比率を計算（パースペクティブ対応の平均化）
+        for (let i = 0; i < latestDetectedMarkers.length; i++) {
+            let marker = latestDetectedMarkers[i];
+            let corners = marker.corners;
+            
+            // 各辺のピクセル長を算出
+            let d1 = Math.hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y);
+            let d2 = Math.hypot(corners[2].x - corners[1].x, corners[2].y - corners[1].y);
+            let d3 = Math.hypot(corners[3].x - corners[2].x, corners[3].y - corners[2].y);
+            let d4 = Math.hypot(corners[0].x - corners[3].x, corners[0].y - corners[3].y);
+            
+            // 斜めからの圧縮を考慮し、最も長く見えている（パースの影響が少ない）辺、または平均を使用
+            let maxPixelSide = Math.max(d1, d2, d3, d4);
+            
+            if (maxPixelSide > 5) {
+                sumRatio += (physicalSizeCm / maxPixelSide);
+                count++;
+            }
+        }
+        
+        if (count > 0) {
+            pxToCmRatio = sumRatio / count;
+            arCalibrateBtn.innerText = "✅ AR校正完了";
+            updateInfoPanel();
+            setTimeout(function() { arCalibrateBtn.innerText = "📷 AR自動空間校正"; }, 2000);
+        } else {
+            alert("マーカーの解析に失敗しました。解像度または照明を確認してください。");
+        }
+    };
+
+    // 手動マット校正ボタン
+    calibrateMatBtn.onclick = function() {
         if (calibState === "idle") {
             calibState = "wait_left"; calibrationPoints = [];
             calibrateMatBtn.classList.add('active'); calibrateMatBtn.innerText = "📍 左端をタップ";
@@ -244,16 +286,16 @@
             if(distPx > 10) pxToCmRatio = 45.0 / distPx; 
             calibState = "idle"; calibrateMatBtn.classList.remove('active'); document.getElementById('dpadPanel').style.display = 'none';
             calibrateMatBtn.innerText = "✅ 校正完了"; updateInfoPanel();
-            setTimeout(()=> { if(calibState==="idle") calibrateMatBtn.innerText = "📏 マット幅校正(45cm)"; }, 2000);
+            setTimeout(function() { if(calibState==="idle") calibrateMatBtn.innerText = "手動マット校正"; }, 2000);
         } else {
             calibState = "idle"; calibrationPoints = []; calibrateMatBtn.classList.remove('active');
-            document.getElementById('dpadPanel').style.display = 'none'; calibrateMatBtn.innerText = "📏 マット幅校正(45cm)";
+            document.getElementById('dpadPanel').style.display = 'none'; calibrateMatBtn.innerText = "手動マット校正";
         }
     };
 
-    pelvicTiltSlider.oninput = (e) => {
+    pelvicTiltSlider.oninput = function(e) {
         let val = parseInt(e.target.value);
-        tiltValDisplay.innerText = val === 0 ? "0° (ニュートラル)" : (val > 0 ? `+${val}° (前傾)` : `${val}° (後傾)`);
+        tiltValDisplay.innerText = val === 0 ? "0° (ニュートラル)" : (val > 0 ? "+" + val + "° (前傾)" : val + "° (後傾)");
         estimatedPelvicTilt = val;
         updateInfoPanel();
     };
@@ -287,6 +329,7 @@
         return kps;
     }
 
+    // Radar復旧
     function updateRadar(kps, canvas) {
         const history = swayHistoryMP; const radarCtx = ctxRadarMP; const color = "#ff5252"; const nose = kps.find(k => k.name === 'nose');
         let originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2; let originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
@@ -319,7 +362,7 @@
         clearRadar(ctx, color); if (history.length < 2) return;
         const scale = 0.5; const maxRadius = 65; 
         ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
-        history.forEach((pt, idx) => { 
+        history.forEach(function(pt, idx) { 
             let rX = 75 + (pt.x * scale); let rY = 75 + (pt.y * scale); 
             let dist = Math.hypot(rX - 75, rY - 75);
             if (dist > maxRadius) { rX = 75 + ((rX - 75) * maxRadius / dist); rY = 75 + ((rY - 75) * maxRadius / dist); }
@@ -340,36 +383,36 @@
     }
 
     radarWrapperMP.style.touchAction = "none"; 
-    radarWrapperMP.addEventListener('pointerdown', (e) => {
+    radarWrapperMP.addEventListener('pointerdown', function(e) {
         e.stopPropagation(); 
         if (activeRadarDrag) return;
         initialTouch = { x: e.clientX, y: e.clientY };
-        longPressTimer = setTimeout(() => {
+        longPressTimer = setTimeout(function() {
             const rect = radarWrapperMP.getBoundingClientRect();
             activeRadarDrag = { element: radarWrapperMP, startX: initialTouch.x, startY: initialTouch.y, startLeft: rect.left, startTop: rect.top };
-            radarWrapperMP.style.right = 'auto'; radarWrapperMP.style.bottom = 'auto'; radarWrapperMP.style.left = `${rect.left}px`; radarWrapperMP.style.top = `${rect.top}px`;
+            radarWrapperMP.style.right = 'auto'; radarWrapperMP.style.bottom = 'auto'; radarWrapperMP.style.left = rect.left + "px"; radarWrapperMP.style.top = rect.top + "px";
             radarWrapperMP.classList.add('dragging'); isRadarMovedManually = true;
         }, 300);
     });
-    radarWrapperMP.addEventListener('pointermove', (e) => {
+    radarWrapperMP.addEventListener('pointermove', function(e) {
         if (longPressTimer && initialTouch) {
             if (Math.hypot(e.clientX - initialTouch.x, e.clientY - initialTouch.y) > 10) { clearTimeout(longPressTimer); longPressTimer = null; }
         }
     });
-    const cancelPress = () => { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } };
+    const cancelPress = function() { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } };
     radarWrapperMP.addEventListener('pointerup', cancelPress); radarWrapperMP.addEventListener('pointercancel', cancelPress);
 
-    window.addEventListener('pointermove', (e) => {
+    window.addEventListener('pointermove', function(e) {
         if (activeRadarDrag) {
             e.preventDefault(); 
             const dx = e.clientX - activeRadarDrag.startX; const dy = e.clientY - activeRadarDrag.startY;
-            activeRadarDrag.element.style.left = `${activeRadarDrag.startLeft + dx}px`; activeRadarDrag.element.style.top = `${activeRadarDrag.startTop + dy}px`;
+            activeRadarDrag.element.style.left = (activeRadarDrag.startLeft + dx) + "px"; activeRadarDrag.element.style.top = (activeRadarDrag.startTop + dy) + "px";
         }
     }, { passive: false });
-    window.addEventListener('pointerup', () => { if (activeRadarDrag) { activeRadarDrag.element.classList.remove('dragging'); activeRadarDrag = null; } });
+    window.addEventListener('pointerup', function() { if (activeRadarDrag) { activeRadarDrag.element.classList.remove('dragging'); activeRadarDrag = null; } });
 
-    document.getElementById('dpadStep').onclick = (e) => { dpadStepVal = dpadStepVal === 1 ? 5 : 1; e.target.innerText = dpadStepVal + 'px'; };
-    const moveJoint = (dx, dy) => {
+    document.getElementById('dpadStep').onclick = function(e) { dpadStepVal = dpadStepVal === 1 ? 5 : 1; e.target.innerText = dpadStepVal + 'px'; };
+    const moveJoint = function(dx, dy) {
         if (calibState === "adjust_left" && calibrationPoints[0]) {
             calibrationPoints[0].x += dx; calibrationPoints[0].y += dy;
         } else if (calibState === "adjust_right" && calibrationPoints[1]) {
@@ -384,19 +427,17 @@
             }
             if(kp) { kp.x += dx; kp.y += dy; }
         }
-        
         if(appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); 
         else if (isPausedForEdit) refreshReportView();
     };
-    document.getElementById('dpadUp').onclick = () => moveJoint(0, -dpadStepVal);
-    document.getElementById('dpadDown').onclick = () => moveJoint(0, dpadStepVal);
-    document.getElementById('dpadLeft').onclick = () => moveJoint(-dpadStepVal, 0);
-    document.getElementById('dpadRight').onclick = () => moveJoint(dpadStepVal, 0);
+    document.getElementById('dpadUp').onclick = function() { moveJoint(0, -dpadStepVal); };
+    document.getElementById('dpadDown').onclick = function() { moveJoint(0, dpadStepVal); };
+    document.getElementById('dpadLeft').onclick = function() { moveJoint(-dpadStepVal, 0); };
+    document.getElementById('dpadRight').onclick = function() { moveJoint(dpadStepVal, 0); };
     
-    const closeDpad = () => { 
+    const closeDpad = function() { 
         if (calibState === "adjust_left") { calibState = "wait_left"; calibrateMatBtn.innerText = "📍 左端をタップ"; calibrationPoints=[]; document.getElementById('dpadPanel').style.display = 'none'; if(isPausedForEdit) refreshReportView(); return; }
         if (calibState === "adjust_right") { calibState = "wait_right"; calibrateMatBtn.innerText = "📍 右端をタップ"; calibrationPoints.pop(); document.getElementById('dpadPanel').style.display = 'none'; if(isPausedForEdit) refreshReportView(); return; }
-
         selectedJointIndex = null; document.getElementById('dpadPanel').style.display = 'none'; 
         if(appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); 
         else if(isPausedForEdit) refreshReportView(); 
@@ -410,18 +451,13 @@
 
     function switchReportTab(tabName) {
         if (isRecording) return; currentTab = tabName; 
-        
-        // 🌟 タブ変更時に背景固定をリセット
-        staticBackgroundData = null;
-
+        staticBackgroundData = null; latestDetectedMarkers = [];
         window.anchorStatus = "unlocked"; window.currentAnchorPos = null;
         if(window.customOriginMarkers[tabName]) window.customOriginMarkers[tabName] = null;
         swayHistoryMP = []; clearRadar(ctxRadarMP, "#ff5252");
         closeDpad(); isEditingPlaybackFrame = false; document.getElementById('editFrameBtn').innerText = "✂️ このフレームを微調整"; document.getElementById('editFrameBtn').style.background = "#ff9100";
         if(DURATION_MAP[tabName]) { let recommended = DURATION_MAP[tabName].toString(); if(Array.from(durationSelect.options).map(opt => opt.value).includes(recommended)) durationSelect.value = recommended; }
-        
         if(tabName === 'r_side' || tabName === 'l_side') { tiltPanel.style.display = 'block'; } else { tiltPanel.style.display = 'none'; }
-        
         appMode = 'camera'; document.getElementById('playbackControls').style.display = 'none'; document.getElementById('mainControls').style.display = 'flex'; isPausedForEdit = false;
         refreshReportView();
     }
@@ -440,25 +476,21 @@
             pairs = pairs.filter(p => ![[12,14],[14,16],[24,26],[26,28]].some(exclude => exclude[0] === p[0] && exclude[1] === p[1]));
         }
 
-        pairs.forEach(([s,e])=>{ 
+        pairs.forEach(function([s,e]){ 
             const p1=kps[s], p2=kps[e]; 
-            if(p1 && p2 && p1.score > 0.0 && p2.score > 0.0){ 
-                ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); 
-            }
+            if(p1 && p2 && p1.score > 0.0 && p2.score > 0.0){ ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); }
         });
         
-        kps.forEach((k, i)=>{ 
+        kps.forEach(function(k, i){ 
             if(k && k.score > 0.0 && !k.name?.includes('virtual')){ 
                 let shouldDraw = true;
                 if (currentTab === 'r_side' && [11,13,15,23,25,27,29,31].includes(i)) shouldDraw = false; 
                 if (currentTab === 'l_side' && [12,14,16,24,26,28,30,32].includes(i)) shouldDraw = false; 
-                if (shouldDraw) {
-                    ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(k.x,k.y,4,0,2*Math.PI); ctx.fill(); 
-                }
+                if (shouldDraw) { ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(k.x,k.y,4,0,2*Math.PI); ctx.fill(); }
             }
         }); 
 
-        let asisL = null; let asisR = null; let lHip = null; let rHip = null;
+        let asisL = null, asisR = null, lHip = null, rHip = null;
         for(let i=0; i<kps.length; i++){
             if(kps[i].name === 'virtual_asis_l') asisL = kps[i];
             if(kps[i].name === 'virtual_asis_r') asisR = kps[i];
@@ -474,7 +506,7 @@
             if(pxToCmRatio) {
                 let diffCm = Math.abs(asisL.y - asisR.y) * pxToCmRatio;
                 ctx.fillStyle="#39ff14"; ctx.font="bold 16px sans-serif";
-                ctx.fillText(`骨盤左右高低差: ${diffCm.toFixed(1)}cm`, Math.min(asisL.x, asisR.x), Math.min(asisL.y, asisR.y) - 20);
+                ctx.fillText("骨盤左右高低差: " + diffCm.toFixed(1) + "cm", Math.min(asisL.x, asisR.x), Math.min(asisL.y, asisR.y) - 20);
             }
         }
         ctx.restore();
@@ -488,11 +520,35 @@
         ctx.fillStyle = "rgba(0, 191, 255, 0.3)"; ctx.fill(); ctx.restore();
     }
 
+    // 🌟 V51: 検出されたARマーカーの外枠を画面に描画する処理
+    function drawARMarkers(ctx, markers) {
+        ctx.save();
+        ctx.strokeStyle = "#00e676";
+        ctx.lineWidth = 3;
+        ctx.font = "bold 14px sans-serif";
+        ctx.fillStyle = "#00e676";
+        
+        for (let i = 0; i < markers.length; i++) {
+            let m = markers[i];
+            ctx.beginPath();
+            ctx.moveTo(m.corners[0].x, m.corners[0].y);
+            for (let j = 1; j < m.corners.length; j++) {
+                ctx.lineTo(m.corners[j].x, m.corners[j].y);
+            }
+            ctx.closePath();
+            ctx.stroke();
+            
+            // マーカーIDの描画
+            ctx.fillText("AR ID: " + m.id, m.corners[0].x, m.corners[0].y - 10);
+        }
+        ctx.restore();
+    }
+
     function runReviewLogic(ctx, getK, canvas) {
         ctx.fillStyle = "#deff9a"; ctx.font = "bold 24px sans-serif"; const nose = getK('nose'); let originX, originY;
         if (currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) {
             if (window.customOriginMarkers[currentTab]) { originX = window.customOriginMarkers[currentTab].x; originY = window.customOriginMarkers[currentTab].y; } else {
-                let footPtsX = [], footPtsY = []; ['left_ankle', 'right_ankle', 'left_heel', 'right_heel', 'left_foot_index', 'right_foot_index'].forEach(name => { let p = getK(name); if (p && p.score > 0.1) { footPtsX.push(p.x); footPtsY.push(p.y); } });
+                let footPtsX = [], footPtsY = []; ['left_ankle', 'right_ankle', 'left_heel', 'right_heel', 'left_foot_index', 'right_foot_index'].forEach(function(name) { let p = getK(name); if (p && p.score > 0.1) { footPtsX.push(p.x); footPtsY.push(p.y); } });
                 if (footPtsX.length >= 2) { originX = (Math.min(...footPtsX) + Math.max(...footPtsX)) / 2; originY = Math.max(...footPtsY); }
             }
         }
@@ -509,45 +565,37 @@
         }
     }
 
-    recBtn.onclick = () => {
+    recBtn.onclick = function() {
         isPausedForEdit = false; staticBackgroundData = null; isRecording = true; closeDpad(); coordinateBufferMP = []; poseDataLog = poseDataLog.filter(d => d.mode !== currentTab);
-        recordingDuration = parseInt(durationSelect.value); recordingStartTime = Date.now(); 
-        swayHistoryMP = []; 
+        recordingDuration = parseInt(durationSelect.value); recordingStartTime = Date.now(); swayHistoryMP = []; 
         timerDisplay.style.display = "block"; recBtn.disabled = true; downloadCsvBtn.disabled = true; recordedChunks = [];
-        try { const stream = canvasComb.captureStream(30); recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' }); recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); }; 
-        
-        // 🌟 V50 録画終了時に隠しVideo要素にソースを渡す
-        recorder.onstop = () => { 
-            const b = new Blob(recordedChunks, { type: 'video/webm' }); 
-            const videoUrl = URL.createObjectURL(b);
-            playbackVideo.src = videoUrl;
-            const a = document.createElement('a'); a.href = videoUrl; a.download = `connect_ai_${currentTab}_${Date.now()}.webm`; a.click(); 
-        }; 
-        
-        recorder.start(); } catch (e) { console.error(e); }
-        const timerInterval = setInterval(() => {
-            const elapsed = Date.now() - recordingStartTime; timerDisplay.innerText = `REC ${Math.max(0, (recordingDuration - elapsed) / 1000).toFixed(1)}s`;
+        try { 
+            const stream = canvasComb.captureStream(30); recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' }); 
+            recorder.ondataavailable = function(e) { if (e.data.size > 0) recordedChunks.push(e.data); }; 
+            recorder.onstop = function() { 
+                const b = new Blob(recordedChunks, { type: 'video/webm' }); 
+                const videoUrl = URL.createObjectURL(b);
+                playbackVideo.src = videoUrl;
+                const a = document.createElement('a'); a.href = videoUrl; a.download = "connect_ai_" + currentTab + "_" + Date.now() + ".webm"; a.click(); 
+            }; 
+            recorder.start(); 
+        } catch (e) { console.error(e); }
+        const timerInterval = setInterval(function() {
+            const elapsed = Date.now() - recordingStartTime; timerDisplay.innerText = "REC " + Math.max(0, (recordingDuration - elapsed) / 1000).toFixed(1) + "s";
             if (elapsed >= recordingDuration) { clearInterval(timerInterval); executePostProcessingStop(); }
         }, 100);
     };
 
     function executePostProcessingStop() {
         isRecording = false; timerDisplay.style.display = "none"; if (recorder && recorder.state !== "inactive") recorder.stop(); 
-        if (currentTab.startsWith("dyn_")) { 
-            enterPlaybackMode(); 
-        } 
+        if (currentTab.startsWith("dyn_")) { enterPlaybackMode(); } 
         else {
             isPausedForEdit = true;
-
-            // 🌟 V50 静止画モードの場合、この瞬間のカメラ映像を背景としてキャプチャ固定
-            const bgCanvas = document.createElement('canvas');
-            bgCanvas.width = canvasMP.width; bgCanvas.height = canvasMP.height;
-            bgCanvas.getContext('2d').drawImage(video, 0, 0, canvasMP.width, canvasMP.height);
-            staticBackgroundData = bgCanvas;
-
+            const bgCanvas = document.createElement('canvas'); bgCanvas.width = canvasMP.width; bgCanvas.height = canvasMP.height;
+            bgCanvas.getContext('2d').drawImage(video, 0, 0, canvasMP.width, canvasMP.height); staticBackgroundData = bgCanvas;
             if (coordinateBufferMP.length > 0) {
                 const totalFrames = coordinateBufferMP.length; let avgKeypoints = JSON.parse(JSON.stringify(coordinateBufferMP[0]));
-                avgKeypoints.forEach((kp, kpIdx) => { let sumX = 0, sumY = 0; for (let f = 0; f < totalFrames; f++) { if(coordinateBufferMP[f][kpIdx]) { sumX += coordinateBufferMP[f][kpIdx].x; sumY += coordinateBufferMP[f][kpIdx].y; } } kp.x = sumX / totalFrames; kp.y = sumY / totalFrames; kp.score = 1.00; });
+                avgKeypoints.forEach(function(kp, kpIdx) { let sumX = 0, sumY = 0; for (let f = 0; f < totalFrames; f++) { if(coordinateBufferMP[f][kpIdx]) { sumX += coordinateBufferMP[f][kpIdx].x; sumY += coordinateBufferMP[f][kpIdx].y; } } kp.x = sumX / totalFrames; kp.y = sumY / totalFrames; kp.score = 1.00; });
                 window.reportDataStore[currentTab] = avgKeypoints;
             }
             recBtn.disabled = false; downloadCsvBtn.disabled = false; refreshReportView(); 
@@ -558,12 +606,8 @@
         appMode = 'playback'; document.getElementById('mainControls').style.display = 'none'; document.getElementById('playbackControls').style.display = 'flex';
         playbackDataMP = poseDataLog.filter(d => d.mode === currentTab);
         if (playbackDataMP.length > 1) { playbackBaseTime = playbackDataMP[0].time; playbackTotalDuration = playbackDataMP[playbackDataMP.length - 1].time - playbackBaseTime; } else { playbackBaseTime = 0; playbackTotalDuration = 0; }
-        const maxFrames = playbackDataMP.length - 1; document.getElementById('timelineSlider').max = maxFrames > 0 ? maxFrames : 0; document.getElementById('timelineSlider').value = 0; document.getElementById('frameCounter').innerText = `0 / ${document.getElementById('timelineSlider').max}`;
-        
-        // 🌟 V50 動画シーク初期化
-        playbackVideo.pause();
-        playbackVideo.currentTime = 0;
-
+        const maxFrames = playbackDataMP.length - 1; document.getElementById('timelineSlider').max = maxFrames > 0 ? maxFrames : 0; document.getElementById('timelineSlider').value = 0; document.getElementById('frameCounter').innerText = "0 / " + document.getElementById('timelineSlider').max;
+        playbackVideo.pause(); playbackVideo.currentTime = 0;
         renderPlaybackFrame(0); togglePlay(true);
     }
     
@@ -577,18 +621,10 @@
                 let currentIdx = parseInt(document.getElementById('timelineSlider').value); 
                 if(currentIdx >= playbackDataMP.length) currentIdx = 0; 
                 playbackStartTime = Date.now() - (playbackDataMP[currentIdx].time - playbackBaseTime); 
-                
-                // 🌟 V50 動画も同期再生
                 playbackVideo.currentTime = (playbackDataMP[currentIdx].time - playbackBaseTime) / 1000.0;
             } else { playbackStartTime = Date.now(); }
-            
-            playbackVideo.play();
-            playbackLoop();
-        } else { 
-            isPlaying = false; document.getElementById('playPauseBtn').innerText = "▶ 再生"; 
-            playbackVideo.pause(); // 🌟 動画もポーズ
-            cancelAnimationFrame(playbackRafId); 
-        }
+            playbackVideo.play(); playbackLoop();
+        } else { isPlaying = false; document.getElementById('playPauseBtn').innerText = "▶ 再生"; playbackVideo.pause(); cancelAnimationFrame(playbackRafId); }
     }
     
     function playbackLoop() {
@@ -599,38 +635,22 @@
         document.getElementById('timelineSlider').value = targetIdx; renderPlaybackFrame(targetIdx); playbackRafId = requestAnimationFrame(playbackLoop);
     }
 
-    document.getElementById('playPauseBtn').onclick = () => togglePlay(); document.getElementById('backToCamBtn').onclick = () => exitPlaybackMode();
-    document.getElementById('timelineSlider').oninput = () => { 
+    document.getElementById('playPauseBtn').onclick = function() { togglePlay(); }; 
+    document.getElementById('backToCamBtn').onclick = function() { exitPlaybackMode(); };
+    document.getElementById('timelineSlider').oninput = function() { 
         togglePlay(false); 
         const fIdx = parseInt(document.getElementById('timelineSlider').value);
-        
-        // 🌟 V50 スライダー操作時も動画をシーク
-        if (playbackDataMP[fIdx]) {
-            playbackVideo.currentTime = (playbackDataMP[fIdx].time - playbackBaseTime) / 1000.0;
-        }
+        if (playbackDataMP[fIdx]) { playbackVideo.currentTime = (playbackDataMP[fIdx].time - playbackBaseTime) / 1000.0; }
         renderPlaybackFrame(fIdx); 
     };
 
-    // 🌟 V50 動画シーク完了時にも再描画（カクつき防止）
-    playbackVideo.addEventListener('seeked', () => {
-        if (!isPlaying && appMode === 'playback') {
-            renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value));
-        }
-    });
+    playbackVideo.addEventListener('seeked', function() { if (!isPlaying && appMode === 'playback') { renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); } });
 
     function renderPlaybackFrame(frameIdx) {
-        document.getElementById('frameCounter').innerText = `${frameIdx} / ${document.getElementById('timelineSlider').max}`; const w = canvasMP.width, h = canvasMP.height;
+        document.getElementById('frameCounter').innerText = frameIdx + " / " + document.getElementById('timelineSlider').max; const w = canvasMP.width, h = canvasMP.height;
         ctxMP.clearRect(0, 0, w, h); 
-        
-        // 🌟 V50 プレイバック時の黒塗りを廃止し、動画フレームを描画
-        if (playbackVideo.readyState >= 2) {
-            ctxMP.drawImage(playbackVideo, 0, 0, w, h);
-        } else {
-            ctxMP.fillStyle = "#111"; ctxMP.fillRect(0, 0, w, h); 
-        }
-        
+        if (playbackVideo.readyState >= 2) { ctxMP.drawImage(playbackVideo, 0, 0, w, h); } else { ctxMP.fillStyle = "#111"; ctxMP.fillRect(0, 0, w, h); }
         drawCenterGrid(ctxMP, canvasMP);
-        
         if (playbackDataMP[frameIdx]) {
             const actualKps = playbackDataMP[frameIdx].keypoints;
             drawSkeleton(ctxMP, actualKps, '#ffffff'); runReviewLogic(ctxMP, (n) => actualKps.find(k => k.name === n), canvasMP);
@@ -640,78 +660,46 @@
         ctxComb.drawImage(canvasMP, 0, 0, w, h);
     }
 
-    function getEventPos(canvas, e) {
-        const rect = canvas.getBoundingClientRect(); let clientX, clientY;
-        if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; } else if (e.changedTouches && e.changedTouches.length > 0) { clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY; } else { clientX = e.clientX; clientY = e.clientY; }
-        if (clientX === undefined) return null;
-        const videoRatio = canvas.width / canvas.height, containerRatio = rect.width / rect.height; let renderWidth, renderHeight, offsetX, offsetY;
-        if (containerRatio > videoRatio) { renderHeight = rect.height; renderWidth = rect.height * videoRatio; offsetX = (rect.width - renderWidth) / 2; offsetY = 0; } else { renderWidth = rect.width; renderHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - renderHeight) / 2; }
-        const scaleX = canvas.width / renderWidth, scaleY = canvas.height / renderHeight; return { x: (clientX - rect.left - offsetX) * scaleX, y: (clientY - rect.top - offsetY) * scaleY, renderScale: scaleX };
-    }
-
-    canvasMP.addEventListener('pointerdown', (e) => {
+    canvasMP.addEventListener('pointerdown', function(e) {
         const pos = getEventPos(canvasMP, e); if (!pos) return;
 
         if (calibState !== "idle") {
-            if (calibState === "wait_left" || calibState === "adjust_left") {
-                calibrationPoints[0] = pos; calibState = "adjust_left";
-                calibrateMatBtn.innerText = "✅ 左端を確定"; document.getElementById('dpadPanel').style.display = 'flex';
-            } else if (calibState === "wait_right" || calibState === "adjust_right") {
-                calibrationPoints[1] = pos; calibState = "adjust_right";
-                calibrateMatBtn.innerText = "✅ 右端を確定"; document.getElementById('dpadPanel').style.display = 'flex';
-            }
+            if (calibState === "wait_left" || calibState === "adjust_left") { calibrationPoints[0] = pos; calibState = "adjust_left"; calibrateMatBtn.innerText = "✅ 左端を確定"; document.getElementById('dpadPanel').style.display = 'flex'; } 
+            else if (calibState === "wait_right" || calibState === "adjust_right") { calibrationPoints[1] = pos; calibState = "adjust_right"; calibrateMatBtn.innerText = "✅ 右端を確定"; document.getElementById('dpadPanel').style.display = 'flex'; }
             if (isPausedForEdit) refreshReportView();
             return; 
         }
 
         const hitRadius = 80 * pos.renderScale; 
-        
         if ((currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) && window.currentAnchorPos && !isRecording && appMode !== 'playback') {
             if (Math.hypot(window.currentAnchorPos.x - pos.x, window.currentAnchorPos.y - pos.y) < hitRadius * 1.5) { dragTarget = { type: 'anchor' }; window.anchorStatus = "dragging"; closeDpad(); return; }
         }
         
         let kpsToSearch = null;
-        if (appMode === 'playback' && isEditingPlaybackFrame) { 
-            const fIdx = parseInt(document.getElementById('timelineSlider').value); 
-            if (playbackDataMP[fIdx]) kpsToSearch = playbackDataMP[fIdx].keypoints; 
-        }
-        else if (isPausedForEdit && appMode !== 'playback') { 
-            kpsToSearch = window.reportDataStore[currentTab]; 
-        }
+        if (appMode === 'playback' && isEditingPlaybackFrame) { const fIdx = parseInt(document.getElementById('timelineSlider').value); if (playbackDataMP[fIdx]) kpsToSearch = playbackDataMP[fIdx].keypoints; }
+        else if (isPausedForEdit && appMode !== 'playback') { kpsToSearch = window.reportDataStore[currentTab]; }
         
         if (kpsToSearch) {
             let closestIdx = -1, minDist = hitRadius;
-            kpsToSearch.forEach((kp, idx) => { if (kp && kp.score > 0.0) { const dist = Math.hypot(kp.x - pos.x, kp.y - pos.y); if (dist < minDist) { minDist = dist; closestIdx = idx; } } });
-            if (closestIdx !== -1) { 
-                selectedJointIndex = closestIdx; 
-                document.getElementById('dpadPanel').style.display = 'flex'; 
-            } else { 
-                closeDpad(); 
-            }
+            kpsToSearch.forEach(function(kp, idx) { if (kp && kp.score > 0.0) { const dist = Math.hypot(kp.x - pos.x, kp.y - pos.y); if (dist < minDist) { minDist = dist; closestIdx = idx; } } });
+            if (closestIdx !== -1) { selectedJointIndex = closestIdx; document.getElementById('dpadPanel').style.display = 'flex'; } else { closeDpad(); }
             if (appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); else refreshReportView();
         }
     });
 
-    canvasMP.addEventListener('pointermove', (e) => {
+    canvasMP.addEventListener('pointermove', function(e) {
         if (dragTarget && dragTarget.type === 'anchor') {
             if(e.cancelable) e.preventDefault(); const pos = getEventPos(canvasMP, e); if (!pos) return;
             const safeX = Math.max(0, Math.min(pos.x, canvasMP.width)), safeY = Math.max(0, Math.min(pos.y, canvasMP.height));
             window.customOriginMarkers[currentTab] = { x: safeX, y: safeY }; window.currentAnchorPos = { x: safeX, y: safeY }; if (isPausedForEdit) refreshReportView(); 
         }
     });
-    const handleEnd = () => { if (dragTarget && dragTarget.type === 'anchor') { window.anchorStatus = "locked"; dragTarget = null; canvasMP.style.cursor = 'default'; } };
+    const handleEnd = function() { if (dragTarget && dragTarget.type === 'anchor') { window.anchorStatus = "locked"; dragTarget = null; canvasMP.style.cursor = 'default'; } };
     canvasMP.addEventListener('pointerup', handleEnd); canvasMP.addEventListener('pointercancel', handleEnd);
 
     function refreshReportView() {
         if(appMode === 'playback') return; const w = video.videoWidth, h = video.videoHeight;
-        
-        // 🌟 V50 静止画モード時の背景描画ロジック
-        if (isPausedForEdit && staticBackgroundData) {
-            ctxMP.drawImage(staticBackgroundData, 0, 0, w, h); // 固定背景
-        } else {
-            ctxMP.drawImage(video, 0, 0, w, h); // ライブ映像
-        }
-        
+        if (isPausedForEdit && staticBackgroundData) { ctxMP.drawImage(staticBackgroundData, 0, 0, w, h); } else { ctxMP.drawImage(video, 0, 0, w, h); }
         drawCenterGrid(ctxMP, canvasMP);
 
         if (calibState !== "idle") {
@@ -733,22 +721,22 @@
             detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
             try { const tempStream = await navigator.mediaDevices.getUserMedia({ video: true }); tempStream.getTracks().forEach(t => t.stop()); } catch(e) { console.warn("初期カメラ許可スキップ"); }
             const devices = await navigator.mediaDevices.enumerateDevices(); videoSource.innerHTML = ''; let camCount = 1;
-            devices.forEach(d => { if(d.kind==='videoinput') { const label = d.label || `カメラ ${camCount++}`; videoSource.appendChild(new Option(label, d.deviceId)); } });
+            devices.forEach(function(d) { if(d.kind==='videoinput') { const label = d.label || "カメラ " + camCount++; videoSource.appendChild(new Option(label, d.deviceId)); } });
             updateInfoPanel();
         } catch (e) { startBtn.innerText = "❌ 起動エラー"; console.error(e); }
     }
 
-    startBtn.onclick = async () => {
+    startBtn.onclick = async function() {
         if (mainRenderId) { cancelAnimationFrame(mainRenderId); mainRenderId = null; }
         if(currentStream) { currentStream.getTracks().forEach(t=>t.stop()); video.pause(); video.srcObject = null; }
-        swayHistoryMP = []; window.currentAnchorPos = null; window.customOriginMarkers = {}; selectedJointIndex = null; clearRadar(ctxRadarMP, "#ff5252");
+        swayHistoryMP = []; window.currentAnchorPos = null; window.customOriginMarkers = {}; selectedJointIndex = null; clearRadar(ctxRadarMP, "#ff5252"); latestDetectedMarkers = [];
 
         try {
             const constraints = { video: { width: { ideal: 1920 }, height: { ideal: 1080 } } };
             if (videoSource.value) { constraints.video.deviceId = { exact: videoSource.value }; } else { constraints.video.facingMode = "environment"; }
             currentStream = await navigator.mediaDevices.getUserMedia(constraints);
             video.srcObject = currentStream;
-            video.onloadeddata = () => { 
+            video.onloadeddata = function() { 
                 canvasMP.width=video.videoWidth; canvasMP.height=video.videoHeight; 
                 canvasComb.width=video.videoWidth; canvasComb.height=video.videoHeight; 
                 isPausedForEdit = false; staticBackgroundData = null; isRunning=true; video.play(); render(); recBtn.disabled=false; 
@@ -764,10 +752,17 @@
         ctxMP.drawImage(video, 0, 0, w, h); 
         drawCenterGrid(ctxMP, canvasMP);
 
+        // 🌟 V51: リアルタイム映像からARマーカーを抽出
+        if (appMode === "camera" && !isRecording) {
+            let imageData = ctxMP.getImageData(0, 0, w, h);
+            latestDetectedMarkers = arDetector.detect(imageData);
+            drawARMarkers(ctxMP, latestDetectedMarkers);
+        }
+
         if (calibState !== "idle") {
             ctxMP.fillStyle = "#ffeb3b";
             if (calibrationPoints[0]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[0].x, calibrationPoints[0].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_left") drawCrosshair(ctxMP, calibrationPoints[0], canvasMP); }
-            if (calibrationPoints[1]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[1].x, calibrationPoints[1].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_right") drawCrosshair(ctxMP, calibrationPoints[1], canvasMP); }
+            if (calibrationPoints[1]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[1].x, calibrationPoints[1].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_right") drawCrosshair(calibrationPoints[1], canvasMP); }
         }
         
         const poses = await detectors[0].estimatePoses(video);
@@ -775,9 +770,7 @@
             let kps = poses[0].keypoints; 
             kps = generateVirtualASIS(kps); 
             window.reportDataStore[currentTab] = kps;
-            
             if (isRecording) { if (!coordinateBufferMP) coordinateBufferMP = []; coordinateBufferMP.push(kps); poseDataLog.push({ time: Date.now(), mode: currentTab, keypoints: JSON.parse(JSON.stringify(kps)) }); }
-            
             drawSkeleton(ctxMP, kps, currentTab.startsWith('dyn_') ? '#ffffff' : '#ff5252'); 
             runReviewLogic(ctxMP, (n) => { for(let i=0;i<kps.length;i++){ if(kps[i].name===n) return kps[i]; } return null; }, canvasMP);
             updateRadar(kps, canvasMP); 
@@ -786,10 +779,11 @@
         mainRenderId = requestAnimationFrame(render);
     }
     
-    downloadCsvBtn.onclick = () => { 
+    function prepareAndPrintReport() { window.print(); }
+    downloadCsvBtn.onclick = function() { 
         let c="Timestamp,Mode,PointID,PointName,X,Y\n"; 
-        poseDataLog.forEach(d=>{ d.keypoints.forEach((kp, idx)=>{ if(kp) c+=`${d.time},${d.mode},${idx},${kp.name},${kp.x.toFixed(1)},${kp.y.toFixed(1)}\n`; }); }); 
-        const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([c],{type:'text/csv'})); a.download=`connect_ai_data_${Date.now()}.csv`; a.click(); 
+        poseDataLog.forEach(function(d){ d.keypoints.forEach(function(kp, idx){ if(kp) c+=d.time + "," + d.mode + "," + idx + "," + kp.name + "," + kp.x.toFixed(1) + "," + kp.y.toFixed(1) + "\n"; }); }); 
+        const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([c],{type:'text/csv'})); a.download="connect_ai_data_" + Date.now() + ".csv"; a.click(); 
     };
 
     window.addEventListener('DOMContentLoaded', init); 
