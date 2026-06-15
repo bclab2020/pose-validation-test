@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V62-v2 (Head Analysis)</title>
+    <title>CONNECT AI - Master Evaluation Engine V63 (Workflow Wizard)</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
@@ -26,16 +26,16 @@
         .input-group input[type="number"] { width: 60px; background: #222; color: #00bfff; text-align: right; border: 1px solid #444; font-weight: bold; }
         #calibrateMatBtn { background: #673ab7; color: white; }
         #calibrateMatBtn.active { background: #ffeb3b; color: black; box-shadow: 0 0 15px rgba(255,235,59,0.8); animation: pulse 1s infinite; }
+        #arCalibrateBtn { background: #00e676; color: black; font-weight: bold; box-shadow: 0 0 10px rgba(0,230,118,0.3); }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
         .info-panel { position: absolute; top: 55px; left: 15px; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 4px; color: #fff; font-size: 12px; z-index: 10; border-left: 3px solid #673ab7; pointer-events: none; }
-        #tiltPanel { display: none; position: absolute; top: 120px; left: 15px; background: rgba(15,15,15,0.9); border: 2px solid #ff9100; border-radius: 12px; padding: 15px; z-index: 500; box-shadow: 0 5px 20px rgba(255,145,0,0.3); }
+        .debug-panel { position: absolute; top: 110px; left: 15px; background: rgba(0,0,0,0.85); padding: 10px; border-radius: 6px; font-size: 14px; color: #ffeb3b; border: 2px solid #ffeb3b; z-index: 50; font-family: monospace; pointer-events: none; box-shadow: 0 0 15px rgba(255,235,59,0.4); }
+        #tiltPanel { display: none; position: absolute; top: 170px; left: 15px; background: rgba(15,15,15,0.9); border: 2px solid #ff9100; border-radius: 12px; padding: 15px; z-index: 500; box-shadow: 0 5px 20px rgba(255,145,0,0.3); }
         .tilt-header { color: #ff9100; font-size: 14px; font-weight: bold; margin-bottom: 10px; text-align: center; }
         .tilt-slider { width: 200px; cursor: pointer; }
         .tilt-val { display: block; text-align: center; color: white; font-size: 16px; font-weight: bold; margin-top: 5px; }
-        .playback-controls { display: none; padding: 12px 15px; background: #002233; justify-content: center; gap: 15px; align-items: center; border-bottom: 2px solid #00bfff; width: 100%; box-sizing: border-box; }
-        #timelineSlider { flex: 1; max-width: 500px; cursor: pointer; }
         #playPauseBtn { background: #00bfff; color: #000; min-width: 90px; }
-        #backToCamBtn { background: #555; color: white; }
+        #retakeBtn { background: #555; color: white; }
         #editFrameBtn { background: #ff9100; color: #000; font-weight: bold; }
         .container { display: flex; width: 100vw; height: calc(100dvh - 70px); position: relative; background: #000; justify-content: center; align-items: center; }
         .view-port { width: 100%; height: 100%; position: relative; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; }
@@ -54,20 +54,23 @@
         .dpad-btn:active { background: #00bfff; color: black; }
         .dpad-step-btn { font-size: 14px; background: #1976d2; border: none; font-weight: bold; }
         .dpad-close { position: absolute; right: -10px; top: -10px; width: 32px; height: 32px; border-radius: 50%; background: #ff5252; color: white; border: none; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
-        @media print { body { background: white; color: black; overflow: visible; } .controls, .playback-controls, .container, #tiltPanel, #dpadPanel { display: none !important; } }
+        @media print { body { background: white; color: black; overflow: visible; } .controls, .container, #tiltPanel, #dpadPanel, .debug-panel { display: none !important; } }
     </style>
 </head>
 <body>
 
-<div class="controls" id="mainControls">
+<div class="controls" id="setupControls">
+    <span style="color:#00bfff; font-weight:bold; font-size:16px;">1. カメラ準備</span>
     <select id="videoSource" style="background:#fff; color:#000;"><option value="">カメラ検索中...</option></select>
     <button id="startBtn" disabled>⏳ 起動準備中...</button>
-    <div class="input-group">
-        <span style="color:#aaa; font-size:12px;">身長</span>
-        <input type="number" id="patientHeight" value="170" min="100" max="220">
-        <span style="color:#aaa; font-size:12px;">cm</span>
-    </div>
-    <button id="calibrateMatBtn">📏 手動マット校正(45cm)</button>
+</div>
+
+<div class="controls" id="mainControls" style="display:none; background:#1a1a1a;">
+    <div class="input-group"><span style="color:#aaa; font-size:12px;">身長</span><input type="number" id="patientHeight" value="170" min="100" max="220"><span style="color:#aaa; font-size:12px;">cm</span></div>
+    <div class="input-group"><span style="color:#aaa; font-size:12px;">AR</span><input type="number" id="arMarkerSize" value="17.5" min="5" max="50" step="0.1"><span style="color:#aaa; font-size:12px;">cm</span></div>
+    <button id="arCalibrateBtn">📷 AR校正</button>
+    <button id="calibrateMatBtn">📏 手動校正</button>
+    <span style="color:#00bfff; font-weight:bold; margin-left:10px;">現在のポーズ:</span>
     <select id="modeSelect" class="mode-dropdown" onchange="switchReportTab(this.value)">
         <optgroup label="■ 静止姿勢アライメント">
             <option value="front" selected>🧍 前面</option><option value="back">🧍 後面</option><option value="l_side">🧍 左側面</option><option value="r_side">🧍 右側面</option>
@@ -79,20 +82,24 @@
         </optgroup>
     </select>
     <select id="durationSelect">
-        <option value="5000">⏱️ 5秒間</option><option value="10000" selected>⏱️ 10秒間</option><option value="15000">⏱️ 15秒間</option>
-        <option value="20000">⏱️ 20秒間</option><option value="30000">⏱️ 30秒間</option>
+        <option value="5000">⏱️ 5秒間</option><option value="10000" selected>⏱️ 10秒間</option><option value="15000">⏱️ 15秒間</option><option value="20000">⏱️ 20秒間</option>
     </select>
     <label class="toggle-label"><input type="checkbox" id="showSwayAlert" checked> 警告表示</label>
-    <button id="recBtn" disabled>🔴 録画スタート</button>
-    <button id="downloadCsvBtn" disabled>📊 CSV出力</button>
-    <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 PDFレポート</button>
+    <button id="recBtn">🔴 録画スタート</button>
+    <button id="reconnectCamBtn" style="background:#333; color:#ccc; border: 1px solid #555;">⚙️ カメラ変更</button>
 </div>
 
-<div class="playback-controls" id="playbackControls">
-    <button id="backToCamBtn">🔙 再測定へ</button><button id="playPauseBtn">▶ 再生</button>
-    <input type="range" id="timelineSlider" min="0" max="100" value="0">
-    <span id="frameCounter" style="color:#00bfff; font-weight:bold; font-size:14px;">0 / 0</span>
-    <button id="editFrameBtn">✂️ このフレームを微調整</button>
+<div class="controls" id="reviewControls" style="display:none; background:#002233; border-bottom: 2px solid #00bfff;">
+    <span style="color:#39ff14; font-weight:bold; font-size:16px; margin-right:15px;">📝 データ確認中</span>
+    <button id="retakeBtn">🔙 撮影をやり直す</button>
+    <button id="editFrameBtn">✂️ ポイント微調整</button>
+    <div id="playbackUI" style="display:flex; align-items:center; gap:10px; margin: 0 15px;">
+        <button id="playPauseBtn">▶ 再生</button>
+        <input type="range" id="timelineSlider" min="0" max="100" value="0" style="width:200px;">
+        <span id="frameCounter" style="color:#00bfff; font-weight:bold; font-size:14px;">0 / 0</span>
+    </div>
+    <button id="nextPoseBtn" style="background:#39ff14; color:black; font-size:16px; padding: 8px 20px;">✅ 保存して次のポーズへ ➔</button>
+    <button id="finishBtn" onclick="prepareAndPrintReport()" style="background:#ff9100; color:black; margin-left:15px;">📄 レポート出力</button>
 </div>
 
 <div class="container">
@@ -111,8 +118,9 @@
     </div>
     <div class="view-port">
         <canvas id="canvasMP"></canvas>
-        <div class="label">CONNECT AI - V62-v2 Master</div>
+        <div class="label">CONNECT AI - V63 Flow Engine</div>
         <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
+        <div class="debug-panel" id="debugLog">AR Status: Initializing Engine...</div>
         <div id="radarWrapperMP" class="radar-wrapper">
             <div class="radar-title">COP RADAR</div>
             <canvas id="canvasRadarMP" class="radar-box" width="150" height="150"></canvas>
@@ -129,43 +137,88 @@
     const canvasMP = document.getElementById('canvasMP'), ctxMP = canvasMP.getContext('2d');
     const canvasComb = document.getElementById('canvasCombined'), ctxComb = canvasComb.getContext('2d');
     const radarWrapperMP = document.getElementById('radarWrapperMP'), canvasRadarMP = document.getElementById('canvasRadarMP'), ctxRadarMP = canvasRadarMP.getContext('2d');
-    const startBtn = document.getElementById('startBtn'), recBtn = document.getElementById('recBtn'), durationSelect = document.getElementById('durationSelect'), timerDisplay = document.getElementById('timerDisplay'), downloadCsvBtn = document.getElementById('downloadCsvBtn'), showSwayAlertCheckbox = document.getElementById('showSwayAlert'), videoSource = document.getElementById('videoSource');
-    const heightInput = document.getElementById('patientHeight'), calibrateMatBtn = document.getElementById('calibrateMatBtn'), infoPanel = document.getElementById('infoPanel'), tiltPanel = document.getElementById('tiltPanel'), pelvicTiltSlider = document.getElementById('pelvicTiltSlider'), tiltValDisplay = document.getElementById('tiltValDisplay');
+    
+    const startBtn = document.getElementById('startBtn'), recBtn = document.getElementById('recBtn'), durationSelect = document.getElementById('durationSelect'), timerDisplay = document.getElementById('timerDisplay'), videoSource = document.getElementById('videoSource'), debugLog = document.getElementById('debugLog');
+    const heightInput = document.getElementById('patientHeight'), calibrateMatBtn = document.getElementById('calibrateMatBtn'), arCalibrateBtn = document.getElementById('arCalibrateBtn'), arMarkerSizeInput = document.getElementById('arMarkerSize');
+    const infoPanel = document.getElementById('infoPanel'), tiltPanel = document.getElementById('tiltPanel'), pelvicTiltSlider = document.getElementById('pelvicTiltSlider'), tiltValDisplay = document.getElementById('tiltValDisplay');
+    const showSwayAlertCheckbox = document.getElementById('showSwayAlert');
 
     let detectors = [], isRunning = false, isRecording = false, isPausedForEdit = false, currentTab = "front", currentStream = null, appMode = "camera", isPlaying = false;
     let playbackDataMP = [], mainRenderId = null, recordingDuration = 10000, coordinateBufferMP = [], poseDataLog = [], recorder, recordedChunks = [];
     let selectedJointIndex = null, dpadStepVal = 1, isEditingPlaybackFrame = false, swayHistoryMP = [], activeRadarDrag = null, isRadarMovedManually = false, longPressTimer = null, initialTouch = null;
     let pxToCmRatio = null, estimatedPelvicTilt = 0, calibState = "idle", calibrationPoints = [], staticBackgroundData = null; 
+    let arDetector = null, latestDetectedMarkers = [];
+    let arCanvas = document.createElement('canvas'), arCtx = arCanvas.getContext('2d', { willReadFrequently: true });
 
     window.currentAnchorPos = null; window.customOriginMarkers = {}; window.anchorStatus = "unlocked";
     const DURATION_MAP = { 'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 'dyn_overhead': 15000, 'dyn_overhead_side': 15000, 'dyn_single_r': 15000, 'dyn_single_l': 15000, 'dyn_flex_fwd': 10000, 'dyn_flex_bwd': 10000, 'dyn_shoulder_r': 10000, 'dyn_shoulder_l': 10000 };
-    window.reportDataStore = {}; Object.keys(DURATION_MAP).forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
+    window.reportDataStore = {};
+    Object.keys(DURATION_MAP).forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
 
-    function getEventPos(canvas, e) {
-        const r = canvas.getBoundingClientRect(); let cX = e.clientX, cY = e.clientY; if (e.touches && e.touches.length > 0) { cX = e.touches[0].clientX; cY = e.touches[0].clientY; }
-        const vRatio = canvas.width / canvas.height, cRatio = r.width / r.height;
-        let rW = cRatio > vRatio ? r.height * vRatio : r.width, rH = cRatio > vRatio ? r.height : r.width / vRatio;
-        let oX = cRatio > vRatio ? (r.width - rW) / 2 : 0, oY = cRatio > vRatio ? 0 : (r.height - rH) / 2;
-        return { x: (cX - r.left - oX) * (canvas.width / rW), y: (cY - r.top - oY) * (canvas.height / rH), renderScale: canvas.width / rW };
+    // 🌟 V63: 状態管理エンジン (UIの表示切替を制御)
+    function setAppState(state, isDynamic = false) {
+        document.getElementById('setupControls').style.display = state === 'setup' ? 'flex' : 'none';
+        document.getElementById('mainControls').style.display = state === 'live' ? 'flex' : 'none';
+        document.getElementById('reviewControls').style.display = state === 'review' ? 'flex' : 'none';
+        
+        if (state === 'review') {
+            document.getElementById('playbackUI').style.display = isDynamic ? 'flex' : 'none';
+        }
+        if (state === 'live') {
+            isPausedForEdit = false;
+            appMode = 'camera';
+            closeDpad();
+            refreshReportView();
+        }
+    }
+
+    function loadScript(src) { return new Promise((res, rej) => { let s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); }
+
+    async function loadARLibrary() {
+        const arCdns = [
+            ["https://cdn.jsdelivr.net/npm/js-aruco@0.1.0/src/cv.js", "https://cdn.jsdelivr.net/npm/js-aruco@0.1.0/src/aruco.js"],
+            ["https://unpkg.com/js-aruco@0.1.0/src/cv.js", "https://unpkg.com/js-aruco@0.1.0/src/aruco.js"],
+            ["https://raw.githack.com/juj/jsaruco/master/src/cv.js", "https://raw.githack.com/juj/jsaruco/master/src/aruco.js"]
+        ];
+        for (let i = 0; i < arCdns.length; i++) {
+            try { debugLog.innerText = `AR Status: Fetching Server ${i+1}...`; await loadScript(arCdns[i][0]); await loadScript(arCdns[i][1]); if (typeof AR !== 'undefined') return true; } catch (e) { }
+        } return false;
     }
 
     async function init() {
-        if (!navigator.mediaDevices) { videoSource.innerHTML = '<option>⚠️ HTTPS必須</option>'; return; }
+        if (!navigator.mediaDevices) { videoSource.innerHTML = '<option>⚠️ HTTPS必須</option>'; startBtn.innerText = "❌ 起動不可"; return; }
         try { const ts = await navigator.mediaDevices.getUserMedia({ video: true }); ts.getTracks().forEach(t => t.stop()); } catch(e) {}
         try {
             const devices = await navigator.mediaDevices.enumerateDevices(); videoSource.innerHTML = ''; let camCount = 1, hasCam = false;
             devices.forEach(d => { if(d.kind==='videoinput') { videoSource.appendChild(new Option(d.label || "カメラ "+camCount++, d.deviceId)); hasCam = true; }});
             if(!hasCam) videoSource.innerHTML = '<option>カメラなし</option>';
-            startBtn.innerText = "⏳ AIモデル読込中..."; startBtn.disabled = true;
+            startBtn.innerText = "⏳ AI/AR読込中..."; startBtn.disabled = true;
+            
+            let arLoaded = await loadARLibrary();
+            if (arLoaded) { arDetector = new AR.Detector(); debugLog.innerText = "AR: Ready\nWait for Camera..."; debugLog.style.color = "#00e676"; debugLog.style.borderColor = "#00e676"; } 
+            else { debugLog.innerText = "AR: Failed\nISP Blocked."; debugLog.style.color = "#ff5252"; debugLog.style.borderColor = "#ff5252"; }
+
             await tf.setBackend('webgl'); await tf.ready();
             detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
-            startBtn.innerText = "📷 フルHD起動"; startBtn.disabled = false; updateInfoPanel();
-        } catch (e) { startBtn.innerText = "❌ エラー"; }
+            startBtn.innerText = "📷 カメラを起動して測定開始"; startBtn.disabled = false; updateInfoPanel();
+        } catch (e) { startBtn.innerText = "❌ 起動エラー"; }
     }
 
     function updateInfoPanel() {
-        infoPanel.innerHTML = (pxToCmRatio ? "校校正済 (1px = " + pxToCmRatio.toFixed(3) + "cm)" : "⚠️ スケール未校正") + "<br>記録された骨盤傾斜: " + (estimatedPelvicTilt > 0 ? '+' : '') + estimatedPelvicTilt + "°";
+        infoPanel.innerHTML = (pxToCmRatio ? "校正済 (1px = " + pxToCmRatio.toFixed(3) + "cm)" : "⚠️ スケール未校正") + "<br>記録された骨盤傾斜: " + (estimatedPelvicTilt > 0 ? '+' : '') + estimatedPelvicTilt + "°";
     }
+
+    arCalibrateBtn.onclick = function() {
+        if (latestDetectedMarkers.length === 0) { alert("マーカーが検出されていません。"); return; }
+        let physicalSizeCm = parseFloat(arMarkerSizeInput.value) || 17.5, sumRatio = 0, count = 0;
+        for (let i = 0; i < latestDetectedMarkers.length; i++) {
+            let c = latestDetectedMarkers[i].corners;
+            let maxPixelSide = Math.max(Math.hypot(c[1].x-c[0].x, c[1].y-c[0].y), Math.hypot(c[2].x-c[1].x, c[2].y-c[1].y), Math.hypot(c[3].x-c[2].x, c[3].y-c[2].y), Math.hypot(c[0].x-c[3].x, c[0].y-c[3].y));
+            if (maxPixelSide > 5) { sumRatio += (physicalSizeCm / maxPixelSide); count++; }
+        }
+        if (count > 0) { pxToCmRatio = sumRatio / count; arCalibrateBtn.innerText = "✅ AR校正完了"; updateInfoPanel(); setTimeout(() => { arCalibrateBtn.innerText = "📷 AR校正"; }, 2000); } 
+        else { alert("解析失敗"); }
+    };
 
     calibrateMatBtn.onclick = function() {
         if (calibState === "idle") { calibState = "wait_left"; calibrationPoints = []; calibrateMatBtn.classList.add('active'); calibrateMatBtn.innerText = "📍 左端をタップ"; } 
@@ -173,11 +226,11 @@
         else if (calibState === "adjust_right") {
             let dPx = Math.hypot(calibrationPoints[1].x - calibrationPoints[0].x, calibrationPoints[1].y - calibrationPoints[0].y);
             if(dPx > 10) pxToCmRatio = 45.0 / dPx; calibState = "idle"; calibrateMatBtn.classList.remove('active'); document.getElementById('dpadPanel').style.display = 'none';
-            calibrateMatBtn.innerText = "📏 手動マット校正(45cm)"; updateInfoPanel();
-        } else { calibState = "idle"; calibrationPoints = []; calibrateMatBtn.classList.remove('active'); document.getElementById('dpadPanel').style.display = 'none'; }
+            calibrateMatBtn.innerText = "✅ 校正完了"; updateInfoPanel(); setTimeout(() => { if(calibState==="idle") calibrateMatBtn.innerText = "📏 手動校正"; }, 2000);
+        } else { calibState = "idle"; calibrationPoints = []; calibrateMatBtn.classList.remove('active'); document.getElementById('dpadPanel').style.display = 'none'; calibrateMatBtn.innerText = "📏 手動校正"; }
     };
 
-    pelvicTiltSlider.oninput = e => { let v = parseInt(e.target.value); tiltValDisplay.innerText = v === 0 ? "0° (ニュートラル)" : (v > 0 ? "+" + v + "° (前傾)" : v + "° (後傾)"); estimatedPelvicTilt = v; updateInfoPanel(); };
+    pelvicTiltSlider.oninput = e => { let v = parseInt(e.target.value); tiltValDisplay.innerText = v === 0 ? "0°" : (v > 0 ? "+" + v + "°(前傾)" : v + "°(後傾)"); estimatedPelvicTilt = v; updateInfoPanel(); };
 
     function generateVirtualASIS(kps) {
         if(!kps) return kps;
@@ -215,32 +268,20 @@
     }
 
     function drawSpecificRadar(ctx, hist, color) {
-        clearRadar(ctx, color); if (hist.length < 2) return;
-        ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
-        hist.forEach((pt, idx) => {
-            let rX = 75 + (pt.x * 0.5), rY = 75 + (pt.y * 0.5), d = Math.hypot(rX - 75, rY - 75);
-            if (d > 65) { rX = 75 + ((rX - 75) * 65 / d); rY = 75 + ((rY - 75) * 65 / d); }
-            idx === 0 ? ctx.moveTo(rX, rY) : ctx.lineTo(rX, rY);
-        });
-        ctx.stroke(); const lPt = hist[hist.length - 1]; let lX = 75 + (lPt.x * 0.5), lY = 75 + (lPt.y * 0.5), lD = Math.hypot(lX - 75, lY - 75);
-        if (lD > 65) { lX = 75 + ((lX - 75) * 65 / lD); lY = 75 + ((lY - 75) * 65 / lD); }
-        ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(lX, lY, 4, 0, 2*Math.PI); ctx.fill(); ctx.restore();
+        clearRadar(ctx, color); if (hist.length < 2) return; ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+        hist.forEach((pt, idx) => { let rX = 75 + (pt.x * 0.5), rY = 75 + (pt.y * 0.5), d = Math.hypot(rX - 75, rY - 75); if (d > 65) { rX = 75 + ((rX - 75) * 65 / d); rY = 75 + ((rY - 75) * 65 / d); } idx === 0 ? ctx.moveTo(rX, rY) : ctx.lineTo(rX, rY); });
+        ctx.stroke(); const lPt = hist[hist.length - 1]; let lX = 75 + (lPt.x * 0.5), lY = 75 + (lPt.y * 0.5), lD = Math.hypot(lX - 75, lY - 75); if (lD > 65) { lX = 75 + ((lX - 75) * 65 / lD); lY = 75 + ((lY - 75) * 65 / lD); } ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(lX, lY, 4, 0, 2*Math.PI); ctx.fill(); ctx.restore();
     }
 
     function clearRadar(ctx, color) {
         if (!ctx) return; ctx.clearRect(0, 0, 150, 150); ctx.strokeStyle = color + "44"; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(75, 75, 30, 0, 2*Math.PI); ctx.stroke(); ctx.beginPath(); ctx.arc(75, 75, 60, 0, 2*Math.PI); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(75, 10); ctx.lineTo(75, 140); ctx.moveTo(10, 75); ctx.lineTo(140, 75); ctx.stroke(); 
+        ctx.beginPath(); ctx.arc(75, 75, 30, 0, 2*Math.PI); ctx.stroke(); ctx.beginPath(); ctx.arc(75, 75, 60, 0, 2*Math.PI); ctx.stroke(); ctx.beginPath(); ctx.moveTo(75, 10); ctx.lineTo(75, 140); ctx.moveTo(10, 75); ctx.lineTo(140, 75); ctx.stroke(); 
     }
 
     radarWrapperMP.style.touchAction = "none";
     radarWrapperMP.addEventListener('pointerdown', e => {
         e.stopPropagation(); if (activeRadarDrag) return; initialTouch = { x: e.clientX, y: e.clientY };
-        longPressTimer = setTimeout(() => {
-            const rect = radarWrapperMP.getBoundingClientRect(); activeRadarDrag = { el: radarWrapperMP, sX: initialTouch.x, sY: initialTouch.y, sL: rect.left, sT: rect.top };
-            radarWrapperMP.style.right = 'auto'; radarWrapperMP.style.bottom = 'auto'; radarWrapperMP.style.left = rect.left + "px"; radarWrapperMP.style.top = rect.top + "px";
-            radarWrapperMP.classList.add('dragging'); isRadarMovedManually = true;
-        }, 300);
+        longPressTimer = setTimeout(() => { const rect = radarWrapperMP.getBoundingClientRect(); activeRadarDrag = { el: radarWrapperMP, sX: initialTouch.x, sY: initialTouch.y, sL: rect.left, sT: rect.top }; radarWrapperMP.style.right = 'auto'; radarWrapperMP.style.bottom = 'auto'; radarWrapperMP.style.left = rect.left + "px"; radarWrapperMP.style.top = rect.top + "px"; radarWrapperMP.classList.add('dragging'); isRadarMovedManually = true; }, 300);
     });
     radarWrapperMP.addEventListener('pointermove', e => { if (longPressTimer && Math.hypot(e.clientX - initialTouch.x, e.clientY - initialTouch.y) > 10) { clearTimeout(longPressTimer); longPressTimer = null; } });
     window.addEventListener('pointermove', e => { if (activeRadarDrag) { e.preventDefault(); activeRadarDrag.el.style.left = (activeRadarDrag.sL + (e.clientX - activeRadarDrag.sX)) + "px"; activeRadarDrag.el.style.top = (activeRadarDrag.sT + (e.clientY - activeRadarDrag.sY)) + "px"; } }, { passive: false });
@@ -248,31 +289,51 @@
 
     document.getElementById('dpadStep').onclick = e => { dpadStepVal = dpadStepVal === 1 ? 5 : 1; e.target.innerText = dpadStepVal + 'px'; };
     const moveJoint = (dx, dy) => {
-        if (calibState === "adjust_left" && calibrationPoints[0]) { calibrationPoints[0].x += dx; calibrationPoints[0].y += dy; }
-        else if (calibState === "adjust_right" && calibrationPoints[1]) { calibrationPoints[1].x += dx; calibrationPoints[1].y += dy; }
-        else if (selectedJointIndex !== null) {
-            let kp = null; if (appMode === 'playback' && isEditingPlaybackFrame) { let f = parseInt(document.getElementById('timelineSlider').value); if(playbackDataMP[f]) kp = playbackDataMP[f].keypoints[selectedJointIndex]; }
-            else if (isPausedForEdit) kp = window.reportDataStore[currentTab][selectedJointIndex];
-            if (kp) { kp.x += dx; kp.y += dy; }
-        } appMode === 'playback' ? renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)) : refreshReportView();
+        if (calibState === "adjust_left" && calibrationPoints[0]) { calibrationPoints[0].x += dx; calibrationPoints[0].y += dy; } else if (calibState === "adjust_right" && calibrationPoints[1]) { calibrationPoints[1].x += dx; calibrationPoints[1].y += dy; } else if (selectedJointIndex !== null) { let kp = null; if (appMode === 'playback' && isEditingPlaybackFrame) { let f = parseInt(document.getElementById('timelineSlider').value); if(playbackDataMP[f]) kp = playbackDataMP[f].keypoints[selectedJointIndex]; } else if (isPausedForEdit) kp = window.reportDataStore[currentTab][selectedJointIndex]; if (kp) { kp.x += dx; kp.y += dy; } } appMode === 'playback' ? renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)) : refreshReportView();
     };
-    document.getElementById('dpadUp').onclick = () => moveJoint(0, -dpadStepVal); document.getElementById('dpadDown').onclick = () => moveJoint(0, dpadStepVal);
-    document.getElementById('dpadLeft').onclick = () => moveJoint(-dpadStepVal, 0); document.getElementById('dpadRight').onclick = () => moveJoint(dpadStepVal, 0);
-    document.getElementById('dpadClose').onclick = () => { selectedJointIndex = null; document.getElementById('dpadPanel').style.display = 'none'; refreshReportView(); };
+    document.getElementById('dpadUp').onclick = () => moveJoint(0, -dpadStepVal); document.getElementById('dpadDown').onclick = () => moveJoint(0, dpadStepVal); document.getElementById('dpadLeft').onclick = () => moveJoint(-dpadStepVal, 0); document.getElementById('dpadRight').onclick = () => moveJoint(dpadStepVal, 0);
+    const closeDpad = () => { if(calibState!=="idle"){ calibState="idle"; calibrationPoints=[]; calibrateMatBtn.classList.remove('active'); calibrateMatBtn.innerText="📏 手動校正"; } selectedJointIndex = null; document.getElementById('dpadPanel').style.display = 'none'; appMode==='playback'?renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)):refreshReportView(); };
+    document.getElementById('dpadClose').onclick = closeDpad;
 
     document.getElementById('editFrameBtn').onclick = function() {
         if(!isEditingPlaybackFrame) { togglePlay(false); isEditingPlaybackFrame = true; this.innerText = "✅ 編集完了"; this.style.background = "#39ff14"; } 
-        else { isEditingPlaybackFrame = false; this.innerText = "✂️ このフレームを微調整"; this.style.background = "#ff9100"; selectedJointIndex=null; document.getElementById('dpadPanel').style.display='none'; }
+        else { isEditingPlaybackFrame = false; this.innerText = "✂️ ポイント微調整"; this.style.background = "#ff9100"; closeDpad(); }
     };
 
     function switchReportTab(tabName) {
         if (isRecording) return; currentTab = tabName; staticBackgroundData = null; window.anchorStatus = "unlocked"; window.currentAnchorPos = null;
         Object.keys(DURATION_MAP).forEach(d => { swayHistoryMP = []; clearRadar(ctxRadarMP, "#ff5252"); });
-        selectedJointIndex = null; document.getElementById('dpadPanel').style.display = 'none'; isEditingPlaybackFrame = false;
-        if(DURATION_MAP[tabName]) durationSelect.value = DURATION_MAP[tabName].toString();
+        closeDpad(); isEditingPlaybackFrame = false; document.getElementById('editFrameBtn').innerText = "✂️ ポイント微調整"; document.getElementById('editFrameBtn').style.background = "#ff9100";
+        if(DURATION_MAP[tabName]) document.getElementById('durationSelect').value = DURATION_MAP[tabName].toString();
         tiltPanel.style.display = (tabName === 'r_side' || tabName === 'l_side') ? 'block' : 'none';
-        appMode = 'camera'; document.getElementById('playbackControls').style.display = 'none'; document.getElementById('mainControls').style.display = 'flex'; isPausedForEdit = false; refreshReportView();
+        setAppState('live');
     }
+
+    // 🌟 V63: 次のポーズへ自動進行するロジック
+    document.getElementById('nextPoseBtn').onclick = () => {
+        if (appMode === 'playback') togglePlay(false);
+        const select = document.getElementById('modeSelect');
+        let nextIndex = select.selectedIndex + 1;
+        
+        if (nextIndex < select.options.length) {
+            select.selectedIndex = nextIndex;
+            switchReportTab(select.options[nextIndex].value);
+        } else {
+            alert("すべての測定が完了しました！");
+            prepareAndPrintReport();
+        }
+    };
+
+    document.getElementById('retakeBtn').onclick = () => {
+        if (appMode === 'playback') togglePlay(false);
+        setAppState('live');
+    };
+
+    document.getElementById('reconnectCamBtn').onclick = () => {
+        setAppState('setup');
+        if(currentStream) currentStream.getTracks().forEach(t=>t.stop());
+        isRunning = false;
+    };
 
     function drawCenterGrid(ctx, canvas) { ctx.save(); ctx.strokeStyle="rgba(255,255,255,0.4)"; ctx.lineWidth=5; ctx.beginPath(); ctx.moveTo(canvas.width/2,0); ctx.lineTo(canvas.width/2,canvas.height); ctx.stroke(); ctx.restore(); }
 
@@ -295,12 +356,8 @@
             let h=kps[hIdx], k=kps[kIdx], a=kps[aIdx]; if(!h||!k||!a||h.score<0.4||k.score<0.4||a.score<0.4) return;
             let refX = h.x + (a.x - h.x) * ((k.y - h.y) / (a.y - h.y));
             let angle = Math.abs(180 - Math.abs(Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI);
-            if(angle > 2.0) {
-                let isIn = label==='R' ? k.x > refX : k.x < refX; ctx.fillStyle = isIn ? "#ff5252" : "#ff9100";
-                ctx.fillText((isIn?"ニーイン ":"ニーアウト ") + angle.toFixed(1)+"°", k.x+(label==='R'?-120:20), k.y);
-            }
-        };
-        ctx.save(); ctx.font="bold 16px sans-serif"; evaluateSide(24, 26, 28, 'R'); evaluateSide(23, 25, 27, 'L'); ctx.restore();
+            if(angle > 2.0) { let isIn = label==='R' ? k.x > refX : k.x < refX; ctx.fillStyle = isIn ? "#ff5252" : "#ff9100"; ctx.fillText((isIn?"ニーイン ":"ニーアウト ") + angle.toFixed(1)+"°", k.x+(label==='R'?-120:20), k.y); }
+        }; ctx.save(); ctx.font="bold 16px sans-serif"; evaluateSide(24, 26, 28, 'R'); evaluateSide(23, 25, 27, 'L'); ctx.restore();
     }
 
     function drawOHSSideAnalysis(ctx, kps) {
@@ -317,51 +374,34 @@
         ctx.save(); ctx.font = "bold 16px sans-serif";
         ctx.fillStyle = trunkLean > 45 ? "#ff5252" : "#39ff14"; ctx.fillText("体幹前傾: " + trunkLean.toFixed(1) + "°", s.x - 30, s.y - 30);
         ctx.fillStyle = "#00bfff"; ctx.fillText("膝屈曲: " + kneeAng.toFixed(1) + "°", k.x + 20, k.y);
-        if(w && w.score > 0.4) {
-            ctx.fillStyle = armAng < 160 ? "#ff5252" : "#39ff14"; ctx.fillText("上腕アライメント: " + armAng.toFixed(1) + "°", s.x + 40, s.y + 20);
-            ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(w.x, w.y); ctx.stroke();
-        } ctx.restore();
+        if(w && w.score > 0.4) { ctx.fillStyle = armAng < 160 ? "#ff5252" : "#39ff14"; ctx.fillText("上腕アライメント: " + armAng.toFixed(1) + "°", s.x + 40, s.y + 20); ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(w.x, w.y); ctx.stroke(); } ctx.restore();
     }
 
-    // 🌟 V62-v2: 頭部位置関係可視化・解析エンジン（追加項目）
     function drawHeadAnalysis(ctx, kps) {
         let nose = kps[0], lEar = kps[7], rEar = kps[8]; if (!nose || nose.score < 0.4) return;
-        ctx.save();
-        
-        let isSide = currentTab.includes('side') || currentTab.includes('overhead_side');
+        ctx.save(); let isSide = currentTab.includes('side') || currentTab.includes('overhead_side');
         if (!isSide) {
-            // 前面・後面システム
             if (lEar && rEar && lEar.score > 0.4 && rEar.score > 0.4) {
                 let cX = (lEar.x + rEar.x) / 2, cY = (lEar.y + rEar.y) / 2, rad = Math.hypot(lEar.x - rEar.x, lEar.y - rEar.y) * 0.65;
                 ctx.strokeStyle = "rgba(57, 255, 20, 0.4)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cX, cY, rad, 0, 2*Math.PI); ctx.stroke();
-                ctx.strokeStyle = "#deff9a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cX, cY); ctx.lineTo(nose.x, nose.y); ctx.stroke(); // 正中線
-                
-                let tilt = Math.atan2(rEar.y - lEar.y, rEar.x - lEar.x) * 180 / Math.PI;
-                if (tilt > 90) tilt -= 180; else if (tilt < -90) tilt += 180;
-                ctx.font = "bold 14px sans-serif"; ctx.style = Math.abs(tilt) > 4 ? "#ff5252" : "#39ff14"; ctx.fillStyle = ctx.style;
-                ctx.fillText("頭部傾斜: " + Math.abs(tilt).toFixed(1) + "°", cX - 40, cY - rad - 10);
+                ctx.strokeStyle = "#deff9a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cX, cY); ctx.lineTo(nose.x, nose.y); ctx.stroke(); 
+                let tilt = Math.atan2(rEar.y - lEar.y, rEar.x - lEar.x) * 180 / Math.PI; if (tilt > 90) tilt -= 180; else if (tilt < -90) tilt += 180;
+                ctx.font = "bold 14px sans-serif"; ctx.fillStyle = Math.abs(tilt) > 4 ? "#ff5252" : "#39ff14"; ctx.fillText("頭部傾斜: " + Math.abs(tilt).toFixed(1) + "°", cX - 40, cY - rad - 10);
             }
         } else {
-            // 側面システム
             let isLeft = currentTab === 'l_side' || (currentTab === 'dyn_overhead_side' && kps[11].score > kps[12].score);
             let ear = isLeft ? lEar : rEar, sh = isLeft ? kps[11] : kps[12];
             if (ear && ear.score > 0.4) {
                 let cX = (ear.x + nose.x) / 2, cY = (ear.y + nose.y) / 2, rad = Math.hypot(ear.x - nose.x, ear.y - nose.y) * 0.75;
                 ctx.strokeStyle = "rgba(0, 191, 255, 0.4)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cX, cY, rad, 0, 2*Math.PI); ctx.stroke();
                 ctx.strokeStyle = "#deff9a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ear.x, ear.y); ctx.lineTo(nose.x, nose.y); ctx.stroke();
-                
                 if (sh && sh.score > 0.4) {
-                    ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(sh.x, sh.y); ctx.lineTo(sh.x, ear.y); ctx.stroke(); // 肩垂直線
-                    ctx.strokeStyle = "#ff9100"; ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(sh.x, ear.y); ctx.lineTo(ear.x, ear.y); ctx.stroke(); // 変位
-                    if (pxToCmRatio) {
-                        let fhp = (ear.x - sh.x) * (isLeft ? -1 : 1) * pxToCmRatio;
-                        ctx.font = "bold 14px sans-serif"; ctx.fillStyle = fhp > 6 ? "#ff5252" : "#39ff14";
-                        ctx.fillText("頭部前突: " + fhp.toFixed(1) + "cm", cX - 45, cY - rad - 10);
-                    }
+                    ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(sh.x, sh.y); ctx.lineTo(sh.x, ear.y); ctx.stroke(); 
+                    ctx.strokeStyle = "#ff9100"; ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(sh.x, ear.y); ctx.lineTo(ear.x, ear.y); ctx.stroke(); 
+                    if (pxToCmRatio) { let fhp = (ear.x - sh.x) * (isLeft ? -1 : 1) * pxToCmRatio; ctx.font = "bold 14px sans-serif"; ctx.fillStyle = fhp > 6 ? "#ff5252" : "#39ff14"; ctx.fillText("頭部前突: " + fhp.toFixed(1) + "cm", cX - 45, cY - rad - 10); }
                 }
             }
         }
-        // 特徴点プロット
         [0, 2, 5, 7, 8].forEach(i => { if (kps[i] && kps[i].score > 0.4) { ctx.fillStyle = "#39ff14"; ctx.beginPath(); ctx.arc(kps[i].x, kps[i].y, 3, 0, 2*Math.PI); ctx.fill(); } });
         ctx.restore();
     }
@@ -386,7 +426,7 @@
 
     recBtn.onclick = function() {
         isPausedForEdit = false; staticBackgroundData = null; isRecording = true; coordinateBufferMP = []; poseDataLog = poseDataLog.filter(d => d.mode !== currentTab);
-        recordingDuration = parseInt(durationSelect.value); recordingStartTime = Date.now(); swayHistoryMP = []; timerDisplay.style.display = "block"; recBtn.disabled = true; downloadCsvBtn.disabled = true; recordedChunks = [];
+        recordingDuration = parseInt(document.getElementById('durationSelect').value); recordingStartTime = Date.now(); swayHistoryMP = []; timerDisplay.style.display = "block"; recBtn.disabled = true; document.getElementById('downloadCsvBtn').disabled = true; recordedChunks = [];
         try { 
             const stream = canvasComb.captureStream(30); recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' }); 
             recorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); }; 
@@ -403,24 +443,23 @@
 
     function executePostProcessingStop() {
         isRecording = false; timerDisplay.style.display = "none"; if (recorder && recorder.state !== "inactive") recorder.stop(); 
-        if (currentTab.startsWith("dyn_")) { enterPlaybackMode(); } else {
+        let isDyn = currentTab.startsWith("dyn_");
+        if (isDyn) { 
+            appMode = 'playback'; playbackDataMP = poseDataLog.filter(d => d.mode === currentTab);
+            if (playbackDataMP.length > 1) { playbackBaseTime = playbackDataMP[0].time; playbackTotalDuration = playbackDataMP[playbackDataMP.length - 1].time - playbackBaseTime; } else { playbackBaseTime = 0; playbackTotalDuration = 0; }
+            document.getElementById('timelineSlider').max = playbackDataMP.length > 0 ? playbackDataMP.length - 1 : 0; document.getElementById('timelineSlider').value = 0; document.getElementById('frameCounter').innerText = "0 / " + document.getElementById('timelineSlider').max;
+            playbackVideo.pause(); playbackVideo.currentTime = 0; renderPlaybackFrame(0); togglePlay(true);
+        } else {
             isPausedForEdit = true; const bgCanvas = document.createElement('canvas'); bgCanvas.width = canvasMP.width; bgCanvas.height = canvasMP.height; bgCanvas.getContext('2d').drawImage(video, 0, 0, canvasMP.width, canvasMP.height); staticBackgroundData = bgCanvas;
             if (coordinateBufferMP.length > 0) {
                 const tot = coordinateBufferMP.length; let avgK = JSON.parse(JSON.stringify(coordinateBufferMP[0]));
                 avgK.forEach((kp, idx) => { let sX=0, sY=0; for(let f=0;f<tot;f++){if(coordinateBufferMP[f][idx]){sX+=coordinateBufferMP[f][idx].x; sY+=coordinateBufferMP[f][idx].y;}} kp.x=sX/tot; kp.y=sY/tot; kp.score=1; });
                 window.reportDataStore[currentTab] = avgK;
-            } recBtn.disabled = false; downloadCsvBtn.disabled = false; refreshReportView(); 
+            } recBtn.disabled = false; document.getElementById('downloadCsvBtn').disabled = false; refreshReportView(); 
         }
+        setAppState('review', isDyn);
     }
 
-    function enterPlaybackMode() {
-        appMode = 'playback'; document.getElementById('mainControls').style.display = 'none'; document.getElementById('playbackControls').style.display = 'flex';
-        playbackDataMP = poseDataLog.filter(d => d.mode === currentTab);
-        if (playbackDataMP.length > 1) { playbackBaseTime = playbackDataMP[0].time; playbackTotalDuration = playbackDataMP[playbackDataMP.length - 1].time - playbackBaseTime; } else { playbackBaseTime = 0; playbackTotalDuration = 0; }
-        document.getElementById('timelineSlider').max = playbackDataMP.length - 1; document.getElementById('timelineSlider').value = 0;
-        playbackVideo.pause(); playbackVideo.currentTime = 0; renderPlaybackFrame(0); togglePlay(true);
-    }
-    
     function togglePlay(forcePlay) {
         if(isEditingPlaybackFrame && forcePlay !== false) return; 
         if (forcePlay === true || !isPlaying) {
@@ -439,7 +478,7 @@
         document.getElementById('timelineSlider').value = tIdx; renderPlaybackFrame(tIdx); playbackRafId = requestAnimationFrame(playbackLoop);
     }
 
-    document.getElementById('playPauseBtn').onclick = () => togglePlay(); document.getElementById('backToCamBtn').onclick = () => { appMode = 'camera'; togglePlay(false); document.getElementById('playbackControls').style.display='none'; document.getElementById('mainControls').style.display='flex'; isPausedForEdit=false; };
+    document.getElementById('playPauseBtn').onclick = () => togglePlay(); 
     document.getElementById('timelineSlider').oninput = () => { togglePlay(false); const fIdx = parseInt(document.getElementById('timelineSlider').value); if(playbackDataMP[fIdx]) playbackVideo.currentTime=(playbackDataMP[fIdx].time-playbackBaseTime)/1000.0; renderPlaybackFrame(fIdx); };
 
     function renderPlaybackFrame(fIdx) {
@@ -448,48 +487,136 @@
         drawCenterGrid(ctxMP, canvasMP);
         if (playbackDataMP[fIdx]) {
             const aKps = playbackDataMP[fIdx].keypoints; drawSkeleton(ctxMP, aKps, '#ffffff'); 
-            drawOHSFrontAnalysis(ctxMP, aKps); drawOHSSideAnalysis(ctxMP, aKps); 
-            drawHeadAnalysis(ctxMP, aKps); // 🌟 V62-v2
+            drawOHSFrontAnalysis(ctxMP, aKps); drawOHSSideAnalysis(ctxMP, aKps); drawHeadAnalysis(ctxMP, aKps); 
             runReviewLogic(ctxMP, n=>aKps.find(k=>k.name===n), canvasMP);
             if (selectedJointIndex !== null && isEditingPlaybackFrame) drawCrosshair(ctxMP, aKps[selectedJointIndex], canvasMP);
             drawPlaybackRadar(playbackDataMP, fIdx, canvasMP);
-        } ctxBand = ctxComb.drawImage(canvasMP, 0, 0, w, h);
-    }
-
-    function refreshReportView() {
-        if(appMode === 'playback') return; const w = video.videoWidth, h = video.videoHeight;
-        isPausedForEdit && staticBackgroundData ? ctxMP.drawImage(staticBackgroundData, 0, 0, w, h) : ctxMP.drawImage(video, 0, 0, w, h);
-        drawCenterGrid(ctxMP, canvasMP);
-        if (window.reportDataStore[currentTab]) {
-            const kps = window.reportDataStore[currentTab]; drawSkeleton(ctxMP, kps, '#ff5252'); 
-            drawOHSFrontAnalysis(ctxMP, kps); drawOHSSideAnalysis(ctxMP, kps); 
-            drawHeadAnalysis(ctxMP, kps); // 🌟 V62-v2
-            runReviewLogic(ctxMP, n=>kps.find(k=>k.name===n), canvasMP);
         } ctxComb.drawImage(canvasMP, 0, 0, w, h);
     }
 
+    function getEventPos(canvas, e) {
+        const rect = canvas.getBoundingClientRect(); let clientX, clientY;
+        if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; } else if (e.changedTouches && e.changedTouches.length > 0) { clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY; } else { clientX = e.clientX; clientY = e.clientY; }
+        if (clientX === undefined) return null;
+        const videoRatio = canvas.width / canvas.height, containerRatio = rect.width / rect.height; let renderWidth, renderHeight, offsetX, offsetY;
+        if (containerRatio > videoRatio) { renderHeight = rect.height; renderWidth = rect.height * videoRatio; offsetX = (rect.width - renderWidth) / 2; offsetY = 0; } else { renderWidth = rect.width; renderHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - renderHeight) / 2; }
+        const scaleX = canvas.width / renderWidth, scaleY = canvas.height / renderHeight; return { x: (clientX - rect.left - offsetX) * scaleX, y: (clientY - rect.top - offsetY) * scaleY, renderScale: scaleX };
+    }
+
+    canvasMP.addEventListener('pointerdown', function(e) {
+        const pos = getEventPos(canvasMP, e); if (!pos) return;
+        if (calibState !== "idle") {
+            if (calibState === "wait_left" || calibState === "adjust_left") { calibrationPoints[0] = pos; calibState = "adjust_left"; calibrateMatBtn.innerText = "✅ 左端を確定"; document.getElementById('dpadPanel').style.display = 'flex'; } 
+            else if (calibState === "wait_right" || calibState === "adjust_right") { calibrationPoints[1] = pos; calibState = "adjust_right"; calibrateMatBtn.innerText = "✅ 右端を確定"; document.getElementById('dpadPanel').style.display = 'flex'; }
+            if (isPausedForEdit) refreshReportView(); return; 
+        }
+        const hitRadius = 80 * pos.renderScale; 
+        if ((currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) && window.currentAnchorPos && !isRecording && appMode !== 'playback') {
+            if (Math.hypot(window.currentAnchorPos.x - pos.x, window.currentAnchorPos.y - pos.y) < hitRadius * 1.5) { dragTarget = { type: 'anchor' }; window.anchorStatus = "dragging"; closeDpad(); return; }
+        }
+        let kpsToSearch = null;
+        if (appMode === 'playback' && isEditingPlaybackFrame) { const fIdx = parseInt(document.getElementById('timelineSlider').value); if (playbackDataMP[fIdx]) kpsToSearch = playbackDataMP[fIdx].keypoints; }
+        else if (isPausedForEdit && appMode !== 'playback') { kpsToSearch = window.reportDataStore[currentTab]; }
+        
+        if (kpsToSearch) {
+            let closestIdx = -1, minDist = hitRadius;
+            kpsToSearch.forEach(function(kp, idx) { if (kp && kp.score > 0.0) { const dist = Math.hypot(kp.x - pos.x, kp.y - pos.y); if (dist < minDist) { minDist = dist; closestIdx = idx; } } });
+            if (closestIdx !== -1) { selectedJointIndex = closestIdx; document.getElementById('dpadPanel').style.display = 'flex'; } else { closeDpad(); }
+            if (appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); else refreshReportView();
+        }
+    });
+
+    canvasMP.addEventListener('pointermove', function(e) {
+        if (dragTarget && dragTarget.type === 'anchor') {
+            if(e.cancelable) e.preventDefault(); const pos = getEventPos(canvasMP, e); if (!pos) return;
+            const safeX = Math.max(0, Math.min(pos.x, canvasMP.width)), safeY = Math.max(0, Math.min(pos.y, canvasMP.height));
+            window.customOriginMarkers[currentTab] = { x: safeX, y: safeY }; window.currentAnchorPos = { x: safeX, y: safeY }; if (isPausedForEdit) refreshReportView(); 
+        }
+    });
+    const handleEnd = function() { if (dragTarget && dragTarget.type === 'anchor') { window.anchorStatus = "locked"; dragTarget = null; canvasMP.style.cursor = 'default'; } };
+    canvasMP.addEventListener('pointerup', handleEnd); canvasMP.addEventListener('pointercancel', handleEnd);
+
+    function refreshReportView() {
+        if(appMode === 'playback') return; const w = video.videoWidth, h = video.videoHeight;
+        if (isPausedForEdit && staticBackgroundData) { ctxMP.drawImage(staticBackgroundData, 0, 0, w, h); } else { ctxMP.drawImage(video, 0, 0, w, h); }
+        drawCenterGrid(ctxMP, canvasMP);
+
+        if (calibState !== "idle") {
+            ctxMP.fillStyle = "#ffeb3b";
+            if (calibrationPoints[0]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[0].x, calibrationPoints[0].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_left") drawCrosshair(ctxMP, calibrationPoints[0], canvasMP); }
+            if (calibrationPoints[1]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[1].x, calibrationPoints[1].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_right") drawCrosshair(ctxMP, calibrationPoints[1], canvasMP); }
+        }
+
+        if (window.reportDataStore[currentTab]) {
+            const kps = window.reportDataStore[currentTab]; drawSkeleton(ctxMP, kps, '#ff5252'); 
+            drawOHSFrontAnalysis(ctxMP, kps); drawOHSSideAnalysis(ctxMP, kps); drawHeadAnalysis(ctxMP, kps); 
+            runReviewLogic(ctxMP, (n) => kps.find(k => k.name === n), canvasMP);
+            if (selectedJointIndex !== null) drawCrosshair(ctxMP, kps[selectedJointIndex], canvasMP); 
+        }
+        ctxComb.drawImage(canvasMP, 0, 0, w, h);
+    }
+
+    function drawARMarkers(ctx, markers) {
+        if (!markers || markers.length === 0) return;
+        ctx.save(); ctx.strokeStyle = "#00e676"; ctx.lineWidth = 3; ctx.font = "bold 14px sans-serif"; ctx.fillStyle = "#00e676";
+        for (let i = 0; i < markers.length; i++) {
+            let m = markers[i]; ctx.beginPath(); ctx.moveTo(m.corners[0].x, m.corners[0].y);
+            for (let j = 1; j < m.corners.length; j++) { ctx.lineTo(m.corners[j].x, m.corners[j].y); }
+            ctx.closePath(); ctx.stroke(); ctx.fillText("AR ID: " + m.id, m.corners[0].x, m.corners[0].y - 10);
+        } ctx.restore();
+    }
+
     window.addEventListener('load', init); 
+
     startBtn.onclick = async function() {
         if(currentStream) currentStream.getTracks().forEach(t=>t.stop());
         try {
             currentStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, deviceId: videoSource.value ? { exact: videoSource.value } : undefined } });
-            video.srcObject = currentStream; video.onloadeddata = () => { canvasMP.width=video.videoWidth; canvasMP.height=video.videoHeight; canvasComb.width=video.videoWidth; canvasComb.height=video.videoHeight; isRunning=true; video.play(); render(); recBtn.disabled=false; };
+            video.srcObject = currentStream; 
+            video.onloadeddata = () => { 
+                canvasMP.width=video.videoWidth; canvasMP.height=video.videoHeight; canvasComb.width=video.videoWidth; canvasComb.height=video.videoHeight; 
+                isRunning=true; video.play(); render(); recBtn.disabled=false; 
+                setAppState('live'); // 🌟 カメラ起動と同時にライブUIへ移行
+            };
         } catch(e){ alert("カメラ起動失敗"); }
     };
 
     async function render() {
         if (!isRunning || appMode === 'playback' || isPausedForEdit) { if(isRunning) mainRenderId = requestAnimationFrame(render); return; }
         const w = video.videoWidth, h = video.videoHeight; ctxMP.drawImage(video, 0, 0, w, h); drawCenterGrid(ctxMP, canvasMP);
+
+        if (appMode === "camera" && !isRecording && arDetector) {
+            try {
+                const arScale = 640 / w; const arW = 640, arH = h * arScale;
+                arCanvas.width = arW; arCanvas.height = arH; arCtx.drawImage(video, 0, 0, arW, arH);
+                let imgData = arCtx.getImageData(0, 0, arW, arH); latestDetectedMarkers = arDetector.detect(imgData);
+                if (latestDetectedMarkers.length > 0) {
+                    latestDetectedMarkers.forEach(m => m.corners.forEach(c => { c.x /= arScale; c.y /= arScale; }));
+                    drawARMarkers(ctxMP, latestDetectedMarkers);
+                    debugLog.innerText = `AR: OK (${w}x${h}) Found:${latestDetectedMarkers.length}`; debugLog.style.color = "#00e676"; debugLog.style.borderColor = "#00e676";
+                } else {
+                    debugLog.innerText = `AR: OK (${w}x${h}) No Markers`; debugLog.style.color = "#ffeb3b"; debugLog.style.borderColor = "#ffeb3b";
+                }
+            } catch(e) {}
+        }
+
+        if (calibState !== "idle") {
+            ctxMP.fillStyle = "#ffeb3b";
+            if (calibrationPoints[0]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[0].x, calibrationPoints[0].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_left") drawCrosshair(ctxMP, calibrationPoints[0], canvasMP); }
+            if (calibrationPoints[1]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[1].x, calibrationPoints[1].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_right") drawCrosshair(ctxMP, calibrationPoints[1], canvasMP); }
+        }
+        
         const poses = await detectors[0].estimatePoses(video);
         if (poses.length > 0) {
             let kps = generateVirtualASIS(poses[0].keypoints); window.reportDataStore[currentTab] = kps;
             if (isRecording) { coordinateBufferMP.push(kps); poseDataLog.push({ time: Date.now(), mode: currentTab, keypoints: JSON.parse(JSON.stringify(kps)) }); }
             drawSkeleton(ctxMP, kps, currentTab.startsWith('dyn_') ? '#ffffff' : '#ff5252'); 
-            drawOHSFrontAnalysis(ctxMP, kps); drawOHSSideAnalysis(ctxMP, kps); 
-            drawHeadAnalysis(ctxMP, kps); // 🌟 V62-v2
+            drawOHSFrontAnalysis(ctxMP, kps); drawOHSSideAnalysis(ctxMP, kps); drawHeadAnalysis(ctxMP, kps); 
             runReviewLogic(ctxMP, n=>kps.find(k=>k.name===n), canvasMP); updateRadar(kps, canvasMP);
-        } ctxComb.drawImage(canvasMP, 0, 0, w, h); mainRenderId = requestAnimationFrame(render);
+        }
+        ctxComb.drawImage(canvasMP, 0, 0, w, h); mainRenderId = requestAnimationFrame(render);
     }
+    
     function prepareAndPrintReport() { window.print(); }
 </script>
 </body>
