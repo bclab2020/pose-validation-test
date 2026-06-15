@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V52 (Boot Sequence & AR Fix)</title>
+    <title>CONNECT AI - Master Evaluation Engine V54 (AR Size 17.5cm)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -60,6 +60,8 @@
         .info-panel { position: absolute; top: 55px; left: 15px; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 4px; color: #fff; font-size: 12px; z-index: 10; border-left: 3px solid #673ab7; pointer-events: none; }
         .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; display: none; z-index: 100; pointer-events: none; }
         
+        .debug-panel { position: absolute; bottom: 20px; left: 15px; background: rgba(0,0,0,0.8); padding: 8px; border-radius: 4px; font-size: 12px; color: #00e676; border: 1px solid #00e676; z-index: 10; font-family: monospace; pointer-events: none; }
+
         .radar-wrapper { position: absolute; bottom: 20px; right: 20px; width: 150px; height: 150px; z-index: 200; touch-action: none; cursor: grab; transition: transform 0.2s, opacity 0.2s; }
         .radar-wrapper.dragging { cursor: grabbing; transform: scale(1.1); opacity: 0.8; z-index: 999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); border-radius: 50%; transition: none; }
         .radar-box { width: 150px; height: 150px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 15px rgba(255,82,82,0.5); border: 2px solid #ff5252; pointer-events: none; }
@@ -73,7 +75,7 @@
         .dpad-step-btn { font-size: 14px; background: #1976d2; border: none; font-weight: bold; }
         .dpad-close { position: absolute; right: -10px; top: -10px; width: 32px; height: 32px; border-radius: 50%; background: #ff5252; color: white; border: none; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
 
-        @media print { body { background: white; color: black; overflow: visible; } .controls, .playback-controls, .container, #tiltPanel, #dpadPanel { display: none !important; } }
+        @media print { body { background: white; color: black; overflow: visible; } .controls, .playback-controls, .container, #tiltPanel, #dpadPanel, .debug-panel { display: none !important; } }
     </style>
 </head>
 <body>
@@ -90,7 +92,7 @@
     
     <div class="input-group">
         <span style="color:#aaa; font-size:12px;">ARｻｲｽﾞ</span>
-        <input type="number" id="arMarkerSize" value="22.0" min="5" max="50" step="0.1">
+        <input type="number" id="arMarkerSize" value="17.5" min="5" max="50" step="0.1">
         <span style="color:#aaa; font-size:12px;">cm</span>
     </div>
     <button id="arCalibrateBtn">📷 AR自動空間校正</button>
@@ -160,8 +162,11 @@
 
     <div class="view-port">
         <canvas id="canvasMP"></canvas>
-        <div class="label">CONNECT AI - V52 Stable Boot & AR</div>
+        <div class="label">CONNECT AI - V54 Target: 17.5cm</div>
         <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
+        
+        <div class="debug-panel" id="debugLog">AR Status: Initializing...</div>
+
         <div id="radarWrapperMP" class="radar-wrapper">
             <div class="radar-title">COP RADAR</div>
             <canvas id="canvasRadarMP" class="radar-box" width="150" height="150"></canvas>
@@ -192,6 +197,7 @@
     const downloadCsvBtn = document.getElementById('downloadCsvBtn');
     const showSwayAlertCheckbox = document.getElementById('showSwayAlert');
     const videoSource = document.getElementById('videoSource');
+    const debugLog = document.getElementById('debugLog');
 
     const heightInput = document.getElementById('patientHeight');
     const calibrateMatBtn = document.getElementById('calibrateMatBtn');
@@ -219,12 +225,14 @@
     let arDetector = null;
     let latestDetectedMarkers = [];
 
+    let arCanvas = document.createElement('canvas');
+    let arCtx = arCanvas.getContext('2d', { willReadFrequently: true });
+
     window.currentAnchorPos = null; window.customOriginMarkers = {}; window.anchorStatus = "unlocked";
     const DURATION_MAP = { 'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 'dyn_overhead': 15000, 'dyn_overhead_side': 15000, 'dyn_single_r': 15000, 'dyn_single_l': 15000, 'dyn_flex_fwd': 10000, 'dyn_flex_bwd': 10000, 'dyn_shoulder_r': 10000, 'dyn_shoulder_l': 10000 };
     window.reportDataStore = {};
     ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_overhead_side', 'dyn_single_r', 'dyn_single_l', 'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'].forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
 
-    // 🌟 V52: 正しい起動シーケンス (カメラ取得 -> モデル読込 -> AR準備)
     async function init() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
             videoSource.innerHTML = '<option value="">⚠️ セキュリティ制限 (HTTPS必須)</option>';
@@ -247,18 +255,18 @@
             });
             if(!hasCam) videoSource.innerHTML = '<option value="">カメラが見つかりません</option>';
             
-            // ユーザーにロード中を知らせる
             startBtn.innerText = "⏳ AIモデル読込中...";
             startBtn.disabled = true;
 
-            // ARディテクターの安全な初期化
             if (typeof AR !== 'undefined') {
                 arDetector = new AR.Detector();
+                debugLog.innerText = "AR Status: Ready (Original ArUco Dict)";
             } else {
+                debugLog.innerText = "AR Status: Library Load Failed";
+                debugLog.style.color = "#ff5252";
                 console.warn("ARライブラリの読み込みに失敗しました。");
             }
 
-            // 重いAIモデルのロード
             await tf.setBackend('webgl'); await tf.ready();
             detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
             
@@ -279,13 +287,12 @@
 
     arCalibrateBtn.onclick = function() {
         if (latestDetectedMarkers.length === 0) {
-            alert("画面内にARマーカーが検出されていません。カメラにマットの四隅を映してください。");
+            alert("マーカーが検出されていません。\n※必ず「Original ArUco」規格のマーカーをご使用ください。");
             return;
         }
         
-        let physicalSizeCm = parseFloat(arMarkerSizeInput.value) || 22.0;
-        let sumRatio = 0;
-        let count = 0;
+        let physicalSizeCm = parseFloat(arMarkerSizeInput.value) || 17.5;
+        let sumRatio = 0; let count = 0;
         
         for (let i = 0; i < latestDetectedMarkers.length; i++) {
             let marker = latestDetectedMarkers[i];
@@ -298,10 +305,7 @@
             
             let maxPixelSide = Math.max(d1, d2, d3, d4);
             
-            if (maxPixelSide > 5) {
-                sumRatio += (physicalSizeCm / maxPixelSide);
-                count++;
-            }
+            if (maxPixelSide > 5) { sumRatio += (physicalSizeCm / maxPixelSide); count++; }
         }
         
         if (count > 0) {
@@ -310,7 +314,7 @@
             updateInfoPanel();
             setTimeout(function() { arCalibrateBtn.innerText = "📷 AR自動空間校正"; }, 2000);
         } else {
-            alert("マーカーの解析に失敗しました。解像度または照明を確認してください。");
+            alert("解析に失敗しました。");
         }
     };
 
@@ -780,13 +784,37 @@
         ctxMP.drawImage(video, 0, 0, w, h); 
         drawCenterGrid(ctxMP, canvasMP);
 
-        // 🌟 V52: ARディテクターが正常に初期化されている場合のみ実行
         if (appMode === "camera" && !isRecording && arDetector) {
             try {
-                let imageData = ctxMP.getImageData(0, 0, w, h);
+                const arScale = 640 / w; 
+                const arW = 640;
+                const arH = h * arScale;
+                
+                arCanvas.width = arW;
+                arCanvas.height = arH;
+                arCtx.drawImage(video, 0, 0, arW, arH);
+                
+                let imageData = arCtx.getImageData(0, 0, arW, arH);
                 latestDetectedMarkers = arDetector.detect(imageData);
-                drawARMarkers(ctxMP, latestDetectedMarkers);
-            } catch(e) { /* 画像サイズやCORSエラー時はスキップ */ }
+                
+                if (latestDetectedMarkers.length > 0) {
+                    latestDetectedMarkers.forEach(function(m) {
+                        m.corners.forEach(function(c) {
+                            c.x = c.x / arScale;
+                            c.y = c.y / arScale;
+                        });
+                    });
+                    drawARMarkers(ctxMP, latestDetectedMarkers);
+                    debugLog.innerText = "AR Status: Running (Found " + latestDetectedMarkers.length + ")";
+                    debugLog.style.color = "#00e676";
+                } else {
+                    debugLog.innerText = "AR Status: Running (No Markers)";
+                    debugLog.style.color = "#ffeb3b";
+                }
+            } catch(e) { 
+                debugLog.innerText = "AR Error: " + e.message;
+                debugLog.style.color = "#ff5252";
+            }
         }
 
         if (calibState !== "idle") {
