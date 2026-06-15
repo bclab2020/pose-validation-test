@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V54 (AR Size 17.5cm)</title>
+    <title>CONNECT AI - Master Evaluation Engine V55 (Android UI Fix)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -40,7 +40,14 @@
         
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
-        #tiltPanel { display: none; position: absolute; top: 120px; left: 15px; background: rgba(15,15,15,0.9); border: 2px solid #ff9100; border-radius: 12px; padding: 15px; z-index: 500; box-shadow: 0 5px 20px rgba(255,145,0,0.3); }
+        /* 🌟 V55: Android見切れ対策で全体を下にシフト */
+        .info-panel { position: absolute; top: 55px; left: 15px; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 4px; color: #fff; font-size: 12px; z-index: 10; border-left: 3px solid #673ab7; pointer-events: none; }
+        
+        /* 🌟 デバッグモニターを確実に表示できる左上に移動 */
+        .debug-panel { position: absolute; top: 110px; left: 15px; background: rgba(0,0,0,0.85); padding: 10px; border-radius: 6px; font-size: 14px; color: #00e676; border: 2px solid #00e676; z-index: 50; font-family: monospace; pointer-events: none; box-shadow: 0 0 15px rgba(0,230,118,0.4); }
+        
+        /* 🌟 骨盤スライダーもさらに下へ移動し、絶対被らないように */
+        #tiltPanel { display: none; position: absolute; top: 170px; left: 15px; background: rgba(15,15,15,0.9); border: 2px solid #ff9100; border-radius: 12px; padding: 15px; z-index: 500; box-shadow: 0 5px 20px rgba(255,145,0,0.3); }
         .tilt-header { color: #ff9100; font-size: 14px; font-weight: bold; margin-bottom: 10px; text-align: center; }
         .tilt-slider { width: 200px; cursor: pointer; }
         .tilt-val { display: block; text-align: center; color: white; font-size: 16px; font-weight: bold; margin-top: 5px; }
@@ -57,11 +64,8 @@
         canvas { width: 100%; height: 100%; object-fit: contain; touch-action: none; -webkit-user-select: none; user-select: none; }
         
         .label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 14px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; font-weight: bold; pointer-events: none; }
-        .info-panel { position: absolute; top: 55px; left: 15px; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 4px; color: #fff; font-size: 12px; z-index: 10; border-left: 3px solid #673ab7; pointer-events: none; }
         .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; display: none; z-index: 100; pointer-events: none; }
         
-        .debug-panel { position: absolute; bottom: 20px; left: 15px; background: rgba(0,0,0,0.8); padding: 8px; border-radius: 4px; font-size: 12px; color: #00e676; border: 1px solid #00e676; z-index: 10; font-family: monospace; pointer-events: none; }
-
         .radar-wrapper { position: absolute; bottom: 20px; right: 20px; width: 150px; height: 150px; z-index: 200; touch-action: none; cursor: grab; transition: transform 0.2s, opacity 0.2s; }
         .radar-wrapper.dragging { cursor: grabbing; transform: scale(1.1); opacity: 0.8; z-index: 999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); border-radius: 50%; transition: none; }
         .radar-box { width: 150px; height: 150px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 15px rgba(255,82,82,0.5); border: 2px solid #ff5252; pointer-events: none; }
@@ -162,7 +166,7 @@
 
     <div class="view-port">
         <canvas id="canvasMP"></canvas>
-        <div class="label">CONNECT AI - V54 Target: 17.5cm</div>
+        <div class="label">CONNECT AI - V55 Debug View</div>
         <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
         
         <div class="debug-panel" id="debugLog">AR Status: Initializing...</div>
@@ -260,9 +264,9 @@
 
             if (typeof AR !== 'undefined') {
                 arDetector = new AR.Detector();
-                debugLog.innerText = "AR Status: Ready (Original ArUco Dict)";
+                debugLog.innerText = "AR Status: Ready\nWait for Camera...";
             } else {
-                debugLog.innerText = "AR Status: Library Load Failed";
+                debugLog.innerText = "AR Status: Library Load Failed\nCheck Internet Connection.";
                 debugLog.style.color = "#ff5252";
                 console.warn("ARライブラリの読み込みに失敗しました。");
             }
@@ -805,10 +809,12 @@
                         });
                     });
                     drawARMarkers(ctxMP, latestDetectedMarkers);
-                    debugLog.innerText = "AR Status: Running (Found " + latestDetectedMarkers.length + ")";
+                    
+                    // 🌟 解像度も出力してデバッグを強化
+                    debugLog.innerText = "AR Status: Running (" + video.videoWidth + "x" + video.videoHeight + ") - Found " + latestDetectedMarkers.length;
                     debugLog.style.color = "#00e676";
                 } else {
-                    debugLog.innerText = "AR Status: Running (No Markers)";
+                    debugLog.innerText = "AR Status: Running (" + video.videoWidth + "x" + video.videoHeight + ") - No Markers";
                     debugLog.style.color = "#ffeb3b";
                 }
             } catch(e) { 
