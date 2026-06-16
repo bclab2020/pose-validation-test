@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Master Evaluation Engine V64 (Stable Full Analysis)</title>
+    <title>CONNECT AI - Master Evaluation Engine V65 (Kendall Alignment)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -33,7 +33,6 @@
         
         #calibrateMatBtn { background: #673ab7; color: white; }
         #calibrateMatBtn.active { background: #ffeb3b; color: black; box-shadow: 0 0 15px rgba(255,235,59,0.8); animation: pulse 1s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
         .info-panel { position: absolute; top: 55px; left: 15px; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 4px; color: #fff; font-size: 12px; z-index: 10; border-left: 3px solid #673ab7; pointer-events: none; }
         
@@ -48,7 +47,6 @@
         #backToCamBtn { background: #555; color: white; }
         #editFrameBtn { background: #ff9100; color: #000; font-weight: bold; }
         
-        /* 100dvh対応 */
         .container { display: flex; width: 100vw; height: calc(100dvh - 70px); position: relative; background: #000; justify-content: center; align-items: center; }
         .view-port { width: 100%; height: 100%; position: relative; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; }
         video { display: none; }
@@ -57,7 +55,6 @@
         .label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 14px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; font-weight: bold; pointer-events: none; }
         .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; display: none; z-index: 100; pointer-events: none; }
         
-        /* レーダー右上に配置 */
         .radar-wrapper { position: absolute; top: 60px; right: 15px; width: 150px; height: 150px; z-index: 200; touch-action: none; cursor: grab; transition: transform 0.2s, opacity 0.2s; }
         .radar-wrapper.dragging { cursor: grabbing; transform: scale(1.1); opacity: 0.8; z-index: 999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); border-radius: 50%; transition: none; }
         .radar-box { width: 150px; height: 150px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 15px rgba(255,82,82,0.5); border: 2px solid #ff5252; pointer-events: none; }
@@ -83,6 +80,12 @@
     <div class="input-group">
         <span style="color:#aaa; font-size:12px;">身長</span>
         <input type="number" id="patientHeight" value="170" min="100" max="220">
+        <span style="color:#aaa; font-size:12px;">cm</span>
+    </div>
+
+    <div class="input-group">
+        <span style="color:#aaa; font-size:12px;">足ｻｲｽﾞ</span>
+        <input type="number" id="footSize" value="25" min="15" max="40" step="0.5">
         <span style="color:#aaa; font-size:12px;">cm</span>
     </div>
     
@@ -152,7 +155,7 @@
 
     <div class="view-port">
         <canvas id="canvasMP"></canvas>
-        <div class="label">CONNECT AI - V64 Master (No AR)</div>
+        <div class="label">CONNECT AI - V65 Kendall Engine</div>
         <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
         
         <div id="radarWrapperMP" class="radar-wrapper">
@@ -187,6 +190,7 @@
     const videoSource = document.getElementById('videoSource');
 
     const heightInput = document.getElementById('patientHeight');
+    const footSizeInput = document.getElementById('footSize'); // 🌟 V65
     const calibrateMatBtn = document.getElementById('calibrateMatBtn');
     const infoPanel = document.getElementById('infoPanel');
     const tiltPanel = document.getElementById('tiltPanel');
@@ -220,7 +224,7 @@
             return;
         }
 
-        try { const tempStream = await navigator.mediaDevices.getUserMedia({ video: true }); tempStream.getTracks().forEach(t => t.stop()); } catch(e) { console.warn("初期カメラ許可スキップ"); }
+        try { const tempStream = await navigator.mediaDevices.getUserMedia({ video: true }); tempStream.getTracks().forEach(t => t.stop()); } catch(e) {}
         
         try {
             const devices = await navigator.mediaDevices.enumerateDevices();
@@ -244,10 +248,7 @@
             startBtn.disabled = false;
             updateInfoPanel();
             
-        } catch (e) { 
-            startBtn.innerText = "❌ 起動エラー"; 
-            console.error(e); 
-        }
+        } catch (e) { startBtn.innerText = "❌ 起動エラー"; }
     }
 
     function updateInfoPanel() {
@@ -310,6 +311,109 @@
         return kps;
     }
 
+    // 🌟 V65: ケンダル姿勢アライメント・エンジン (重力線と脊柱推定)
+    function drawKendallAlignment(ctx, kps) {
+        if (currentTab !== 'l_side' && currentTab !== 'r_side') return;
+
+        let isLeft = currentTab === 'l_side'; // 左側面向き＝顔が右を向いている（前方が＋X方向）
+        let dir = isLeft ? 1 : -1;
+
+        let ear = isLeft ? kps[7] : kps[8];
+        let sh = isLeft ? kps[11] : kps[12];
+        let hip = isLeft ? kps[23] : kps[24];
+        let ankle = isLeft ? kps[27] : kps[28];
+
+        if (!ear || !sh || !hip || !ankle || ear.score < 0.3 || ankle.score < 0.3) return;
+
+        let ratio = pxToCmRatio || 0.15;
+        let footCm = parseFloat(footSizeInput.value) || 25;
+        
+        // 1. 絶対垂線 (外果のやや前方 = 足のサイズの約15%前方)
+        let plumbOffsetPx = (footCm * 0.15) / ratio; 
+        let plumbX = ankle.x + (dir * plumbOffsetPx);
+
+        ctx.save();
+        ctx.strokeStyle = "rgba(57, 255, 20, 0.8)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(plumbX, 0);
+        ctx.lineTo(plumbX, canvasMP.height);
+        ctx.stroke();
+
+        // 2. 5つの脊柱ランドマークの推定
+        let c2 = { x: ear.x - (dir * (1.0 / ratio)), y: ear.y + (2.0 / ratio), name: "C2(頸椎)" };
+        let th3 = { x: sh.x, y: sh.y, name: "Th3(胸椎)" };
+
+        // 骨盤傾斜からS2とL3を逆算
+        let tiltRad = estimatedPelvicTilt * (Math.PI / 180);
+        let s2OffsetZ = 3.0 / ratio; // 股関節の3cm後方
+        let s2OffsetY = 2.0 / ratio; // 股関節の2cm下方
+        let s2X = hip.x - (dir * (s2OffsetZ * Math.cos(tiltRad) - s2OffsetY * Math.sin(tiltRad)));
+        let s2Y = hip.y + (s2OffsetZ * Math.sin(tiltRad) + s2OffsetY * Math.cos(tiltRad));
+        let s2 = { x: s2X, y: s2Y, name: "S2(仙骨)" };
+
+        let lumbarDepth = (3.0 + (estimatedPelvicTilt * 0.1)) / ratio; // 前傾で前弯が強くなる
+        let l3Y = s2.y - ((s2.y - sh.y) * 0.3);
+        let l3X = s2.x + (dir * lumbarDepth);
+        let l3 = { x: l3X, y: l3Y, name: "L3(腰椎)" };
+
+        let th11Y = s2.y - ((s2.y - sh.y) * 0.6);
+        let kyphosisDepth = (1.5 + (estimatedPelvicTilt * 0.05)) / ratio; // 代償性後弯
+        let straightTh11X = l3.x + (th3.x - l3.x) * ((l3.y - th11Y) / (l3.y - th3.y));
+        let th11X = straightTh11X - (dir * kyphosisDepth);
+        let th11 = { x: th11X, y: th11Y, name: "Th11(胸腰移行部)" };
+
+        let pts = [c2, th3, th11, l3, s2];
+
+        // 3. 脊柱S字カーブの描画
+        ctx.strokeStyle = "rgba(255, 145, 0, 0.6)";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(c2.x, c2.y);
+        ctx.bezierCurveTo(c2.x, th3.y, th3.x, c2.y, th3.x, th3.y);
+        ctx.bezierCurveTo(th3.x, th11.y, th11.x, th3.y, th11.x, th11.y);
+        ctx.bezierCurveTo(th11.x, l3.y, l3.x, th11.y, l3.x, l3.y);
+        ctx.bezierCurveTo(l3.x, s2.y, s2.x, l3.y, s2.x, s2.y);
+        ctx.stroke();
+
+        // 4. 重力線からの変位量（Deviation）プロット
+        ctx.font = "bold 14px sans-serif";
+        pts.forEach(pt => {
+            ctx.fillStyle = "#ff9100";
+            ctx.beginPath(); ctx.arc(pt.x, pt.y, 5, 0, 2*Math.PI); ctx.fill();
+
+            // 変位計算 (前方がプラス)
+            let devPx = pt.x - plumbX;
+            let devCm = devPx * ratio * dir;
+
+            let color = Math.abs(devCm) <= 1.5 ? "#39ff14" : "#ff5252";
+            ctx.fillStyle = color;
+            let txt = pt.name + " " + (devCm > 0 ? "+" : "") + devCm.toFixed(1) + "cm";
+            
+            // 背景黒塗り
+            let tw = ctx.measureText(txt).width;
+            let tx = pt.x + (dir === 1 ? -tw - 10 : 10);
+            ctx.fillStyle = "rgba(0,0,0,0.7)";
+            ctx.fillRect(tx - 5, pt.y - 12, tw + 10, 18);
+            
+            ctx.fillStyle = color;
+            ctx.fillText(txt, tx, pt.y);
+
+            // 点線ガイド
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.lineTo(plumbX, pt.y); ctx.stroke();
+            ctx.setLineDash([]);
+        });
+
+        // 重力線タイトル
+        ctx.fillStyle = "#39ff14";
+        ctx.fillText("重力線 (Plumb Line)", plumbX + 10, 50);
+
+        ctx.restore();
+    }
+
     function updateRadar(kps, canvas) {
         const history = swayHistoryMP; const radarCtx = ctxRadarMP; const color = "#ff5252"; const nose = kps.find(k => k.name === 'nose');
         let originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2; let originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
@@ -317,7 +421,7 @@
             let copX = nose.x - originX; let hDist = originY - nose.y;
             if (history.length === 0 || history.baseHDist === undefined) history.baseHDist = hDist;
             let copY = history.baseHDist - hDist;
-            if (currentTab.includes("side")) { const shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (shoulder) copX = nose.x - shoulder.x; }
+            if (currentTab.includes("side") || currentTab.includes("overhead_side")) { const shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (shoulder) copX = nose.x - shoulder.x; }
             history.push({ x: copX, y: copY }); if (history.length > 150) history.shift(); drawSpecificRadar(radarCtx, history, color);
         }
     }
@@ -331,7 +435,7 @@
             if (nose) {
                 let copX = nose.x - originX; let hDist = originY - nose.y;
                 if (baseHDist === null) baseHDist = hDist; let copY = baseHDist - hDist;
-                if (currentTab.includes("side")) { const shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (shoulder) copX = nose.x - shoulder.x; }
+                if (currentTab.includes("side") || currentTab.includes("overhead_side")) { const shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (shoulder) copX = nose.x - shoulder.x; }
                 history.push({ x: copX, y: copY });
             }
         }
@@ -500,87 +604,6 @@
         ctx.fillStyle = "rgba(0, 191, 255, 0.3)"; ctx.fill(); ctx.restore();
     }
 
-    // 🌟 V64: OHS 前面解析
-    function drawOHSFrontAnalysis(ctx, kps) {
-        if (currentTab !== 'dyn_overhead') return;
-        const evaluateSide = (hIdx, kIdx, aIdx, label) => {
-            let h=kps[hIdx], k=kps[kIdx], a=kps[aIdx]; if(!h||!k||!a||h.score<0.4||k.score<0.4||a.score<0.4) return;
-            let refX = h.x + (a.x - h.x) * ((k.y - h.y) / (a.y - h.y));
-            let angle = Math.abs(180 - Math.abs(Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI);
-            if(angle > 2.0) {
-                let isIn = label==='R' ? k.x > refX : k.x < refX;
-                ctx.fillStyle = isIn ? "#ff5252" : "#ff9100";
-                ctx.fillText((isIn?"ニーイン ":"ニーアウト ") + angle.toFixed(1)+"°", k.x+(label==='R'?-120:20), k.y);
-            }
-        };
-        ctx.save(); ctx.font="bold 16px sans-serif"; evaluateSide(24, 26, 28, 'R'); evaluateSide(23, 25, 27, 'L'); ctx.restore();
-    }
-
-    // 🌟 V64: OHS 側面解析
-    function drawOHSSideAnalysis(ctx, kps) {
-        if (currentTab !== 'dyn_overhead_side') return;
-        let lS = kps[11], lH = kps[23], lK = kps[25], lA = kps[27], lW = kps[15];
-        let rS = kps[12], rH = kps[24], rK = kps[26], rA = kps[28], rW = kps[16];
-        let isLeftActive = (lS.score + lH.score + lK.score) > (rS.score + rH.score + rK.score);
-        let s = isLeftActive ? lS : rS, h = isLeftActive ? lH : rH, k = isLeftActive ? lK : rK, a = isLeftActive ? lA : rA, w = isLeftActive ? lW : rW;
-        if (!s || !h || !k || !a || s.score < 0.4 || h.score < 0.4 || k.score < 0.4) return;
-
-        let trunkLean = Math.abs(Math.atan2(s.x - h.x, h.y - s.y) * 180 / Math.PI);
-        let kneeAng = Math.abs((Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI);
-        if(kneeAng > 180) kneeAng = 360 - kneeAng;
-        let armAng = Math.abs((Math.atan2(w.y-s.y, w.x-s.x) - Math.atan2(h.y-s.y, h.x-s.x)) * 180 / Math.PI);
-        if(armAng > 180) armAng = 360 - armAng;
-
-        ctx.save(); ctx.font = "bold 16px sans-serif";
-        ctx.fillStyle = trunkLean > 45 ? "#ff5252" : "#39ff14";
-        ctx.fillText("体幹前傾: " + trunkLean.toFixed(1) + "°", s.x - 30, s.y - 30);
-        ctx.fillStyle = "#00bfff";
-        ctx.fillText("膝屈曲: " + kneeAng.toFixed(1) + "°", k.x + 20, k.y);
-        if(w && w.score > 0.4) {
-            ctx.fillStyle = armAng < 160 ? "#ff5252" : "#39ff14";
-            ctx.fillText("上腕・体幹アライメント: " + armAng.toFixed(1) + "°", s.x + 40, s.y + 20);
-            ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(w.x, w.y); ctx.stroke();
-        }
-        ctx.restore();
-    }
-
-    // 🌟 V64: 頭部アライメント解析
-    function drawHeadAnalysis(ctx, kps) {
-        let nose = kps[0], lEar = kps[7], rEar = kps[8]; 
-        if (!nose || nose.score < 0.4) return;
-        ctx.save();
-        let isSide = currentTab.includes('side') || currentTab.includes('overhead_side');
-        if (!isSide) {
-            if (lEar && rEar && lEar.score > 0.4 && rEar.score > 0.4) {
-                let cX = (lEar.x + rEar.x) / 2, cY = (lEar.y + rEar.y) / 2, rad = Math.hypot(lEar.x - rEar.x, lEar.y - rEar.y) * 0.65;
-                ctx.strokeStyle = "rgba(57, 255, 20, 0.4)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cX, cY, rad, 0, 2*Math.PI); ctx.stroke();
-                ctx.strokeStyle = "#deff9a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cX, cY); ctx.lineTo(nose.x, nose.y); ctx.stroke(); 
-                let tilt = Math.atan2(rEar.y - lEar.y, rEar.x - lEar.x) * 180 / Math.PI;
-                if (tilt > 90) tilt -= 180; else if (tilt < -90) tilt += 180;
-                ctx.font = "bold 14px sans-serif"; ctx.fillStyle = Math.abs(tilt) > 4 ? "#ff5252" : "#39ff14";
-                ctx.fillText("頭部傾斜: " + Math.abs(tilt).toFixed(1) + "°", cX - 40, cY - rad - 10);
-            }
-        } else {
-            let isLeft = currentTab === 'l_side' || (currentTab === 'dyn_overhead_side' && kps[11].score > kps[12].score);
-            let ear = isLeft ? lEar : rEar, sh = isLeft ? kps[11] : kps[12];
-            if (ear && ear.score > 0.4) {
-                let cX = (ear.x + nose.x) / 2, cY = (ear.y + nose.y) / 2, rad = Math.hypot(ear.x - nose.x, ear.y - nose.y) * 0.75;
-                ctx.strokeStyle = "rgba(0, 191, 255, 0.4)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cX, cY, rad, 0, 2*Math.PI); ctx.stroke();
-                ctx.strokeStyle = "#deff9a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ear.x, ear.y); ctx.lineTo(nose.x, nose.y); ctx.stroke();
-                if (sh && sh.score > 0.4) {
-                    ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(sh.x, sh.y); ctx.lineTo(sh.x, ear.y); ctx.stroke(); 
-                    ctx.strokeStyle = "#ff9100"; ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(sh.x, ear.y); ctx.lineTo(ear.x, ear.y); ctx.stroke(); 
-                    if (pxToCmRatio) {
-                        let fhp = (ear.x - sh.x) * (isLeft ? -1 : 1) * pxToCmRatio;
-                        ctx.font = "bold 14px sans-serif"; ctx.fillStyle = fhp > 6 ? "#ff5252" : "#39ff14";
-                        ctx.fillText("頭部前突: " + fhp.toFixed(1) + "cm", cX - 45, cY - rad - 10);
-                    }
-                }
-            }
-        }
-        ctx.restore();
-    }
-
     function runReviewLogic(ctx, getK, canvas) {
         ctx.fillStyle = "#deff9a"; ctx.font = "bold 24px sans-serif"; const nose = getK('nose'); let originX, originY;
         if (currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) {
@@ -691,9 +714,7 @@
         if (playbackDataMP[frameIdx]) {
             const actualKps = playbackDataMP[frameIdx].keypoints;
             drawSkeleton(ctxMP, actualKps, '#ffffff'); 
-            drawOHSFrontAnalysis(ctxMP, actualKps);
-            drawOHSSideAnalysis(ctxMP, actualKps);
-            drawHeadAnalysis(ctxMP, actualKps);
+            drawKendallAlignment(ctxMP, actualKps); // 🌟 V65
             runReviewLogic(ctxMP, (n) => actualKps.find(k => k.name === n), canvasMP);
             if (selectedJointIndex !== null && isEditingPlaybackFrame) { drawCrosshair(ctxMP, actualKps[selectedJointIndex], canvasMP); }
             drawPlaybackRadar(playbackDataMP, frameIdx, canvasMP);
@@ -761,9 +782,7 @@
         if (window.reportDataStore[currentTab]) {
             const kps = window.reportDataStore[currentTab]; 
             drawSkeleton(ctxMP, kps, '#ff5252'); 
-            drawOHSFrontAnalysis(ctxMP, kps);
-            drawOHSSideAnalysis(ctxMP, kps);
-            drawHeadAnalysis(ctxMP, kps);
+            drawKendallAlignment(ctxMP, kps); // 🌟 V65
             runReviewLogic(ctxMP, (n) => kps.find(k => k.name === n), canvasMP);
             if (selectedJointIndex !== null) drawCrosshair(ctxMP, kps[selectedJointIndex], canvasMP); 
         }
@@ -811,9 +830,7 @@
             window.reportDataStore[currentTab] = kps;
             if (isRecording) { if (!coordinateBufferMP) coordinateBufferMP = []; coordinateBufferMP.push(kps); poseDataLog.push({ time: Date.now(), mode: currentTab, keypoints: JSON.parse(JSON.stringify(kps)) }); }
             drawSkeleton(ctxMP, kps, currentTab.startsWith('dyn_') ? '#ffffff' : '#ff5252'); 
-            drawOHSFrontAnalysis(ctxMP, kps);
-            drawOHSSideAnalysis(ctxMP, kps);
-            drawHeadAnalysis(ctxMP, kps);
+            drawKendallAlignment(ctxMP, kps); // 🌟 V65
             runReviewLogic(ctxMP, (n) => { for(let i=0;i<kps.length;i++){ if(kps[i].name===n) return kps[i]; } return null; }, canvasMP);
             updateRadar(kps, canvasMP); 
         }
