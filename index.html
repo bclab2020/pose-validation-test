@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Academic Biomechanics Engine V66</title>
+    <title>CONNECT AI - Academic Master V67 (Full Screen HUD)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -12,45 +12,51 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 
     <style>
-        body { margin: 0; font-family: sans-serif; background: #0a0a0a; color: white; overflow: hidden; }
-        .controls { padding: 12px 15px; background: #1a1a1a; display: flex flex-wrap: wrap; justify-content: center; gap: 12px; align-items: center; border-bottom: 2px solid #333; }
-        button, select, input { padding: 8px 12px; font-size: 14px; cursor: pointer; border-radius: 6px; border: none; font-weight: bold; transition: 0.2s; outline: none; }
+        body { margin: 0; font-family: sans-serif; background: #000; color: white; overflow: hidden; }
         
+        /* 🌟 V67: フルスクリーン設定 */
+        .view-port { position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; z-index: 1; display: flex; align-items: center; justify-content: center; background: #050505; }
+        canvas { width: 100%; height: 100%; object-fit: contain; touch-action: none; -webkit-user-select: none; user-select: none; }
+        video { display: none; }
+
+        /* 🌟 V67: フローティングUIレイヤー */
+        #uiFloatingLayer { position: fixed; bottom: 15px; left: 50%; transform: translateX(-50%); width: 96%; max-width: 1200px; z-index: 100; display: flex; flex-direction: column; align-items: center; }
+        
+        #toggleUiBtn { background: rgba(0, 191, 255, 0.15); color: #00bfff; border: 1px solid #00bfff; border-radius: 20px; padding: 6px 20px; font-weight: bold; cursor: pointer; margin-bottom: 10px; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); box-shadow: 0 4px 15px rgba(0,0,0,0.5); transition: 0.2s; pointer-events: auto; }
+        #toggleUiBtn:hover { background: rgba(0, 191, 255, 0.3); }
+
+        #controlsBox { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+
+        .controls { background: rgba(20, 22, 26, 0.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 15px; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.8); box-sizing: border-box; align-items: center; }
+        
+        button, select, input { padding: 8px 12px; font-size: 14px; cursor: pointer; border-radius: 6px; border: none; font-weight: bold; transition: 0.2s; outline: none; }
         .mode-dropdown { background: #333; color: #deff9a; border: 1px solid #555; padding: 8px; font-size: 14px; }
         .mode-dropdown optgroup { color: #aaa; background: #222; }
         #durationSelect { background: #1976d2; color: #fff; border: 1px solid #0d47a1; }
-        
         #startBtn { background: #1976d2; color: white; }
         #startBtn:disabled { background: #555; cursor: not-allowed; }
-        #recBtn { background: #d32f2f; color: white; min-width: 150px; }
+        #recBtn { background: #d32f2f; color: white; min-width: 150px; font-size: 15px; box-shadow: 0 0 10px rgba(211,47,47,0.5); }
         #downloadCsvBtn { background: #2e7d32; color: white; }
         #printReportBtn { background: #ff9100; color: #000; box-shadow: 0 0 10px rgba(255,145,0,0.3); }
         
-        .toggle-label { color: #00bfff; font-size: 13px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px; background: #222; padding: 6px 10px; border-radius: 6px; border: 1px solid #00bfff; }
-
-        .input-group { display: flex; align-items: center; gap: 5px; background: #333; padding: 4px 10px; border-radius: 6px; border: 1px solid #555; }
-        .input-group input[type="number"] { width: 60px; background: #222; color: #00bfff; text-align: right; border: 1px solid #444; font-weight: bold; }
+        .toggle-label { color: #00bfff; font-size: 13px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.5); padding: 6px 10px; border-radius: 6px; border: 1px solid #00bfff; }
+        .input-group { display: flex; align-items: center; gap: 5px; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 6px; border: 1px solid #555; }
+        .input-group input[type="number"] { width: 55px; background: transparent; color: #00bfff; text-align: right; border: none; font-weight: bold; border-bottom: 1px solid #444; border-radius: 0; padding: 2px; }
         
         #calibrateMatBtn { background: #673ab7; color: white; }
         #calibrateMatBtn.active { background: #ffeb3b; color: black; box-shadow: 0 0 15px rgba(255,235,59,0.8); animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
         .info-panel { position: absolute; top: 55px; left: 15px; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 4px; color: #fff; font-size: 12px; z-index: 10; border-left: 3px solid #673ab7; pointer-events: none; }
-        
         #tiltPanel { display: none; position: absolute; top: 120px; left: 15px; background: rgba(15,15,15,0.9); border: 2px solid #ff9100; border-radius: 12px; padding: 15px; z-index: 500; box-shadow: 0 5px 20px rgba(255,145,0,0.3); }
         .tilt-header { color: #ff9100; font-size: 14px; font-weight: bold; margin-bottom: 10px; text-align: center; }
         .tilt-slider { width: 200px; cursor: pointer; }
         .tilt-val { display: block; text-align: center; color: white; font-size: 16px; font-weight: bold; margin-top: 5px; }
 
-        .playback-controls { display: none; padding: 12px 15px; background: #002233; justify-content: center; gap: 15px; align-items: center; border-bottom: 2px solid #00bfff; width: 100%; box-sizing: border-box; }
         #timelineSlider { flex: 1; max-width: 500px; cursor: pointer; }
         #playPauseBtn { background: #00bfff; color: #000; min-width: 90px; }
         #backToCamBtn { background: #555; color: white; }
         #editFrameBtn { background: #ff9100; color: #000; font-weight: bold; }
-        
-        .container { display: flex; width: 100vw; height: calc(100dvh - 70px); position: relative; background: #000; justify-content: center; align-items: center; }
-        .view-port { width: 100%; height: 100%; position: relative; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; }
-        video { display: none; }
-        canvas { width: 100%; height: 100%; object-fit: contain; touch-action: none; -webkit-user-select: none; user-select: none; }
         
         .label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 14px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; font-weight: bold; pointer-events: none; }
         .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; display: none; z-index: 100; pointer-events: none; }
@@ -68,98 +74,87 @@
         .dpad-step-btn { font-size: 14px; background: #1976d2; border: none; font-weight: bold; }
         .dpad-close { position: absolute; right: -10px; top: -10px; width: 32px; height: 32px; border-radius: 50%; background: #ff5252; color: white; border: none; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
 
-        @media print { body { background: white; color: black; overflow: visible; } .controls, .playback-controls, .container, #tiltPanel, #dpadPanel { display: none !important; } }
+        @media print { body { background: white; color: black; overflow: visible; } #uiFloatingLayer, #tiltPanel, #dpadPanel { display: none !important; } .view-port { position: static; width: 100%; height: auto; display: block; } }
     </style>
 </head>
 <body>
 
-<div class="controls" id="mainControls">
-    <select id="videoSource" style="background:#fff; color:#000;"><option value="">カメラ検索中...</option></select>
-    <button id="startBtn" disabled>⏳ 起動準備中...</button>
-    
-    <div class="input-group">
-        <span style="color:#aaa; font-size:12px;">身長</span>
-        <input type="number" id="patientHeight" value="170" min="100" max="220">
-        <span style="color:#aaa; font-size:12px;">cm</span>
-    </div>
-
-    <div class="input-group">
-        <span style="color:#aaa; font-size:12px;">足ｻｲｽﾞ</span>
-        <input type="number" id="footSize" value="25" min="15" max="40" step="0.5">
-        <span style="color:#aaa; font-size:12px;">cm</span>
-    </div>
-    
-    <button id="calibrateMatBtn">📏 手動マット校正(45cm)</button>
-
-    <select id="modeSelect" class="mode-dropdown" onchange="switchReportTab(this.value)">
-        <optgroup label="■ 静止姿勢アライメント">
-            <option value="front" selected>🧍 前面</option>
-            <option value="back">🧍 後面</option>
-            <option value="l_side">🧍 左側面</option>
-            <option value="r_side">🧍 右側面</option>
-        </optgroup>
-        <optgroup label="■ 動的機能評価">
-            <option value="dyn_overhead">🏋️ OHS [前面]</option>
-            <option value="dyn_overhead_side">🏋️ OHS [側面]</option>
-            <option value="dyn_single_r">🦵 片脚バランス [右軸]</option>
-            <option value="dyn_single_l">🦵 片脚バランス [左軸]</option>
-            <option value="dyn_flex_fwd">🙇 立位体前屈</option>
-            <option value="dyn_flex_bwd">🤸 立位体後屈</option>
-            <option value="dyn_shoulder_r">👐 肩複合可動性 [右上]</option>
-            <option value="dyn_shoulder_l">👐 肩複合可動性 [左上]</option>
-        </optgroup>
-    </select>
-    
-    <select id="durationSelect">
-        <option value="5000">⏱️ 5秒間</option>
-        <option value="10000" selected>⏱️ 10秒間</option>
-        <option value="15000">⏱️ 15秒間</option>
-        <option value="20000">⏱️ 20秒間</option>
-    </select>
-    
-    <label class="toggle-label"><input type="checkbox" id="showSwayAlert" checked> 警告表示</label>
-    <button id="recBtn" disabled>🔴 録画スタート</button>
-    <button id="downloadCsvBtn" disabled>📊 CSV出力</button>
-    <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 PDFレポート</button>
-</div>
-
-<div class="playback-controls" id="playbackControls">
-    <button id="backToCamBtn">🔙 再測定へ</button>
-    <button id="playPauseBtn">▶ 再生</button>
-    <input type="range" id="timelineSlider" min="0" max="100" value="0">
-    <span id="frameCounter" style="color:#00bfff; font-weight:bold; font-size:14px;">0 / 0</span>
-    <button id="editFrameBtn">✂️ このフレームを微調整</button>
-</div>
-
-<div class="container">
+<div class="view-port">
+    <canvas id="canvasMP"></canvas>
+    <div class="label">CONNECT AI - V67 HUD Engine</div>
+    <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     
-    <div id="dpadPanel">
-        <div class="dpad-header">🎯 ポイント微調整 <button class="dpad-close" id="dpadClose">✖</button></div>
-        <div class="dpad-row"><button class="dpad-btn" id="dpadUp">▲</button></div>
-        <div class="dpad-row">
-            <button class="dpad-btn" id="dpadLeft">◀</button>
-            <button class="dpad-btn dpad-step-btn" id="dpadStep">1px</button>
-            <button class="dpad-btn" id="dpadRight">▶</button>
+    <div id="radarWrapperMP" class="radar-wrapper">
+        <div class="radar-title">COP RADAR</div>
+        <canvas id="canvasRadarMP" class="radar-box" width="150" height="150"></canvas>
+    </div>
+</div>
+
+<div id="tiltPanel">
+    <div class="tilt-header">📐 骨盤傾斜角 (目視補正)</div>
+    <div style="display:flex; justify-content:space-between; color:#aaa; font-size:10px;"><span>後傾 (-20°)</span><span>前傾 (+30°)</span></div>
+    <input type="range" id="pelvicTiltSlider" class="tilt-slider" min="-20" max="30" value="0">
+    <div class="tilt-val" id="tiltValDisplay">0° (ニュートラル)</div>
+</div>
+
+<div id="dpadPanel">
+    <div class="dpad-header">🎯 ポイント微調整 <button class="dpad-close" id="dpadClose">✖</button></div>
+    <div class="dpad-row"><button class="dpad-btn" id="dpadUp">▲</button></div>
+    <div class="dpad-row">
+        <button class="dpad-btn" id="dpadLeft">◀</button>
+        <button class="dpad-btn dpad-step-btn" id="dpadStep">1px</button>
+        <button class="dpad-btn" id="dpadRight">▶</button>
+    </div>
+    <div class="dpad-row"><button class="dpad-btn" id="dpadDown">▼</button></div>
+</div>
+
+<div id="uiFloatingLayer">
+    <button id="toggleUiBtn">🔽 UIを隠す</button>
+    
+    <div id="controlsBox">
+        <div class="controls" id="mainControls">
+            <select id="videoSource" style="background:#fff; color:#000;"><option value="">カメラ検索中...</option></select>
+            <button id="startBtn" disabled>⏳ 起動準備中...</button>
+            
+            <div class="input-group">
+                <span style="color:#aaa; font-size:12px;">身長</span>
+                <input type="number" id="patientHeight" value="170" min="100" max="220">
+                <span style="color:#aaa; font-size:12px;">cm</span>
+            </div>
+            <div class="input-group">
+                <span style="color:#aaa; font-size:12px;">足ｻｲｽﾞ</span>
+                <input type="number" id="footSize" value="25" min="15" max="40" step="0.5">
+                <span style="color:#aaa; font-size:12px;">cm</span>
+            </div>
+            
+            <button id="calibrateMatBtn">📏 マット校正(45cm)</button>
+
+            <select id="modeSelect" class="mode-dropdown" onchange="switchReportTab(this.value)">
+                <optgroup label="■ 静止姿勢アライメント">
+                    <option value="front" selected>🧍 前面</option><option value="back">🧍 後面</option><option value="l_side">🧍 左側面</option><option value="r_side">🧍 右側面</option>
+                </optgroup>
+                <optgroup label="■ 動的機能評価">
+                    <option value="dyn_overhead">🏋️ OHS [前面]</option><option value="dyn_overhead_side">🏋️ OHS [側面]</option><option value="dyn_single_r">🦵 片脚バランス [右軸]</option><option value="dyn_single_l">🦵 片脚バランス [左軸]</option><option value="dyn_flex_fwd">🙇 立位体前屈</option><option value="dyn_flex_bwd">🤸 立位体後屈</option><option value="dyn_shoulder_r">👐 肩複合可動性 [右上]</option><option value="dyn_shoulder_l">👐 肩複合可動性 [左上]</option>
+                </optgroup>
+            </select>
+            
+            <select id="durationSelect">
+                <option value="5000">⏱️ 5秒</option><option value="10000" selected>⏱️ 10秒</option><option value="15000">⏱️ 15秒</option><option value="20000">⏱️ 20秒</option>
+            </select>
+            
+            <label class="toggle-label"><input type="checkbox" id="showSwayAlert" checked> 警告</label>
+            <button id="recBtn" disabled>🔴 録画スタート</button>
         </div>
-        <div class="dpad-row"><button class="dpad-btn" id="dpadDown">▼</button></div>
-    </div>
 
-    <div id="tiltPanel">
-        <div class="tilt-header">📐 骨盤傾斜角 (目視補正)</div>
-        <div style="display:flex; justify-content:space-between; color:#aaa; font-size:10px;"><span>後傾 (-20°)</span><span>前傾 (+30°)</span></div>
-        <input type="range" id="pelvicTiltSlider" class="tilt-slider" min="-20" max="30" value="0">
-        <div class="tilt-val" id="tiltValDisplay">0° (ニュートラル)</div>
-    </div>
-
-    <div class="view-port">
-        <canvas id="canvasMP"></canvas>
-        <div class="label">CONNECT AI - V66 Academic Master</div>
-        <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
-        
-        <div id="radarWrapperMP" class="radar-wrapper">
-            <div class="radar-title">COP RADAR</div>
-            <canvas id="canvasRadarMP" class="radar-box" width="150" height="150"></canvas>
+        <div class="controls" id="playbackControls" style="display:none;">
+            <button id="backToCamBtn">🔙 再測定へ</button>
+            <button id="playPauseBtn">▶ 再生</button>
+            <input type="range" id="timelineSlider" min="0" max="100" value="0">
+            <span id="frameCounter" style="color:#00bfff; font-weight:bold; font-size:14px;">0 / 0</span>
+            <button id="editFrameBtn">✂️ このフレームを微調整</button>
+            <button id="downloadCsvBtn" disabled style="margin-left:auto;">📊 CSV</button>
+            <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 レポート出力</button>
         </div>
     </div>
 </div>
@@ -175,6 +170,14 @@
     const radarWrapperMP = document.getElementById('radarWrapperMP'), canvasRadarMP = document.getElementById('canvasRadarMP'), ctxRadarMP = canvasRadarMP.getContext('2d');
     const startBtn = document.getElementById('startBtn'), recBtn = document.getElementById('recBtn'), durationSelect = document.getElementById('durationSelect'), timerDisplay = document.getElementById('timerDisplay'), downloadCsvBtn = document.getElementById('downloadCsvBtn'), showSwayAlertCheckbox = document.getElementById('showSwayAlert'), videoSource = document.getElementById('videoSource');
     const heightInput = document.getElementById('patientHeight'), footSizeInput = document.getElementById('footSize'), calibrateMatBtn = document.getElementById('calibrateMatBtn'), infoPanel = document.getElementById('infoPanel'), tiltPanel = document.getElementById('tiltPanel'), pelvicTiltSlider = document.getElementById('pelvicTiltSlider'), tiltValDisplay = document.getElementById('tiltValDisplay');
+    
+    // UI Toggle Logic
+    const toggleUiBtn = document.getElementById('toggleUiBtn');
+    const controlsBox = document.getElementById('controlsBox');
+    toggleUiBtn.onclick = function() {
+        if (controlsBox.style.display === 'none') { controlsBox.style.display = 'flex'; toggleUiBtn.innerText = '🔽 UIを隠す'; } 
+        else { controlsBox.style.display = 'none'; toggleUiBtn.innerText = '🔼 UIを表示'; }
+    };
 
     let detectors = [], isRunning = false, isRecording = false, isPausedForEdit = false, currentTab = "front", currentStream = null, appMode = "camera", isPlaying = false;
     let playbackDataMP = [], mainRenderId = null, recordingDuration = 10000, coordinateBufferMP = [], poseDataLog = [], recorder, recordedChunks = [];
@@ -212,8 +215,8 @@
         else if (calibState === "adjust_right") {
             let distPx = Math.hypot(calibrationPoints[1].x - calibrationPoints[0].x, calibrationPoints[1].y - calibrationPoints[0].y);
             if(distPx > 10) pxToCmRatio = 45.0 / distPx; calibState = "idle"; calibrateMatBtn.classList.remove('active'); document.getElementById('dpadPanel').style.display = 'none';
-            calibrateMatBtn.innerText = "✅ 校正完了"; updateInfoPanel(); setTimeout(function() { if(calibState==="idle") calibrateMatBtn.innerText = "📏 手動マット校正(45cm)"; }, 2000);
-        } else { calibState = "idle"; calibrationPoints = []; calibrateMatBtn.classList.remove('active'); document.getElementById('dpadPanel').style.display = 'none'; calibrateMatBtn.innerText = "📏 手動マット校正(45cm)"; }
+            calibrateMatBtn.innerText = "✅ 校正完了"; updateInfoPanel(); setTimeout(function() { if(calibState==="idle") calibrateMatBtn.innerText = "📏 マット校正(45cm)"; }, 2000);
+        } else { calibState = "idle"; calibrationPoints = []; calibrateMatBtn.classList.remove('active'); document.getElementById('dpadPanel').style.display = 'none'; calibrateMatBtn.innerText = "📏 マット校正(45cm)"; }
     };
 
     pelvicTiltSlider.oninput = function(e) {
@@ -233,69 +236,39 @@
         } return kps;
     }
 
-    // 🌟 V66: 前額面・全身連鎖モデルに基づく左右荷重支持比率の計算モジュール
     function calculateWeightBearing(ctx, kps) {
         if (currentTab !== 'front' && currentTab !== 'back' && currentTab !== 'dyn_overhead') return;
-        let lAnkle = kps[27], rAnkle = kps[28];
-        if (!lAnkle || !rAnkle || lAnkle.score < 0.3 || rAnkle.score < 0.3) return;
-
-        // デンプスターの簡略セグメント質量比率に基づく全身重心(COM)のX座標逆算
+        let lAnkle = kps[27], rAnkle = kps[28]; if (!lAnkle || !rAnkle || lAnkle.score < 0.3 || rAnkle.score < 0.3) return;
         let nose = kps[0], lSh = kps[11], rSh = kps[12], lHip = kps[23], rHip = kps[24];
-        let headX = nose.x;
-        let trunkX = (lSh.x + rSh.x) / 2;
-        let pelvisX = (lHip.x + rHip.x) / 2;
-        // 質量比: 頭部10%, 体幹+上肢50%, 骨盤+下肢40%
-        let comX = (headX * 0.10) + (trunkX * 0.50) + (pelvisX * 0.40);
-
-        let dPx = rAnkle.x - lAnkle.x;
-        if (Math.abs(dPx) < 10) return;
-
-        // 静的平衡方程式: %R = ((X_COM - X_L) / D) * 100
-        let pctR = ((comX - lAnkle.x) / dPx) * 100;
-        let pctL = 100 - pctR;
+        let comX = (nose.x * 0.10) + (((lSh.x + rSh.x) / 2) * 0.50) + (((lHip.x + rHip.x) / 2) * 0.40);
+        let dPx = rAnkle.x - lAnkle.x; if (Math.abs(dPx) < 10) return;
+        let pctR = ((comX - lAnkle.x) / dPx) * 100, pctL = 100 - pctR;
         if(pctR < 0) { pctR = 0; pctL = 100; } if(pctR > 100) { pctR = 100; pctL = 0; }
 
-        ctx.save();
-        ctx.font = "bold 16px sans-serif";
-        ctx.fillStyle = "rgba(0,0,0,0.6)";
-        ctx.fillRect(canvasMP.width/2 - 120, canvasMP.height - 50, 240, 35);
-        ctx.fillStyle = Math.abs(pctL - 50) > 8 ? "#ff5252" : "#39ff14";
-        ctx.textAlign = "center";
-        ctx.fillText(`荷重比率 左: ${pctL.toFixed(1)}% | 右: ${pctR.toFixed(1)}%`, canvasMP.width/2, canvasMP.height - 28);
-        
-        // 重心位置プロット
-        ctx.fillStyle = "#ffeb3b"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(comX, (lAnkle.y + rAnkle.y)/2 - 10, 8, 0, 2*Math.PI); ctx.fill(); ctx.stroke();
-        ctx.restore();
+        ctx.save(); ctx.font = "bold 16px sans-serif"; ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(canvasMP.width/2 - 120, canvasMP.height - 180, 240, 35);
+        ctx.fillStyle = Math.abs(pctL - 50) > 8 ? "#ff5252" : "#39ff14"; ctx.textAlign = "center";
+        ctx.fillText(`荷重比率 左: ${pctL.toFixed(1)}% | 右: ${pctR.toFixed(1)}%`, canvasMP.width/2, canvasMP.height - 158);
+        ctx.fillStyle = "#ffeb3b"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(comX, (lAnkle.y + rAnkle.y)/2 - 10, 8, 0, 2*Math.PI); ctx.fill(); ctx.stroke(); ctx.restore();
     }
 
-    // 🌟 V66: 矢状面・ケンダル重力線アライメント及びモーメントアームトルクストレス計算モジュール
     function drawKendallAlignment(ctx, kps) {
         if (currentTab !== 'l_side' && currentTab !== 'r_side') return;
         let isLeft = currentTab === 'l_side', dir = isLeft ? 1 : -1;
         let ear = isLeft ? kps[7] : kps[8], sh = isLeft ? kps[11] : kps[12], hip = isLeft ? kps[23] : kps[24], ankle = isLeft ? kps[27] : kps[28];
         if (!ear || !sh || !hip || !ankle || ear.score < 0.3 || ankle.score < 0.3) return;
 
-        let ratio = pxToCmRatio || 0.15, footCm = parseFloat(footSizeInput.value) || 25;
-        let plumbOffsetPx = (footCm * 0.15) / ratio, plumbX = ankle.x + (dir * plumbOffsetPx);
+        let ratio = pxToCmRatio || 0.15, footCm = parseFloat(footSizeInput.value) || 25, plumbOffsetPx = (footCm * 0.15) / ratio, plumbX = ankle.x + (dir * plumbOffsetPx);
 
-        ctx.save(); ctx.strokeStyle = "rgba(57, 255, 20, 0.8)"; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(plumbX, 0); ctx.lineTo(plumbX, canvasMP.height); ctx.stroke();
+        ctx.save(); ctx.strokeStyle = "rgba(57, 255, 20, 0.8)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(plumbX, 0); ctx.lineTo(plumbX, canvasMP.height); ctx.stroke();
 
-        // 5大椎体の推定座標
-        let c2 = { x: ear.x - (dir * (1.0 / ratio)), y: ear.y + (2.0 / ratio), name: "C2(頸椎)", d0: 1.5 };
-        let th3 = { x: sh.x, y: sh.y, name: "Th3(胸椎)", d0: 1.0 };
+        let c2 = { x: ear.x - (dir * (1.0 / ratio)), y: ear.y + (2.0 / ratio), name: "C2(頸椎)", d0: 1.5 }, th3 = { x: sh.x, y: sh.y, name: "Th3(胸椎)", d0: 1.0 };
         let tiltRad = estimatedPelvicTilt * (Math.PI / 180), s2OffsetZ = 3.0 / ratio, s2OffsetY = 2.0 / ratio;
         let s2X = hip.x - (dir * (s2OffsetZ * Math.cos(tiltRad) - s2OffsetY * Math.sin(tiltRad))), s2Y = hip.y + (s2OffsetZ * Math.sin(tiltRad) + s2OffsetY * Math.cos(tiltRad));
         let s2 = { x: s2X, y: s2Y, name: "S2(仙骨)", d0: 1.0 };
-        let l3Y = s2.y - ((s2.y - sh.y) * 0.3), l3X = s2.x + (dir * ((3.0 + (estimatedPelvicTilt * 0.1)) / ratio));
-        let l3 = { x: l3X, y: l3Y, name: "L3(腰椎)", d0: 2.0 };
+        let l3Y = s2.y - ((s2.y - sh.y) * 0.3), l3X = s2.x + (dir * ((3.0 + (estimatedPelvicTilt * 0.1)) / ratio)), l3 = { x: l3X, y: l3Y, name: "L3(腰椎)", d0: 2.0 };
         let th11Y = s2.y - ((s2.y - sh.y) * 0.6), straightTh11X = l3.x + (th3.x - l3.x) * ((l3.y - th11Y) / (l3.y - th3.y));
-        let th11 = { x: straightTh11X - (dir * ((1.5 + (estimatedPelvicTilt * 0.05)) / ratio)), y: th11Y, name: "Th11(胸腰)", d0: 1.0 };
+        let th11 = { x: straightTh11X - (dir * ((1.5 + (estimatedPelvicTilt * 0.05)) / ratio)), y: th11Y, name: "Th11(胸腰)", d0: 1.0 }, pts = [c2, th3, th11, l3, s2];
 
-        let pts = [c2, th3, th11, l3, s2];
-
-        // 脊柱生理的S字湾曲の描画
         ctx.strokeStyle = "rgba(255, 145, 0, 0.6)"; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(c2.x, c2.y);
         ctx.bezierCurveTo(c2.x, th3.y, th3.x, c2.y, th3.x, th3.y); ctx.bezierCurveTo(th3.x, th11.y, th11.x, th3.y, th11.x, th11.y);
         ctx.bezierCurveTo(th11.x, l3.y, l3.x, th11.y, l3.x, l3.y); ctx.bezierCurveTo(l3.x, s2.y, s2.x, l3.y, s2.x, s2.y); ctx.stroke();
@@ -303,24 +276,15 @@
         ctx.font = "bold 13px sans-serif";
         pts.forEach(pt => {
             ctx.fillStyle = "#ff9100"; ctx.beginPath(); ctx.arc(pt.x, pt.y, 5, 0, 2*Math.PI); ctx.fill();
-            let devCm = (pt.x - plumbX) * ratio * dir;
-            
-            // 🌟 モーメントアーム比率からメカニカルストレス(%)を計算: ((d0 + Δx) / d0) * 100
-            let stressPct = ((pt.d0 + Math.max(0, devCm)) / pt.d0) * 100;
-            if (devCm < -pt.d0) stressPct = Math.abs((pt.d0 + devCm)/pt.d0) * 100; // 逆方向への過負荷
+            let devCm = (pt.x - plumbX) * ratio * dir, stressPct = ((pt.d0 + Math.max(0, devCm)) / pt.d0) * 100;
+            if (devCm < -pt.d0) stressPct = Math.abs((pt.d0 + devCm)/pt.d0) * 100; 
 
-            let color = Math.abs(devCm) <= 1.5 ? "#39ff14" : "#ff5252";
-            let txt = `${pt.name} ${devCm > 0 ? "+" : ""}${devCm.toFixed(1)}cm (${stressPct.toFixed(0)}%)`;
-            
+            let color = Math.abs(devCm) <= 1.5 ? "#39ff14" : "#ff5252", txt = `${pt.name} ${devCm > 0 ? "+" : ""}${devCm.toFixed(1)}cm (${stressPct.toFixed(0)}%)`;
             let tw = ctx.measureText(txt).width, tx = pt.x + (dir === 1 ? -tw - 10 : 10);
-            ctx.fillStyle = "rgba(0,0,0,0.75)"; ctx.fillRect(tx - 5, pt.y - 12, tw + 10, 18);
-            ctx.fillStyle = color; ctx.fillText(txt, tx, pt.y);
-
-            ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
-            ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.lineTo(plumbX, pt.y); ctx.stroke(); ctx.setLineDash([]);
+            ctx.fillStyle = "rgba(0,0,0,0.75)"; ctx.fillRect(tx - 5, pt.y - 12, tw + 10, 18); ctx.fillStyle = color; ctx.fillText(txt, tx, pt.y);
+            ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.lineTo(plumbX, pt.y); ctx.stroke(); ctx.setLineDash([]);
         });
-        ctx.fillStyle = "#39ff14"; ctx.fillText("重力線 (Plumb Line)", plumbX + 10, 50);
-        ctx.restore();
+        ctx.fillStyle = "#39ff14"; ctx.fillText("重力線 (Plumb Line)", plumbX + 10, 50); ctx.restore();
     }
 
     function updateRadar(kps, canvas) {
@@ -370,11 +334,7 @@
     radarWrapperMP.style.touchAction = "none"; 
     radarWrapperMP.addEventListener('pointerdown', function(e) {
         e.stopPropagation(); if (activeRadarDrag) return; initialTouch = { x: e.clientX, y: e.clientY };
-        longPressTimer = setTimeout(function() {
-            const rect = radarWrapperMP.getBoundingClientRect(); activeRadarDrag = { element: radarWrapperMP, startX: initialTouch.x, startY: initialTouch.y, startLeft: rect.left, startTop: rect.top };
-            radarWrapperMP.style.right = 'auto'; radarWrapperMP.style.bottom = 'auto'; radarWrapperMP.style.left = rect.left + "px"; radarWrapperMP.style.top = rect.top + "px";
-            radarWrapperMP.classList.add('dragging'); isRadarMovedManually = true;
-        }, 300);
+        longPressTimer = setTimeout(function() { const rect = radarWrapperMP.getBoundingClientRect(); activeRadarDrag = { element: radarWrapperMP, startX: initialTouch.x, startY: initialTouch.y, startLeft: rect.left, startTop: rect.top }; radarWrapperMP.style.right = 'auto'; radarWrapperMP.style.bottom = 'auto'; radarWrapperMP.style.left = rect.left + "px"; radarWrapperMP.style.top = rect.top + "px"; radarWrapperMP.classList.add('dragging'); isRadarMovedManually = true; }, 300);
     });
     radarWrapperMP.addEventListener('pointermove', function(e) { if (longPressTimer && initialTouch && Math.hypot(e.clientX - initialTouch.x, e.clientY - initialTouch.y) > 10) { clearTimeout(longPressTimer); longPressTimer = null; } });
     const cancelPress = function() { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } };
@@ -413,7 +373,10 @@
         closeDpad(); isEditingPlaybackFrame = false; document.getElementById('editFrameBtn').innerText = "✂️ このフレームを微調整"; document.getElementById('editFrameBtn').style.background = "#ff9100";
         if(DURATION_MAP[tabName]) { let recommended = DURATION_MAP[tabName].toString(); if(Array.from(durationSelect.options).map(opt => opt.value).includes(recommended)) durationSelect.value = recommended; }
         tiltPanel.style.display = (tabName === 'r_side' || tabName === 'l_side') ? 'block' : 'none';
-        appMode = 'camera'; document.getElementById('playbackControls').style.display = 'none'; document.getElementById('mainControls').style.display = 'flex'; isPausedForEdit = false; refreshReportView();
+        appMode = 'camera'; 
+        document.getElementById('playbackControls').style.display = 'none'; 
+        document.getElementById('mainControls').style.display = 'flex'; 
+        isPausedForEdit = false; refreshReportView();
     }
 
     function drawCenterGrid(ctx, canvas) { ctx.save(); ctx.strokeStyle="rgba(255,255,255,0.4)"; ctx.lineWidth=5; ctx.beginPath(); ctx.moveTo(canvas.width/2,0); ctx.lineTo(canvas.width/2,canvas.height); ctx.stroke(); ctx.restore(); }
@@ -465,6 +428,10 @@
     }
 
     recBtn.onclick = function() {
+        // 🌟 V67: 録画開始時にUIを自動で隠す
+        controlsBox.style.display = 'none';
+        toggleUiBtn.innerText = '🔼 UIを表示';
+        
         isPausedForEdit = false; staticBackgroundData = null; isRecording = true; closeDpad(); coordinateBufferMP = []; poseDataLog = poseDataLog.filter(d => d.mode !== currentTab);
         recordingDuration = parseInt(durationSelect.value); recordingStartTime = Date.now(); swayHistoryMP = []; 
         timerDisplay.style.display = "block"; recBtn.disabled = true; downloadCsvBtn.disabled = true; recordedChunks = [];
@@ -483,6 +450,10 @@
     };
 
     function executePostProcessingStop() {
+        // 🌟 V67: 録画終了時にUIを再展開
+        controlsBox.style.display = 'flex';
+        toggleUiBtn.innerText = '🔽 UIを隠す';
+        
         isRecording = false; timerDisplay.style.display = "none"; if (recorder && recorder.state !== "inactive") recorder.stop(); 
         if (currentTab.startsWith("dyn_")) { enterPlaybackMode(); } 
         else {
@@ -532,7 +503,7 @@
         drawCenterGrid(ctxMP, canvasMP);
         if (playbackDataMP[frameIdx]) {
             const actualKps = playbackDataMP[frameIdx].keypoints; drawSkeleton(ctxMP, actualKps, '#ffffff'); 
-            drawKendallAlignment(ctxMP, actualKps); calculateWeightBearing(ctxMP, actualKps); // 🌟 V66 統合
+            drawKendallAlignment(ctxMP, actualKps); calculateWeightBearing(ctxMP, actualKps); 
             runReviewLogic(ctxMP, (n) => actualKps.find(k => k.name === n), canvasMP);
             if (selectedJointIndex !== null && isEditingPlaybackFrame) { drawCrosshair(ctxMP, actualKps[selectedJointIndex], canvasMP); }
             drawPlaybackRadar(playbackDataMP, frameIdx, canvasMP);
@@ -584,7 +555,7 @@
 
         if (window.reportDataStore[currentTab]) {
             const kps = window.reportDataStore[currentTab]; drawSkeleton(ctxMP, kps, '#ff5252'); 
-            drawKendallAlignment(ctxMP, kps); calculateWeightBearing(ctxMP, kps); // 🌟 V66 統合
+            drawKendallAlignment(ctxMP, kps); calculateWeightBearing(ctxMP, kps); 
             runReviewLogic(ctxMP, (n) => kps.find(k => k.name === n), canvasMP);
             if (selectedJointIndex !== null) drawCrosshair(ctxMP, kps[selectedJointIndex], canvasMP); 
         } ctxComb.drawImage(canvasMP, 0, 0, w, h);
@@ -618,7 +589,7 @@
             let kps = poses[0].keypoints; kps = generateVirtualASIS(kps); window.reportDataStore[currentTab] = kps;
             if (isRecording) { if (!coordinateBufferMP) coordinateBufferMP = []; coordinateBufferMP.push(kps); poseDataLog.push({ time: Date.now(), mode: currentTab, keypoints: JSON.parse(JSON.stringify(kps)) }); }
             drawSkeleton(ctxMP, kps, currentTab.startsWith('dyn_') ? '#ffffff' : '#ff5252'); 
-            drawKendallAlignment(ctxMP, kps); calculateWeightBearing(ctxMP, kps); // 🌟 V66 統合
+            drawKendallAlignment(ctxMP, kps); calculateWeightBearing(ctxMP, kps); 
             runReviewLogic(ctxMP, (n) => { for(let i=0;i<kps.length;i++){ if(kps[i].name===n) return kps[i]; } return null; }, canvasMP); updateRadar(kps, canvasMP); 
         } ctxComb.drawImage(canvasMP, 0, 0, w, h); mainRenderId = requestAnimationFrame(render);
     }
