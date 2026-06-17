@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Academic Master V68 (Full Screen HUD & Visibility Optimized)</title>
+    <title>CONNECT AI - Academic Master V69 (Auto-Save & History)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -20,8 +20,9 @@
 
         #uiFloatingLayer { position: fixed; bottom: 15px; left: 50%; transform: translateX(-50%); width: 96%; max-width: 1200px; z-index: 100; display: flex; flex-direction: column; align-items: center; }
         
-        #toggleUiBtn { background: rgba(0, 191, 255, 0.15); color: #00bfff; border: 1px solid #00bfff; border-radius: 20px; padding: 6px 20px; font-weight: bold; cursor: pointer; margin-bottom: 10px; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); box-shadow: 0 4px 15px rgba(0,0,0,0.5); transition: 0.2s; pointer-events: auto; }
-        #toggleUiBtn:hover { background: rgba(0, 191, 255, 0.3); }
+        .ui-top-buttons { display: flex; gap: 15px; margin-bottom: 10px; }
+        .ui-top-btn { background: rgba(0, 191, 255, 0.15); color: #00bfff; border: 1px solid #00bfff; border-radius: 20px; padding: 6px 20px; font-weight: bold; cursor: pointer; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); box-shadow: 0 4px 15px rgba(0,0,0,0.5); transition: 0.2s; pointer-events: auto; }
+        .ui-top-btn:hover { background: rgba(0, 191, 255, 0.3); }
 
         #controlsBox { width: 100%; display: flex; flex-direction: column; gap: 10px; }
 
@@ -72,14 +73,30 @@
         .dpad-step-btn { font-size: 14px; background: #1976d2; border: none; font-weight: bold; }
         .dpad-close { position: absolute; right: -10px; top: -10px; width: 32px; height: 32px; border-radius: 50%; background: #ff5252; color: white; border: none; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
 
-        @media print { body { background: white; color: black; overflow: visible; } #uiFloatingLayer, #tiltPanel, #dpadPanel { display: none !important; } .view-port { position: static; width: 100%; height: auto; display: block; } }
+        /* 🌟 V69: 履歴管理パネル用スタイル */
+        #historyPanel { position: absolute; top: 50px; right: 50px; background: rgba(20, 22, 26, 0.95); border: 2px solid #00bfff; border-radius: 16px; padding: 20px; z-index: 1500; display: none; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.8); width: 350px; max-height: 80vh; backdrop-filter: blur(10px); }
+        .history-header { color: #00bfff; font-size: 18px; font-weight: bold; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+        .history-list { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; flex-grow: 1; padding-right: 5px; }
+        .history-item { background: #2a2a2a; border-left: 4px solid #00bfff; padding: 10px; border-radius: 6px; cursor: pointer; transition: 0.2s; display: flex; justify-content: space-between; align-items: center; }
+        .history-item:hover { background: #333; transform: translateX(2px); }
+        .history-info { display: flex; flex-direction: column; gap: 3px; }
+        .history-date { color: #aaa; font-size: 11px; }
+        .history-mode { color: #fff; font-size: 14px; font-weight: bold; }
+        .history-actions { display: flex; gap: 5px; }
+        .history-action-btn { background: #444; color: white; border-radius: 4px; padding: 4px 8px; font-size: 12px; border: none; cursor: pointer; }
+        .history-action-btn.del { background: #d32f2f; }
+        .history-action-btn:hover { filter: brightness(1.2); }
+        #closeHistoryBtn { background: transparent; border: none; color: #aaa; font-size: 20px; cursor: pointer; padding: 0; }
+        #closeHistoryBtn:hover { color: white; }
+
+        @media print { body { background: white; color: black; overflow: visible; } #uiFloatingLayer, #tiltPanel, #dpadPanel, #historyPanel { display: none !important; } .view-port { position: static; width: 100%; height: auto; display: block; } }
     </style>
 </head>
 <body>
 
 <div class="view-port">
     <canvas id="canvasMP"></canvas>
-    <div class="label">CONNECT AI - V68 Academic Master</div>
+    <div class="label">CONNECT AI - V69 Auto-Save & History</div>
     <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     
@@ -107,11 +124,24 @@
     <div class="dpad-row"><button class="dpad-btn" id="dpadDown">▼</button></div>
 </div>
 
+<!-- 🌟 V69: 履歴パネル -->
+<div id="historyPanel">
+    <div class="history-header">
+        📂 保存データ（履歴）
+        <button id="closeHistoryBtn">✖</button>
+    </div>
+    <div class="history-list" id="historyListContainer">
+        <!-- 履歴アイテムがここに動的に追加される -->
+    </div>
+</div>
+
 <div id="uiFloatingLayer">
-    <button id="toggleUiBtn">🔽 UIを隠す</button>
+    <div class="ui-top-buttons">
+        <button id="toggleUiBtn" class="ui-top-btn">🔽 UIを隠す</button>
+        <button id="showHistoryBtn" class="ui-top-btn">📂 履歴を開く</button>
+    </div>
     
     <div id="controlsBox">
-        <!-- カメラ・測定モード -->
         <div class="controls" id="mainControls">
             <select id="videoSource" style="background:#fff; color:#000;"><option value="">カメラ検索中...</option></select>
             <button id="startBtn" disabled>⏳ 起動準備中...</button>
@@ -146,14 +176,13 @@
             <button id="recBtn" disabled>🔴 録画スタート</button>
         </div>
 
-        <!-- プレイバック・確認モード -->
         <div class="controls" id="playbackControls" style="display:none;">
             <button id="backToCamBtn">🔙 再測定へ</button>
             <button id="playPauseBtn">▶ 再生</button>
             <input type="range" id="timelineSlider" min="0" max="100" value="0">
             <span id="frameCounter" style="color:#00bfff; font-weight:bold; font-size:14px;">0 / 0</span>
             <button id="editFrameBtn">✂️ このフレームを微調整</button>
-            <button id="downloadCsvBtn" disabled style="margin-left:auto;">📊 CSV</button>
+            <button id="downloadCsvBtn" disabled style="margin-left:auto;">📊 CSV出力</button>
             <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 レポート出力</button>
         </div>
     </div>
@@ -164,6 +193,171 @@
 <video id="playbackVideo" playsinline muted style="display:none;"></video>
 
 <script>
+    // 🌟 V69: IndexedDB データベースマネージャー
+    const dbManager = {
+        dbName: "ConnectAIDB",
+        storeName: "sessions",
+        db: null,
+        init: function() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(this.dbName, 1);
+                request.onupgradeneeded = function(event) {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains(dbManager.storeName)) {
+                        db.createObjectStore(dbManager.storeName, { keyPath: "id" });
+                    }
+                };
+                request.onsuccess = function(event) { dbManager.db = event.target.result; resolve(); };
+                request.onerror = function(event) { reject("IndexedDB error: " + event.target.errorCode); };
+            });
+        },
+        saveSession: function(sessionData) {
+            return new Promise((resolve, reject) => {
+                if (!this.db) { reject("DB not initialized"); return; }
+                const transaction = this.db.transaction([this.storeName], "readwrite");
+                const store = transaction.objectStore(this.storeName);
+                const request = store.put(sessionData);
+                request.onsuccess = function() { resolve(); };
+                request.onerror = function(e) { reject("Error saving session"); };
+            });
+        },
+        getAllSessions: function() {
+            return new Promise((resolve, reject) => {
+                if (!this.db) { reject("DB not initialized"); return; }
+                const transaction = this.db.transaction([this.storeName], "readonly");
+                const store = transaction.objectStore(this.storeName);
+                const request = store.getAll();
+                request.onsuccess = function(event) {
+                    // 日付の降順（新しい順）にソート
+                    const results = event.target.result.sort((a, b) => b.timestamp - a.timestamp);
+                    resolve(results);
+                };
+                request.onerror = function(e) { reject("Error fetching sessions"); };
+            });
+        },
+        deleteSession: function(id) {
+            return new Promise((resolve, reject) => {
+                if (!this.db) { reject("DB not initialized"); return; }
+                const transaction = this.db.transaction([this.storeName], "readwrite");
+                const store = transaction.objectStore(this.storeName);
+                const request = store.delete(id);
+                request.onsuccess = function() { resolve(); };
+                request.onerror = function(e) { reject("Error deleting session"); };
+            });
+        }
+    };
+
+    // 🌟 V69: 履歴UIの制御
+    const historyPanel = document.getElementById('historyPanel');
+    const historyListContainer = document.getElementById('historyListContainer');
+    const showHistoryBtn = document.getElementById('showHistoryBtn');
+    const closeHistoryBtn = document.getElementById('closeHistoryBtn');
+
+    showHistoryBtn.onclick = async function() {
+        if(historyPanel.style.display === 'flex') {
+            historyPanel.style.display = 'none';
+        } else {
+            await refreshHistoryList();
+            historyPanel.style.display = 'flex';
+        }
+    };
+    closeHistoryBtn.onclick = function() { historyPanel.style.display = 'none'; };
+
+    const MODE_NAMES = { 'front': '🧍 前面', 'back': '🧍 後面', 'l_side': '🧍 左側面', 'r_side': '🧍 右側面', 'dyn_overhead': '🏋️ OHS [前面]', 'dyn_overhead_side': '🏋️ OHS [側面]', 'dyn_single_r': '🦵 片脚 [右]', 'dyn_single_l': '🦵 片脚 [左]', 'dyn_flex_fwd': '🙇 立位前屈', 'dyn_flex_bwd': '🤸 立位後屈', 'dyn_shoulder_r': '👐 肩複合 [右上]', 'dyn_shoulder_l': '👐 肩複合 [左上]' };
+
+    async function refreshHistoryList() {
+        historyListContainer.innerHTML = '<div style="color:#aaa; text-align:center; margin-top:20px;">読込中...</div>';
+        try {
+            const sessions = await dbManager.getAllSessions();
+            historyListContainer.innerHTML = '';
+            if(sessions.length === 0) {
+                historyListContainer.innerHTML = '<div style="color:#aaa; text-align:center; margin-top:20px;">保存データがありません。</div>';
+                return;
+            }
+            sessions.forEach(session => {
+                const date = new Date(session.timestamp);
+                const dateStr = `${date.getFullYear()}/${(date.getMonth()+1).toString().padStart(2,'0')}/${date.getDate().toString().padStart(2,'0')} ${date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}`;
+                const modeName = MODE_NAMES[session.mode] || session.mode;
+
+                const item = document.createElement('div');
+                item.className = 'history-item';
+                item.innerHTML = `
+                    <div class="history-info" onclick="loadSession('${session.id}')">
+                        <span class="history-mode">${modeName}</span>
+                        <span class="history-date">${dateStr}</span>
+                    </div>
+                    <div class="history-actions">
+                        <button class="history-action-btn" onclick="exportSessionVid('${session.id}')">📼 MP4</button>
+                        <button class="history-action-btn del" onclick="deleteSessionFromList('${session.id}')">削除</button>
+                    </div>
+                `;
+                historyListContainer.appendChild(item);
+            });
+        } catch(e) {
+            console.error(e);
+            historyListContainer.innerHTML = '<div style="color:#ff5252; text-align:center; margin-top:20px;">エラーが発生しました。</div>';
+        }
+    }
+
+    async function deleteSessionFromList(id) {
+        if(confirm("このデータを削除しますか？")) {
+            await dbManager.deleteSession(id);
+            refreshHistoryList();
+        }
+    }
+
+    async function exportSessionVid(id) {
+        try {
+            const sessions = await dbManager.getAllSessions();
+            const session = sessions.find(s => s.id === id);
+            if(session && session.videoBlob) {
+                const url = URL.createObjectURL(session.videoBlob);
+                const a = document.createElement('a'); a.href = url; a.download = `connect_ai_${session.mode}_${session.timestamp}.webm`; a.click();
+            } else { alert("動画データが見つかりません。"); }
+        } catch(e) { console.error(e); }
+    }
+
+    async function loadSession(id) {
+        try {
+            const sessions = await dbManager.getAllSessions();
+            const session = sessions.find(s => s.id === id);
+            if(session) {
+                // UIとモードの切り替え
+                document.getElementById('modeSelect').value = session.mode;
+                currentTab = session.mode;
+                
+                // データの復元
+                poseDataLog = session.poseData;
+                playbackDataMP = poseDataLog;
+                
+                if(session.videoBlob) {
+                    const videoUrl = URL.createObjectURL(session.videoBlob);
+                    playbackVideo.src = videoUrl;
+                    
+                    // プレイバックモードへ移行
+                    historyPanel.style.display = 'none';
+                    if (playbackDataMP.length > 1) { playbackBaseTime = playbackDataMP[0].time; playbackTotalDuration = playbackDataMP[playbackDataMP.length - 1].time - playbackBaseTime; } else { playbackBaseTime = 0; playbackTotalDuration = 0; }
+                    const maxFrames = playbackDataMP.length - 1; 
+                    document.getElementById('timelineSlider').max = maxFrames > 0 ? maxFrames : 0; 
+                    document.getElementById('timelineSlider').value = 0; 
+                    
+                    appMode = 'playback'; 
+                    document.getElementById('mainControls').style.display = 'none'; 
+                    document.getElementById('playbackControls').style.display = 'flex';
+                    
+                    // 再生準備完了を待つ
+                    playbackVideo.oncanplay = () => {
+                        playbackVideo.pause(); playbackVideo.currentTime = 0; 
+                        renderPlaybackFrame(0); 
+                        togglePlay(true);
+                        playbackVideo.oncanplay = null; // リスナー解除
+                    };
+                }
+            }
+        } catch(e) { console.error("Load session error", e); alert("データの読み込みに失敗しました。"); }
+    }
+
+
     const video = document.getElementById('video'), playbackVideo = document.getElementById('playbackVideo'); 
     const canvasMP = document.getElementById('canvasMP'), ctxMP = canvasMP.getContext('2d');
     const canvasComb = document.getElementById('canvasCombined'), ctxComb = canvasComb.getContext('2d');
@@ -171,7 +365,6 @@
     const startBtn = document.getElementById('startBtn'), recBtn = document.getElementById('recBtn'), durationSelect = document.getElementById('durationSelect'), timerDisplay = document.getElementById('timerDisplay'), downloadCsvBtn = document.getElementById('downloadCsvBtn'), showSwayAlertCheckbox = document.getElementById('showSwayAlert'), videoSource = document.getElementById('videoSource');
     const heightInput = document.getElementById('patientHeight'), footSizeInput = document.getElementById('footSize'), calibrateMatBtn = document.getElementById('calibrateMatBtn'), infoPanel = document.getElementById('infoPanel'), tiltPanel = document.getElementById('tiltPanel'), pelvicTiltSlider = document.getElementById('pelvicTiltSlider'), tiltValDisplay = document.getElementById('tiltValDisplay');
     
-    // UI Toggle Logic
     const toggleUiBtn = document.getElementById('toggleUiBtn');
     const controlsBox = document.getElementById('controlsBox');
     toggleUiBtn.onclick = function() {
@@ -191,6 +384,9 @@
     ['front', 'back', 'l_side', 'r_side', 'dyn_overhead', 'dyn_overhead_side', 'dyn_single_r', 'dyn_single_l', 'dyn_flex_fwd', 'dyn_flex_bwd', 'dyn_shoulder_r', 'dyn_shoulder_l'].forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
 
     async function init() {
+        // DB初期化
+        try { await dbManager.init(); console.log("DB Initialized"); } catch(e) { console.error(e); }
+
         if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) { videoSource.innerHTML = '<option value="">⚠️ HTTPS必須</option>'; startBtn.innerText = "❌ 起動不可"; return; }
         try { const tempStream = await navigator.mediaDevices.getUserMedia({ video: true }); tempStream.getTracks().forEach(t => t.stop()); } catch(e) {}
         try {
@@ -251,7 +447,6 @@
         ctx.fillStyle = "#ffeb3b"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(comX, (lAnkle.y + rAnkle.y)/2 - 10, 8, 0, 2*Math.PI); ctx.fill(); ctx.stroke(); ctx.restore();
     }
 
-    // 🌟 V68: S状カーブ強調と足首のフォールバック、ベクトル反転を完全に適用
     function drawKendallAlignment(ctx, kps) {
         if (currentTab !== 'l_side' && currentTab !== 'r_side') return;
         let isLeft = currentTab === 'l_side';
@@ -435,7 +630,6 @@
 
     function drawCenterGrid(ctx, canvas) { ctx.save(); ctx.strokeStyle="rgba(255,255,255,0.4)"; ctx.lineWidth=5; ctx.beginPath(); ctx.moveTo(canvas.width/2,0); ctx.lineTo(canvas.width/2,canvas.height); ctx.stroke(); ctx.restore(); }
 
-    // 🌟 V68: 「見えている側」だけを絶対指定で描画するクリーンなロジック
     function drawSkeleton(ctx, kps, color) {
         ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 4;
         
@@ -537,9 +731,24 @@
         try { 
             const stream = canvasComb.captureStream(30); recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' }); 
             recorder.ondataavailable = function(e) { if (e.data.size > 0) recordedChunks.push(e.data); }; 
-            recorder.onstop = function() { 
-                const b = new Blob(recordedChunks, { type: 'video/webm' }); const videoUrl = URL.createObjectURL(b); playbackVideo.src = videoUrl;
-                const a = document.createElement('a'); a.href = videoUrl; a.download = "connect_ai_" + currentTab + "_" + Date.now() + ".webm"; a.click(); 
+            recorder.onstop = async function() { 
+                const b = new Blob(recordedChunks, { type: 'video/webm' }); 
+                // 🌟 V69: 録画終了時に IndexedDB へ自動保存
+                const sessionData = {
+                    id: 'session_' + Date.now(),
+                    timestamp: Date.now(),
+                    mode: currentTab,
+                    videoBlob: b,
+                    poseData: JSON.parse(JSON.stringify(poseDataLog))
+                };
+                try {
+                    await dbManager.saveSession(sessionData);
+                    console.log("Session Auto-Saved to IndexedDB");
+                    // 履歴リストを開いている場合は更新
+                    if(historyPanel.style.display === 'flex') refreshHistoryList();
+                } catch(err) { console.error("Auto-save failed", err); }
+
+                const videoUrl = URL.createObjectURL(b); playbackVideo.src = videoUrl;
             }; recorder.start(); 
         } catch (e) { console.error(e); }
         const timerInterval = setInterval(function() {
