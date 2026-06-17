@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Academic Master V76 (LLM Clinical Insights)</title>
+    <title>CONNECT AI - Academic Master V77 (LLM Clinical Insights & API Fix)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -23,7 +23,6 @@
         .ui-top-buttons { display: flex; gap: 15px; margin-bottom: 10px; }
         .ui-top-btn { background: rgba(0, 191, 255, 0.15); color: #00bfff; border: 1px solid #00bfff; border-radius: 20px; padding: 6px 20px; font-weight: bold; cursor: pointer; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); box-shadow: 0 4px 15px rgba(0,0,0,0.5); transition: 0.2s; pointer-events: auto; }
         .ui-top-btn:hover { background: rgba(0, 191, 255, 0.3); }
-        /* ダッシュボードボタン用の特別スタイル */
         .dash-top-btn { background: rgba(255, 145, 0, 0.15); color: #ff9100; border: 1px solid #ff9100; }
         .dash-top-btn:hover { background: rgba(255, 145, 0, 0.3); }
 
@@ -126,7 +125,6 @@
             .dash-header { border-bottom: 3px solid #000; }
             .dash-close, .dash-print { display: none; }
             
-            /* 🌟 印刷時にAI評価セクションがきれいに表示されるように設定 */
             #aiEvalCard { grid-column: 1 / -1; margin-top: 20px; break-inside: avoid; }
             #aiEvalContent { background: #f0f8ff !important; color: #000 !important; border-left: 4px solid #1976d2 !important; }
             #generateAiEvalBtn { display: none; }
@@ -137,7 +135,7 @@
 
 <div class="view-port">
     <canvas id="canvasMP"></canvas>
-    <div class="label">CONNECT AI - V76 Clinical LLM Edition</div>
+    <div class="label">CONNECT AI - V77 LLM & API Fixed Edition</div>
     <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     
@@ -191,7 +189,6 @@
     <div class="ui-top-buttons">
         <button id="toggleUiBtn" class="ui-top-btn">🔽 UIを隠す</button>
         <button id="showHistoryBtn" class="ui-top-btn">📂 履歴を開く</button>
-        <!-- 🌟 いつでもダッシュボードを開けるようにボタンを常時表示エリアに追加 -->
         <button id="showDashboardBtn" class="ui-top-btn dash-top-btn" onclick="prepareAndPrintReport()">📊 ダッシュボード</button>
     </div>
     
@@ -247,7 +244,6 @@
 <video id="video" autoplay playsinline muted></video>
 
 <script>
-    // 1. データベース管理
     var dbManager = {
         dbName: "ConnectAIDB",
         storeName: "sessions",
@@ -300,7 +296,6 @@
         }
     };
 
-    // 2. Constants & DOM Elements
     var historyPanel = document.getElementById('historyPanel');
     var historyListContainer = document.getElementById('historyListContainer');
     var showHistoryBtn = document.getElementById('showHistoryBtn');
@@ -317,7 +312,6 @@
     var toggleUiBtn = document.getElementById('toggleUiBtn');
     var controlsBox = document.getElementById('controlsBox');
 
-    // 3. Global State Variables (All changed to var for safety)
     var detectors = [], isRunning = false, isRecording = false, isPausedForEdit = false, currentTab = "front", currentStream = null, appMode = "camera", isPlaying = false;
     var playbackDataMP = [], mainRenderId = null, recordingDuration = 10000, coordinateBufferMP = [], poseDataLog = [], playbackRafId = null;
     var selectedJointIndex = null, dpadStepVal = 1, isEditingPlaybackFrame = false, swayHistoryMP = [];
@@ -332,7 +326,6 @@
     window.reportDataStore = {};
     Object.keys(DURATION_MAP).forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
 
-    // 4. UI Toggle Events
     toggleUiBtn.onclick = function() {
         if (controlsBox.style.display === 'none') { controlsBox.style.display = 'flex'; toggleUiBtn.innerText = '🔽 UIを隠す'; } 
         else { controlsBox.style.display = 'none'; toggleUiBtn.innerText = '🔼 UIを表示'; }
@@ -393,8 +386,8 @@
     document.getElementById('playPauseBtn').onclick = function() { togglePlay(); }; 
     document.getElementById('backToCamBtn').onclick = function() { exitPlaybackMode(); };
     document.getElementById('timelineSlider').oninput = function() { togglePlay(false); var fIdx = parseInt(document.getElementById('timelineSlider').value); renderPlaybackFrame(fIdx); };
+    document.getElementById('exportVideoBtn').onclick = startVideoExport;
 
-    // 5. History / DB Functions
     window.refreshHistoryList = async function() {
         historyListContainer.innerHTML = '<div style="color:#aaa; text-align:center; margin-top:20px;">読込中...</div>';
         try {
@@ -487,7 +480,6 @@
         } catch(e) { console.error("Load session error", e); alert("データの読み込みに失敗しました。"); }
     };
 
-    // 6. Initialization
     async function init() {
         try { await dbManager.init(); } catch(e) { console.error("DB Init Error:", e); }
 
@@ -521,7 +513,6 @@
     }
     window.addEventListener('load', init); 
 
-    // 7. Render & Review Logics
     startBtn.onclick = async function() {
         renderSessionId++;
         var currentSession = renderSessionId;
@@ -829,7 +820,6 @@
             }
         } else if (currentTab === 'back') {
             pairs = [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]];
-            // 後面の時は顔面ポイント（0〜10）を非表示
             var allIndices = Array.from({length: 33}, (_, i) => i);
             drawIndices = allIndices.filter(i => i > 10);
         } else {
@@ -852,19 +842,16 @@
             }
         }); 
 
-        // 🌟 V75: 前面・OHS前面時の頭部アライメント視覚化
         if (currentTab === 'front' || currentTab === 'dyn_overhead') {
             var earL = kps[7], earR = kps[8], nose = kps[0], shL = kps[11], shR = kps[12];
             
-            // 左右の耳を結ぶライン（頭部の傾き）
             if (earL && earR && earL.score > 0.1 && earR.score > 0.1) {
                 ctx.strokeStyle = "#deff9a"; 
                 ctx.lineWidth = 2;
                 ctx.beginPath(); ctx.moveTo(earL.x, earL.y); ctx.lineTo(earR.x, earR.y); ctx.stroke();
                 
-                // 鼻を中心とした仮想の顔の輪郭（〇）
                 if (nose && nose.score > 0.1) {
-                    var faceRadius = Math.hypot(earL.x - earR.x, earL.y - earR.y) * 0.6; // 耳の距離を基準に円を描画
+                    var faceRadius = Math.hypot(earL.x - earR.x, earL.y - earR.y) * 0.6; 
                     ctx.beginPath();
                     ctx.arc(nose.x, nose.y, faceRadius, 0, 2*Math.PI);
                     ctx.strokeStyle = "rgba(222, 255, 154, 0.8)";
@@ -872,7 +859,6 @@
                 }
             }
             
-            // 🌟 V75修正: 左右の肩の中点から鼻を結ぶラインをオレンジ破線に
             if (nose && shL && shR && nose.score > 0.1 && shL.score > 0.1 && shR.score > 0.1) {
                 var shMidX = (shL.x + shR.x) / 2;
                 var shMidY = (shL.y + shR.y) / 2;
@@ -962,7 +948,6 @@
         } ctxComb.drawImage(canvasMP, 0, 0, w, h);
     }
 
-    // Canvas Events
     radarWrapperMP.addEventListener('pointerdown', function(e) {
         e.stopPropagation(); if (activeRadarDrag) return; initialTouch = { x: e.clientX, y: e.clientY };
         longPressTimer = setTimeout(function() { var rect = radarWrapperMP.getBoundingClientRect(); activeRadarDrag = { element: radarWrapperMP, startX: initialTouch.x, startY: initialTouch.y, startLeft: rect.left, startTop: rect.top }; radarWrapperMP.style.right = 'auto'; radarWrapperMP.style.bottom = 'auto'; radarWrapperMP.style.left = rect.left + "px"; radarWrapperMP.style.top = rect.top + "px"; radarWrapperMP.classList.add('dragging'); isRadarMovedManually = true; }, 300);
@@ -1008,7 +993,6 @@
         isPausedForEdit = false; refreshReportView();
     }
 
-    // 8. Recording and Export Logic
     recBtn.onclick = function() {
         controlsBox.style.display = 'none';
         toggleUiBtn.innerText = '🔼 UIを表示';
@@ -1209,7 +1193,6 @@
         }
     }
 
-    // 9. Dashboard Logic & 🌟 LLM Insights API (V76)
     function getWeightBearingData(kps) {
         var lAnkle = kps[27], rAnkle = kps[28]; if (!lAnkle || !rAnkle || lAnkle.score < 0.3 || rAnkle.score < 0.3) return null;
         var nose = kps[0], lSh = kps[11], rSh = kps[12], lHip = kps[23], rHip = kps[24];
@@ -1291,7 +1274,6 @@
         return { trunk: trunkLean, knee: kneeAng, arm: armAng };
     }
 
-    // 🌟 LLMプロンプトデータ構築関数
     function buildPromptText() {
         let text = "【患者の測定データ】\n";
         
@@ -1333,8 +1315,10 @@
         return text;
     }
 
-    // 🌟 LLM API コール関数
+    // 🌟 V77: API呼び出し関数のエラーメッセージと仕組みを改善
     window.generateAIEvaluation = async function() {
+        // ▼ローカル環境（ご自身のPC）で実行する場合は、"" の中にGoogle AI Studioで取得したAPIキーを貼り付けてください。
+        // （このチャット画面右側のプレビュー内で実行する場合は、空欄のままで自動的に動作します）
         const apiKey = ""; 
         const promptData = buildPromptText();
         
@@ -1365,7 +1349,12 @@
                     body: JSON.stringify(payload)
                 });
 
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                if (!response.ok) {
+                    if (response.status === 400 && apiKey === "") {
+                        throw new Error("API_KEY_MISSING");
+                    }
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 
                 const result = await response.json();
                 const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -1378,9 +1367,11 @@
                 }
             } catch (error) {
                 attempt++;
-                if (attempt >= maxAttempts) {
-                    document.getElementById('aiEvalContent').innerHTML = `<span style="color:#ff5252;">評価の生成に失敗しました。時間をおいて再試行してください。</span>`;
-                    console.error("Gemini API Error after retries:", error);
+                if (attempt >= maxAttempts || error.message === "API_KEY_MISSING") {
+                    // 🌟 より親切で明確なエラーメッセージ
+                    document.getElementById('aiEvalContent').innerHTML = `<span style="color:#ff5252;">評価の生成に失敗しました。通信エラーまたはAPIキーが設定されていません。<br><br>※PC（ローカル）で実行する場合は、コード内の <code>const apiKey = "";</code> の部分に Google AI Studio で取得したAPIキーを手動で入力するか、このチャット画面右側のプレビュー機能をご利用ください。</span>`;
+                    console.error("Gemini API Error:", error);
+                    break; 
                 } else {
                     await new Promise(r => setTimeout(r, delays[attempt - 1]));
                 }
@@ -1468,7 +1459,6 @@
         if(!hasOther) html += '<p style="color:#aaa; text-align:center; padding: 20px 0;">未測定</p>';
         html += '</div>';
 
-        // 🌟 V76: LLM 臨床評価セクションの追加
         html += `
         <div class="dash-card" id="aiEvalCard" style="grid-column: 1 / -1;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 20px;">
@@ -1483,7 +1473,6 @@
         dashGrid.innerHTML = html;
         document.getElementById('dashboardOverlay').style.display = 'block';
     }
-
 </script>
 </body>
 </html>
