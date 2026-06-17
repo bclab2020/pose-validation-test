@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Academic Master V70 (Kinematic Load & Light History)</title>
+    <title>CONNECT AI - Academic Master V71 (Video Export & Light History)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -56,6 +56,8 @@
         #playPauseBtn { background: #00bfff; color: #000; min-width: 90px; }
         #backToCamBtn { background: #555; color: white; }
         #editFrameBtn { background: #ff9100; color: #000; font-weight: bold; }
+        #exportVideoBtn { background: #1976d2; color: white; }
+        #exportVideoBtn:disabled { background: #555; cursor: not-allowed; }
         
         .label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 14px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; font-weight: bold; pointer-events: none; }
         .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; display: none; z-index: 100; pointer-events: none; }
@@ -73,7 +75,7 @@
         .dpad-step-btn { font-size: 14px; background: #1976d2; border: none; font-weight: bold; }
         .dpad-close { position: absolute; right: -10px; top: -10px; width: 32px; height: 32px; border-radius: 50%; background: #ff5252; color: white; border: none; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
 
-        #historyPanel { position: absolute; top: 50px; right: 50px; background: rgba(20, 22, 26, 0.95); border: 2px solid #00bfff; border-radius: 16px; padding: 20px; z-index: 1500; display: none; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.8); width: 350px; max-height: 80vh; backdrop-filter: blur(10px); }
+        #historyPanel { position: absolute; top: 50px; right: 50px; background: rgba(20, 22, 26, 0.95); border: 2px solid #00bfff; border-radius: 16px; padding: 20px; z-index: 1500; display: none; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.8); width: 380px; max-height: 80vh; backdrop-filter: blur(10px); }
         .history-header { color: #00bfff; font-size: 18px; font-weight: bold; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
         .history-list { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; flex-grow: 1; padding-right: 5px; }
         .history-item { background: #2a2a2a; border-left: 4px solid #00bfff; padding: 10px; border-radius: 6px; cursor: pointer; transition: 0.2s; display: flex; justify-content: space-between; align-items: center; }
@@ -84,6 +86,7 @@
         .history-actions { display: flex; gap: 5px; }
         .history-action-btn { background: #444; color: white; border-radius: 4px; padding: 4px 8px; font-size: 12px; border: none; cursor: pointer; }
         .history-action-btn.del { background: #d32f2f; }
+        .history-action-btn.vid { background: #1976d2; }
         .history-action-btn:hover { filter: brightness(1.2); }
         #closeHistoryBtn { background: transparent; border: none; color: #aaa; font-size: 20px; cursor: pointer; padding: 0; }
         #closeHistoryBtn:hover { color: white; }
@@ -95,7 +98,7 @@
 
 <div class="view-port">
     <canvas id="canvasMP"></canvas>
-    <div class="label">CONNECT AI - V70 Academic Master</div>
+    <div class="label">CONNECT AI - V71 Academic Master</div>
     <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     
@@ -177,9 +180,11 @@
             <button id="playPauseBtn">▶ 再生</button>
             <input type="range" id="timelineSlider" min="0" max="100" value="0">
             <span id="frameCounter" style="color:#00bfff; font-weight:bold; font-size:14px;">0 / 0</span>
-            <button id="editFrameBtn">✂️ このフレームを微調整</button>
-            <button id="downloadCsvBtn" disabled style="margin-left:auto;">📊 CSV出力</button>
-            <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 レポート出力</button>
+            <button id="editFrameBtn">✂️ 微調整</button>
+            <!-- 🌟 V71: 動画出力ボタンの追加 -->
+            <button id="exportVideoBtn" style="margin-left:auto;">🎥 動画出力</button>
+            <button id="downloadCsvBtn" disabled>📊 CSV</button>
+            <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 レポート</button>
         </div>
     </div>
 </div>
@@ -188,7 +193,7 @@
 <video id="video" autoplay playsinline muted></video>
 
 <script>
-    // 🌟 V70: データベース管理 (動画Blobを削除、JSON軽量保存のみに特化)
+    // 🌟 V70: データベース管理
     const dbManager = {
         dbName: "ConnectAIDB",
         storeName: "sessions",
@@ -274,12 +279,14 @@
 
                 const item = document.createElement('div');
                 item.className = 'history-item';
+                // 🌟 V71: 履歴パネルに「動画出力」ボタンを追加
                 item.innerHTML = `
                     <div class="history-info" onclick="loadSession('${session.id}')">
                         <span class="history-mode">${modeName}</span>
                         <span class="history-date">${dateStr}</span>
                     </div>
                     <div class="history-actions">
+                        <button class="history-action-btn vid" onclick="exportSessionVideo('${session.id}')">🎥 動画</button>
                         <button class="history-action-btn" onclick="exportSessionCsv('${session.id}')">📊 CSV</button>
                         <button class="history-action-btn del" onclick="deleteSessionFromList('${session.id}')">削除</button>
                     </div>
@@ -309,6 +316,14 @@
                 const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([c],{type:'text/csv'})); a.download=`connect_ai_data_${session.mode}_${session.timestamp}.csv`; a.click();
             }
         } catch(e) { console.error(e); }
+    }
+
+    // 🌟 V71: 履歴画面からのワンタップ動画出力ロジック
+    async function exportSessionVideo(id) {
+        historyPanel.style.display = 'none';
+        await loadSession(id);
+        // ロード後の描画安定を待ってから録画開始
+        setTimeout(startVideoExport, 500);
     }
 
     async function loadSession(id) {
@@ -361,6 +376,11 @@
     let selectedJointIndex = null, dpadStepVal = 1, isEditingPlaybackFrame = false, swayHistoryMP = [];
     let activeRadarDrag = null, isRadarMovedManually = false, longPressTimer = null, initialTouch = null, dragTarget = null;
     let pxToCmRatio = null, estimatedPelvicTilt = 0, calibState = "idle", calibrationPoints = [], staticBackgroundData = null; 
+
+    // 🌟 V71: 動画エクスポート用変数
+    let exportRecorder = null;
+    let exportChunks = [];
+    let isExportingVideo = false;
 
     window.currentAnchorPos = null; window.customOriginMarkers = {}; window.anchorStatus = "unlocked";
     const DURATION_MAP = { 'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 'dyn_overhead': 15000, 'dyn_overhead_side': 15000, 'dyn_single_r': 15000, 'dyn_single_l': 15000, 'dyn_flex_fwd': 10000, 'dyn_flex_bwd': 10000, 'dyn_shoulder_r': 10000, 'dyn_shoulder_l': 10000 };
@@ -415,7 +435,6 @@
         } return kps;
     }
 
-    // 🌟 V70: 上半身と下半身に分割した精密な偏位（荷重）計算
     function calculateWeightBearing(ctx, kps) {
         if (currentTab !== 'front' && currentTab !== 'back' && currentTab !== 'dyn_overhead') return;
         let lAnkle = kps[27], rAnkle = kps[28]; if (!lAnkle || !rAnkle || lAnkle.score < 0.3 || rAnkle.score < 0.3) return;
@@ -452,7 +471,6 @@
         ctx.fillStyle = Math.abs(lowerRatio.L - 50) > 5 ? "#ff9100" : "#fff"; 
         ctx.fillText(`下半身偏位 左: ${lowerRatio.L.toFixed(1)}% | 右: ${lowerRatio.R.toFixed(1)}%`, canvasMP.width/2, canvasMP.height - 140);
 
-        // 正中線と重心プロット
         ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.setLineDash([5,5]); ctx.beginPath(); ctx.moveTo(centerX, 0); ctx.lineTo(centerX, canvasMP.height); ctx.stroke(); ctx.setLineDash([]);
         ctx.fillStyle = "#ff9100"; ctx.beginPath(); ctx.arc(upperComX, (lSh.y + rSh.y)/2, 6, 0, 2*Math.PI); ctx.fill();
         ctx.fillStyle = "#ff9100"; ctx.beginPath(); ctx.arc(lowerComX, (lHip.y + rHip.y)/2, 6, 0, 2*Math.PI); ctx.fill();
@@ -671,7 +689,7 @@
     function switchReportTab(tabName) {
         if (isRecording) return; currentTab = tabName; staticBackgroundData = null; window.anchorStatus = "unlocked"; window.currentAnchorPos = null;
         if(window.customOriginMarkers[tabName]) window.customOriginMarkers[tabName] = null; swayHistoryMP = []; clearRadar(ctxRadarMP, "#ff5252");
-        closeDpad(); isEditingPlaybackFrame = false; document.getElementById('editFrameBtn').innerText = "✂️ このフレームを微調整"; document.getElementById('editFrameBtn').style.background = "#ff9100";
+        closeDpad(); isEditingPlaybackFrame = false; document.getElementById('editFrameBtn').innerText = "✂️ 微調整"; document.getElementById('editFrameBtn').style.background = "#ff9100";
         if(DURATION_MAP[tabName]) { let recommended = DURATION_MAP[tabName].toString(); if(Array.from(durationSelect.options).map(opt => opt.value).includes(recommended)) durationSelect.value = recommended; }
         tiltPanel.style.display = (tabName === 'r_side' || tabName === 'l_side') ? 'block' : 'none';
         appMode = 'camera'; 
@@ -781,7 +799,6 @@
         recordingDuration = parseInt(durationSelect.value); recordingStartTime = Date.now(); swayHistoryMP = []; 
         timerDisplay.style.display = "block"; recBtn.disabled = true; downloadCsvBtn.disabled = true;
         
-        // 🌟 V70: 重いMediaRecorderを完全廃止し、タイマーのみでJSON保存処理へ移行
         const timerInterval = setInterval(async function() {
             const elapsed = Date.now() - recordingStartTime; timerDisplay.innerText = "REC " + Math.max(0, (recordingDuration - elapsed) / 1000).toFixed(1) + "s";
             if (elapsed >= recordingDuration) { 
@@ -797,7 +814,6 @@
         
         isRecording = false; timerDisplay.style.display = "none";
         
-        // 🌟 V70: 録画終了時に JSONデータのみを超軽量保存
         if (poseDataLog.length > 0) {
             const sessionData = {
                 id: 'session_' + Date.now(),
@@ -836,7 +852,23 @@
         renderPlaybackFrame(0); togglePlay(true);
     }
     
-    function exitPlaybackMode() { appMode = 'camera'; togglePlay(false); document.getElementById('playbackControls').style.display = 'none'; document.getElementById('mainControls').style.display = 'flex'; isPausedForEdit = false; closeDpad(); isEditingPlaybackFrame=false; document.getElementById('editFrameBtn').innerText = "✂️ このフレームを微調整"; document.getElementById('editFrameBtn').style.background = "#ff9100"; }
+    function exitPlaybackMode() { 
+        appMode = 'camera'; togglePlay(false); 
+        document.getElementById('playbackControls').style.display = 'none'; 
+        document.getElementById('mainControls').style.display = 'flex'; 
+        isPausedForEdit = false; closeDpad(); isEditingPlaybackFrame=false; 
+        document.getElementById('editFrameBtn').innerText = "✂️ 微調整"; 
+        document.getElementById('editFrameBtn').style.background = "#ff9100"; 
+        
+        // 動画出力中なら強制キャンセル
+        if(isExportingVideo) {
+            isExportingVideo = false;
+            if(exportRecorder && exportRecorder.state !== "inactive") exportRecorder.stop();
+            const btn = document.getElementById('exportVideoBtn');
+            btn.innerText = "🎥 動画出力";
+            btn.disabled = false;
+        }
+    }
     
     function togglePlay(forcePlay) {
         if(isEditingPlaybackFrame && forcePlay !== false) return; 
@@ -854,8 +886,22 @@
         }
     }
     
+    // 🌟 V71: 録画エクスポート用ロジックのフック
     function playbackLoop() {
-        if (!isPlaying) return; let now = Date.now(), elapsed = now - playbackStartTime; if (elapsed > playbackTotalDuration) { playbackStartTime = now; elapsed = 0; }
+        if (!isPlaying) return; let now = Date.now(), elapsed = now - playbackStartTime; 
+        
+        if (elapsed > playbackTotalDuration) { 
+            // 録画エクスポート中の場合、1周で自動停止してダウンロード
+            if (isExportingVideo) {
+                togglePlay(false);
+                if (exportRecorder && exportRecorder.state !== "inactive") {
+                    exportRecorder.stop();
+                }
+                return;
+            }
+            playbackStartTime = now; elapsed = 0; 
+        }
+        
         let targetTime = playbackBaseTime + elapsed, targetIdx = playbackDataMP.length - 1;
         for (let i = 0; i < playbackDataMP.length; i++) { if (playbackDataMP[i].time >= targetTime) { targetIdx = i; break; } }
         document.getElementById('timelineSlider').value = targetIdx; renderPlaybackFrame(targetIdx); playbackRafId = requestAnimationFrame(playbackLoop);
@@ -864,13 +910,63 @@
     document.getElementById('playPauseBtn').onclick = function() { togglePlay(); }; document.getElementById('backToCamBtn').onclick = function() { exitPlaybackMode(); };
     document.getElementById('timelineSlider').oninput = function() { togglePlay(false); const fIdx = parseInt(document.getElementById('timelineSlider').value); renderPlaybackFrame(fIdx); };
 
-    // 🌟 V70: 再生フレームの描画 (実写を完全に消去し黒背景化。ニーイン等の各解析エンジンを復活)
+    // 🌟 V71: 動画出力（エクスポート）実行関数
+    function startVideoExport() {
+        if (isExportingVideo) return;
+        isExportingVideo = true;
+        exportChunks = [];
+        
+        togglePlay(false);
+        document.getElementById('timelineSlider').value = 0;
+        renderPlaybackFrame(0);
+        
+        try {
+            const stream = canvasComb.captureStream(30);
+            let mimeType = 'video/webm;codecs=vp8';
+            if (MediaRecorder.isTypeSupported('video/mp4')) {
+                mimeType = 'video/mp4';
+            }
+            exportRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+            
+            exportRecorder.ondataavailable = function(e) { if (e.data.size > 0) exportChunks.push(e.data); };
+            exportRecorder.onstop = function() {
+                const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+                const b = new Blob(exportChunks, { type: mimeType }); 
+                const videoUrl = URL.createObjectURL(b);
+                const a = document.createElement('a'); a.href = videoUrl; a.download = `connect_ai_${currentTab}_${Date.now()}.${ext}`; a.click();
+                
+                isExportingVideo = false;
+                const btn = document.getElementById('exportVideoBtn');
+                btn.innerText = "🎥 動画出力";
+                btn.disabled = false;
+            };
+            
+            exportRecorder.start();
+            const btn = document.getElementById('exportVideoBtn');
+            btn.innerText = "録画出力中...";
+            btn.disabled = true;
+            
+            // 再生を最初から強制スタート
+            playbackStartTime = Date.now();
+            togglePlay(true);
+            
+        } catch (e) {
+            console.error(e);
+            isExportingVideo = false;
+            const btn = document.getElementById('exportVideoBtn');
+            btn.innerText = "🎥 動画出力";
+            btn.disabled = false;
+            alert("動画出力に失敗しました。お使いのブラウザは対応していない可能性があります。");
+        }
+    }
+
+    document.getElementById('exportVideoBtn').onclick = startVideoExport;
+
     function renderPlaybackFrame(frameIdx) {
         document.getElementById('frameCounter').innerText = frameIdx + " / " + document.getElementById('timelineSlider').max; 
         const w = canvasMP.width, h = canvasMP.height;
         ctxMP.clearRect(0, 0, w, h); 
         
-        // 背景を完全な黒で塗りつぶし、データ軽量化再生を実現
         ctxMP.fillStyle = "#111"; 
         ctxMP.fillRect(0, 0, w, h); 
         
@@ -879,7 +975,6 @@
             const actualKps = playbackDataMP[frameIdx].keypoints; 
             drawSkeleton(ctxMP, actualKps, '#ffffff'); 
             
-            // 全ての解析エンジンを呼び出す
             drawOHSFrontAnalysis(ctxMP, actualKps);
             drawOHSSideAnalysis(ctxMP, actualKps);
             drawKendallAlignment(ctxMP, actualKps); 
