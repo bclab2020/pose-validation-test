@@ -23,6 +23,9 @@
         .ui-top-buttons { display: flex; gap: 15px; margin-bottom: 10px; }
         .ui-top-btn { background: rgba(0, 191, 255, 0.15); color: #00bfff; border: 1px solid #00bfff; border-radius: 20px; padding: 6px 20px; font-weight: bold; cursor: pointer; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); box-shadow: 0 4px 15px rgba(0,0,0,0.5); transition: 0.2s; pointer-events: auto; }
         .ui-top-btn:hover { background: rgba(0, 191, 255, 0.3); }
+        /* ダッシュボードボタン用の特別スタイル */
+        .dash-top-btn { background: rgba(255, 145, 0, 0.15); color: #ff9100; border: 1px solid #ff9100; }
+        .dash-top-btn:hover { background: rgba(255, 145, 0, 0.3); }
 
         #controlsBox { width: 100%; display: flex; flex-direction: column; gap: 10px; }
 
@@ -188,6 +191,8 @@
     <div class="ui-top-buttons">
         <button id="toggleUiBtn" class="ui-top-btn">🔽 UIを隠す</button>
         <button id="showHistoryBtn" class="ui-top-btn">📂 履歴を開く</button>
+        <!-- 🌟 いつでもダッシュボードを開けるようにボタンを常時表示エリアに追加 -->
+        <button id="showDashboardBtn" class="ui-top-btn dash-top-btn" onclick="prepareAndPrintReport()">📊 ダッシュボード</button>
     </div>
     
     <div id="controlsBox">
@@ -388,8 +393,6 @@
     document.getElementById('playPauseBtn').onclick = function() { togglePlay(); }; 
     document.getElementById('backToCamBtn').onclick = function() { exitPlaybackMode(); };
     document.getElementById('timelineSlider').oninput = function() { togglePlay(false); var fIdx = parseInt(document.getElementById('timelineSlider').value); renderPlaybackFrame(fIdx); };
-    document.getElementById('exportVideoBtn').onclick = startVideoExport;
-    document.getElementById('printReportBtn').onclick = prepareAndPrintReport;
 
     // 5. History / DB Functions
     window.refreshHistoryList = async function() {
@@ -1385,7 +1388,7 @@
         }
     };
 
-    function prepareAndPrintReport() {
+    window.prepareAndPrintReport = function() {
         var dashGrid = document.getElementById('dashGrid');
         var html = '';
         
@@ -1481,7 +1484,6 @@
         document.getElementById('dashboardOverlay').style.display = 'block';
     }
 
-    window.addEventListener('load', init); 
 </script>
 </body>
 </html>
