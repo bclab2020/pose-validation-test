@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Academic Master V71 (Video Export & Light History)</title>
+    <title>CONNECT AI - Academic Master V72 (History Sync Fixed & Video Export)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -98,7 +98,7 @@
 
 <div class="view-port">
     <canvas id="canvasMP"></canvas>
-    <div class="label">CONNECT AI - V71 Academic Master</div>
+    <div class="label">CONNECT AI - V72 Academic Master</div>
     <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     
@@ -181,7 +181,6 @@
             <input type="range" id="timelineSlider" min="0" max="100" value="0">
             <span id="frameCounter" style="color:#00bfff; font-weight:bold; font-size:14px;">0 / 0</span>
             <button id="editFrameBtn">✂️ 微調整</button>
-            <!-- 🌟 V71: 動画出力ボタンの追加 -->
             <button id="exportVideoBtn" style="margin-left:auto;">🎥 動画出力</button>
             <button id="downloadCsvBtn" disabled>📊 CSV</button>
             <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 レポート</button>
@@ -193,7 +192,7 @@
 <video id="video" autoplay playsinline muted></video>
 
 <script>
-    // 🌟 V70: データベース管理
+    // データベース管理
     const dbManager = {
         dbName: "ConnectAIDB",
         storeName: "sessions",
@@ -279,7 +278,6 @@
 
                 const item = document.createElement('div');
                 item.className = 'history-item';
-                // 🌟 V71: 履歴パネルに「動画出力」ボタンを追加
                 item.innerHTML = `
                     <div class="history-info" onclick="loadSession('${session.id}')">
                         <span class="history-mode">${modeName}</span>
@@ -318,11 +316,9 @@
         } catch(e) { console.error(e); }
     }
 
-    // 🌟 V71: 履歴画面からのワンタップ動画出力ロジック
     async function exportSessionVideo(id) {
         historyPanel.style.display = 'none';
         await loadSession(id);
-        // ロード後の描画安定を待ってから録画開始
         setTimeout(startVideoExport, 500);
     }
 
@@ -334,7 +330,10 @@
                 document.getElementById('modeSelect').value = session.mode;
                 currentTab = session.mode;
                 poseDataLog = session.poseData;
-                playbackDataMP = poseDataLog;
+                
+                // 🌟 V72修正: 過去のバグで別モードのデータが混入している場合を保護するため、必ずフィルタリングして読み込む
+                playbackDataMP = poseDataLog.filter(d => d.mode === currentTab);
+                if (playbackDataMP.length === 0) playbackDataMP = poseDataLog; // 互換性フォールバック
                 
                 historyPanel.style.display = 'none';
                 if (playbackDataMP.length > 1) { 
@@ -377,7 +376,6 @@
     let activeRadarDrag = null, isRadarMovedManually = false, longPressTimer = null, initialTouch = null, dragTarget = null;
     let pxToCmRatio = null, estimatedPelvicTilt = 0, calibState = "idle", calibrationPoints = [], staticBackgroundData = null; 
 
-    // 🌟 V71: 動画エクスポート用変数
     let exportRecorder = null;
     let exportChunks = [];
     let isExportingVideo = false;
@@ -683,7 +681,7 @@
 
     document.getElementById('editFrameBtn').onclick = function() {
         if(!isEditingPlaybackFrame) { togglePlay(false); isEditingPlaybackFrame = true; this.innerText = "✅ 編集完了"; this.style.background = "#39ff14"; } 
-        else { isEditingPlaybackFrame = false; this.innerText = "✂️ このフレームを微調整"; this.style.background = "#ff9100"; closeDpad(); }
+        else { isEditingPlaybackFrame = false; this.innerText = "✂️ 微調整"; this.style.background = "#ff9100"; closeDpad(); }
     };
 
     function switchReportTab(tabName) {
@@ -795,7 +793,11 @@
         controlsBox.style.display = 'none';
         toggleUiBtn.innerText = '🔼 UIを表示';
         
-        isPausedForEdit = false; staticBackgroundData = null; isRecording = true; closeDpad(); coordinateBufferMP = []; poseDataLog = poseDataLog.filter(d => d.mode !== currentTab);
+        isPausedForEdit = false; staticBackgroundData = null; isRecording = true; closeDpad(); coordinateBufferMP = []; 
+        
+        // 🌟 V72: 以前の全モードデータを引き継ぐバグを解消し完全リセット
+        poseDataLog = []; 
+        
         recordingDuration = parseInt(durationSelect.value); recordingStartTime = Date.now(); swayHistoryMP = []; 
         timerDisplay.style.display = "block"; recBtn.disabled = true; downloadCsvBtn.disabled = true;
         
@@ -860,7 +862,6 @@
         document.getElementById('editFrameBtn').innerText = "✂️ 微調整"; 
         document.getElementById('editFrameBtn').style.background = "#ff9100"; 
         
-        // 動画出力中なら強制キャンセル
         if(isExportingVideo) {
             isExportingVideo = false;
             if(exportRecorder && exportRecorder.state !== "inactive") exportRecorder.stop();
@@ -886,12 +887,10 @@
         }
     }
     
-    // 🌟 V71: 録画エクスポート用ロジックのフック
     function playbackLoop() {
         if (!isPlaying) return; let now = Date.now(), elapsed = now - playbackStartTime; 
         
         if (elapsed > playbackTotalDuration) { 
-            // 録画エクスポート中の場合、1周で自動停止してダウンロード
             if (isExportingVideo) {
                 togglePlay(false);
                 if (exportRecorder && exportRecorder.state !== "inactive") {
@@ -910,7 +909,6 @@
     document.getElementById('playPauseBtn').onclick = function() { togglePlay(); }; document.getElementById('backToCamBtn').onclick = function() { exitPlaybackMode(); };
     document.getElementById('timelineSlider').oninput = function() { togglePlay(false); const fIdx = parseInt(document.getElementById('timelineSlider').value); renderPlaybackFrame(fIdx); };
 
-    // 🌟 V71: 動画出力（エクスポート）実行関数
     function startVideoExport() {
         if (isExportingVideo) return;
         isExportingVideo = true;
@@ -946,7 +944,6 @@
             btn.innerText = "録画出力中...";
             btn.disabled = true;
             
-            // 再生を最初から強制スタート
             playbackStartTime = Date.now();
             togglePlay(true);
             
