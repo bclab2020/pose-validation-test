@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Academic Master V74 (Clinical Dashboard Edition - Fixed)</title>
+    <title>CONNECT AI - Academic Master V75 (Head Alignment & Dashboard)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -129,7 +129,7 @@
 
 <div class="view-port">
     <canvas id="canvasMP"></canvas>
-    <div class="label">CONNECT AI - V74 Fixed Dashboard</div>
+    <div class="label">CONNECT AI - V75 Head Alignment Edition</div>
     <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     
@@ -228,7 +228,7 @@
             <button id="editFrameBtn">✂️ 微調整</button>
             <button id="exportVideoBtn" style="margin-left:auto;">🎥 動画出力</button>
             <button id="downloadCsvBtn" disabled>📊 CSV</button>
-            <button id="printReportBtn">📄 レポート</button>
+            <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 レポート</button>
         </div>
     </div>
 </div>
@@ -819,6 +819,11 @@
                 pairs = [[11,13],[13,15],[23,25],[25,27],[11,23]];
                 drawIndices = [0,1,2,3,7,11,13,15,23,25,27,29,31];
             }
+        } else if (currentTab === 'back') {
+            pairs = [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]];
+            // 後面の時は顔面ポイント（0〜10）を非表示
+            var allIndices = Array.from({length: 33}, (_, i) => i);
+            drawIndices = allIndices.filter(i => i > 10);
         } else {
             pairs = [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]];
             drawIndices = Array.from({length: 33}, (_, i) => i);
@@ -838,6 +843,38 @@
                 } 
             }
         }); 
+
+        // 🌟 V75: 前面・OHS前面時の頭部アライメント視覚化
+        if (currentTab === 'front' || currentTab === 'dyn_overhead') {
+            var earL = kps[7], earR = kps[8], nose = kps[0], shL = kps[11], shR = kps[12];
+            
+            // 左右の耳を結ぶライン（頭部の傾き）
+            if (earL && earR && earL.score > 0.1 && earR.score > 0.1) {
+                ctx.strokeStyle = "#deff9a"; 
+                ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(earL.x, earL.y); ctx.lineTo(earR.x, earR.y); ctx.stroke();
+                
+                // 鼻を中心とした仮想の顔の輪郭（〇）
+                if (nose && nose.score > 0.1) {
+                    var faceRadius = Math.hypot(earL.x - earR.x, earL.y - earR.y) * 0.6; // 耳の距離を基準に円を描画
+                    ctx.beginPath();
+                    ctx.arc(nose.x, nose.y, faceRadius, 0, 2*Math.PI);
+                    ctx.strokeStyle = "rgba(222, 255, 154, 0.8)";
+                    ctx.stroke();
+                }
+            }
+            
+            // 左右の肩の中点から鼻を結ぶライン（頭部のシフト・正中線からのズレ）
+            if (nose && shL && shR && nose.score > 0.1 && shL.score > 0.1 && shR.score > 0.1) {
+                var shMidX = (shL.x + shR.x) / 2;
+                var shMidY = (shL.y + shR.y) / 2;
+                ctx.strokeStyle = "#00bfff";
+                ctx.lineWidth = 2;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath(); ctx.moveTo(shMidX, shMidY); ctx.lineTo(nose.x, nose.y); ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
 
         var asisL = kps.find(k=>k.name==='virtual_asis_l'), asisR = kps.find(k=>k.name==='virtual_asis_r');
         var lHip = kps.find(k=>k.name==='left_hip'||k.name==='23'), rHip = kps.find(k=>k.name==='right_hip'||k.name==='24');
@@ -1330,6 +1367,7 @@
         document.getElementById('dashboardOverlay').style.display = 'block';
     }
 
+    window.addEventListener('load', init); 
 </script>
 </body>
 </html>
