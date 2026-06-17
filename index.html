@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Academic Master V73 (Loop Protection & Sync Fixed)</title>
+    <title>CONNECT AI - Academic Master V74 (Clinical Dashboard Edition)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -91,14 +91,45 @@
         #closeHistoryBtn { background: transparent; border: none; color: #aaa; font-size: 20px; cursor: pointer; padding: 0; }
         #closeHistoryBtn:hover { color: white; }
 
-        @media print { body { background: white; color: black; overflow: visible; } #uiFloatingLayer, #tiltPanel, #dpadPanel, #historyPanel { display: none !important; } .view-port { position: static; width: 100%; height: auto; display: block; } }
+        /* 🌟 V74: ダッシュボードレポートUIスタイル */
+        #dashboardOverlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; background: rgba(5,5,5,0.98); z-index: 3000; display: none; overflow-y: auto; padding: 40px; box-sizing: border-box; backdrop-filter: blur(10px); }
+        .dash-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #00bfff; padding-bottom: 20px; margin-bottom: 30px; }
+        .dash-title { color: #00bfff; font-size: 32px; font-weight: bold; margin: 0; display: flex; align-items: center; gap: 10px; }
+        .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 25px; max-width: 1400px; margin: 0 auto; }
+        .dash-card { background: #111; border: 1px solid #333; border-radius: 16px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .dash-card h3 { color: #deff9a; margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 15px; font-size: 18px; margin-bottom: 20px; }
+        .dash-metric { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 15px; background: rgba(255,255,255,0.03); padding: 10px 15px; border-radius: 8px; }
+        .dash-metric span:first-child { color: #aaa; }
+        .dash-metric .val { font-weight: bold; color: #fff; font-size: 16px; }
+        .dash-metric .val.warn { color: #ff5252; }
+        .dash-metric .val.good { color: #39ff14; }
+        .dash-close, .dash-print { background: #333; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px; transition: 0.2s; }
+        .dash-print { background: #ff9100; color: #000; margin-right: 10px; }
+        .dash-close:hover { background: #555; }
+        .dash-print:hover { filter: brightness(1.1); }
+        
+        @media print {
+            body { background: white; color: black; overflow: visible; }
+            #uiFloatingLayer, #tiltPanel, #dpadPanel, #historyPanel, .view-port { display: none !important; }
+            #dashboardOverlay { display: block !important; position: static; background: white; color: black; overflow: visible; padding: 0; }
+            .dash-card { background: #fff; border: 1px solid #ddd; box-shadow: none; break-inside: avoid; }
+            .dash-card h3 { color: #000; border-bottom: 2px solid #000; }
+            .dash-metric { background: #f9f9f9; border: 1px solid #eee; }
+            .dash-metric span:first-child { color: #333; }
+            .dash-metric .val { color: #000; }
+            .dash-metric .val.warn { color: #d32f2f; }
+            .dash-metric .val.good { color: #2e7d32; }
+            .dash-title { color: #000; border-bottom: none; }
+            .dash-header { border-bottom: 3px solid #000; }
+            .dash-close, .dash-print { display: none; }
+        }
     </style>
 </head>
 <body>
 
 <div class="view-port">
     <canvas id="canvasMP"></canvas>
-    <div class="label">CONNECT AI - V73 Academic Master</div>
+    <div class="label">CONNECT AI - V74 Academic Dashboard</div>
     <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     
@@ -132,6 +163,21 @@
         <button id="closeHistoryBtn">✖</button>
     </div>
     <div class="history-list" id="historyListContainer"></div>
+</div>
+
+<!-- 🌟 V74: ダッシュボード・オーバーレイ -->
+<div id="dashboardOverlay">
+    <div class="dash-header">
+        <div>
+            <h2 class="dash-title">📊 統合バイオメカニクス評価レポート</h2>
+            <div style="color:#aaa; font-size: 14px; margin-top:5px;">CONNECT AI Posture & Movement Analytics</div>
+        </div>
+        <div>
+            <button class="dash-print" onclick="window.print()">📄 PDF保存・印刷</button>
+            <button class="dash-close" onclick="document.getElementById('dashboardOverlay').style.display='none'">✖ 閉じる</button>
+        </div>
+    </div>
+    <div class="dash-grid" id="dashGrid"></div>
 </div>
 
 <div id="uiFloatingLayer">
@@ -183,6 +229,7 @@
             <button id="editFrameBtn">✂️ 微調整</button>
             <button id="exportVideoBtn" style="margin-left:auto;">🎥 動画出力</button>
             <button id="downloadCsvBtn" disabled>📊 CSV</button>
+            <!-- 🌟 V74: 統合レポート呼び出しボタン -->
             <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 レポート</button>
         </div>
     </div>
@@ -263,43 +310,6 @@
 
     const MODE_NAMES = { 'front': '🧍 前面', 'back': '🧍 後面', 'l_side': '🧍 左側面', 'r_side': '🧍 右側面', 'dyn_overhead': '🏋️ OHS [前面]', 'dyn_overhead_side': '🏋️ OHS [側面]', 'dyn_single_r': '🦵 片脚 [右]', 'dyn_single_l': '🦵 片脚 [左]', 'dyn_flex_fwd': '🙇 立位前屈', 'dyn_flex_bwd': '🤸 立位後屈', 'dyn_shoulder_r': '👐 肩複合 [右上]', 'dyn_shoulder_l': '👐 肩複合 [左上]' };
 
-    const video = document.getElementById('video'); 
-    const canvasMP = document.getElementById('canvasMP'), ctxMP = canvasMP.getContext('2d');
-    const canvasComb = document.getElementById('canvasCombined'), ctxComb = canvasComb.getContext('2d');
-    const radarWrapperMP = document.getElementById('radarWrapperMP'), canvasRadarMP = document.getElementById('canvasRadarMP'), ctxRadarMP = canvasRadarMP.getContext('2d');
-    const startBtn = document.getElementById('startBtn'), recBtn = document.getElementById('recBtn'), durationSelect = document.getElementById('durationSelect'), timerDisplay = document.getElementById('timerDisplay'), downloadCsvBtn = document.getElementById('downloadCsvBtn'), showSwayAlertCheckbox = document.getElementById('showSwayAlert'), videoSource = document.getElementById('videoSource');
-    const heightInput = document.getElementById('patientHeight'), footSizeInput = document.getElementById('footSize'), calibrateMatBtn = document.getElementById('calibrateMatBtn'), infoPanel = document.getElementById('infoPanel'), tiltPanel = document.getElementById('tiltPanel'), pelvicTiltSlider = document.getElementById('pelvicTiltSlider'), tiltValDisplay = document.getElementById('tiltValDisplay');
-    
-    const toggleUiBtn = document.getElementById('toggleUiBtn');
-    const controlsBox = document.getElementById('controlsBox');
-    
-    toggleUiBtn.onclick = function() {
-        if (controlsBox.style.display === 'none') { controlsBox.style.display = 'flex'; toggleUiBtn.innerText = '🔽 UIを隠す'; } 
-        else { controlsBox.style.display = 'none'; toggleUiBtn.innerText = '🔼 UIを表示'; }
-    };
-
-    let detectors = [], isRunning = false, isRecording = false, isPausedForEdit = false, currentTab = "front", currentStream = null, appMode = "camera", isPlaying = false;
-    let playbackDataMP = [], mainRenderId = null, recordingDuration = 10000, coordinateBufferMP = [], poseDataLog = [], playbackRafId = null;
-    let selectedJointIndex = null, dpadStepVal = 1, isEditingPlaybackFrame = false, swayHistoryMP = [];
-    let activeRadarDrag = null, isRadarMovedManually = false, longPressTimer = null, initialTouch = null, dragTarget = null;
-    let pxToCmRatio = null, estimatedPelvicTilt = 0, calibState = "idle", calibrationPoints = [], staticBackgroundData = null; 
-
-    let exportRecorder = null;
-    let exportChunks = [];
-    let isExportingVideo = false;
-
-    // 🌟 V73: ループ増殖（ゾンビ化）防止用一意のセッションID
-    let renderSessionId = 0; 
-    let playbackStartTime = 0;
-    let playbackBaseTime = 0;
-    let playbackTotalDuration = 0;
-
-    window.currentAnchorPos = null; window.customOriginMarkers = {}; window.anchorStatus = "unlocked";
-    const DURATION_MAP = { 'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 'dyn_overhead': 15000, 'dyn_overhead_side': 15000, 'dyn_single_r': 15000, 'dyn_single_l': 15000, 'dyn_flex_fwd': 10000, 'dyn_flex_bwd': 10000, 'dyn_shoulder_r': 10000, 'dyn_shoulder_l': 10000 };
-    window.reportDataStore = {};
-    Object.keys(DURATION_MAP).forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
-
-    // History Functions
     async function refreshHistoryList() {
         historyListContainer.innerHTML = '<div style="color:#aaa; text-align:center; margin-top:20px;">読込中...</div>';
         try {
@@ -424,8 +434,7 @@
         let totalComX = (upperComX * 0.6) + (lowerComX * 0.4);
 
         let calcRatio = (comX) => {
-            let ratio = (comX - lAnkle.x) / dPx;
-            let pctR = ratio * 100, pctL = 100 - pctR;
+            let pctR = ((comX - lAnkle.x) / dPx) * 100, pctL = 100 - pctR;
             if(pctR < 0) { pctR = 0; pctL = 100; } if(pctR > 100) { pctR = 100; pctL = 0; }
             return { L: pctL, R: pctR };
         };
@@ -723,7 +732,7 @@
         if (clientX === undefined) return null;
         const videoRatio = canvas.width / canvas.height, containerRatio = rect.width / rect.height; let renderWidth, renderHeight, offsetX, offsetY;
         if (containerRatio > videoRatio) { renderHeight = rect.height; renderWidth = rect.height * videoRatio; offsetX = (rect.width - renderWidth) / 2; offsetY = 0; } else { renderWidth = rect.width; renderHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - renderHeight) / 2; }
-        const scaleX = canvas.width / renderWidth, scaleY = canvas.height / renderHeight; return { x: (clientX - rect.left - offsetX) * scaleX, y: (clientY - top - offsetY) * scaleY, renderScale: scaleX }; // typo fix rect.top
+        const scaleX = canvas.width / renderWidth, scaleY = canvas.height / renderHeight; return { x: (clientX - rect.left - offsetX) * scaleX, y: (clientY - rect.top - offsetY) * scaleY, renderScale: scaleX };
     }
 
     // UI Interactions
@@ -858,6 +867,20 @@
         }
 
         if (currentTab.startsWith("dyn_")) { 
+            // 🌟 V74: 動的評価の場合、最深部（最も股関節が下がったフレーム）をレポート用に抽出
+            let deepestKp = null;
+            let maxY = 0;
+            poseDataLog.forEach(d => {
+                if(d.mode === currentTab) {
+                    let hip = d.keypoints[23] || d.keypoints[24];
+                    if(hip && hip.y > maxY) {
+                        maxY = hip.y;
+                        deepestKp = d.keypoints;
+                    }
+                }
+            });
+            if(deepestKp) window.reportDataStore[currentTab] = JSON.parse(JSON.stringify(deepestKp));
+
             enterPlaybackMode(); 
         } 
         else {
@@ -1080,7 +1103,177 @@
         mainRenderId = requestAnimationFrame(() => render(sessionId)); 
     }
     
-    function prepareAndPrintReport() { window.print(); }
+    // 🌟 V74: ダッシュボード生成用ヘルパー関数
+    function getWeightBearingData(kps) {
+        let lAnkle = kps[27], rAnkle = kps[28]; if (!lAnkle || !rAnkle || lAnkle.score < 0.3 || rAnkle.score < 0.3) return null;
+        let nose = kps[0], lSh = kps[11], rSh = kps[12], lHip = kps[23], rHip = kps[24];
+        if (!nose || !lSh || !rSh || !lHip || !rHip) return null;
+        let dPx = rAnkle.x - lAnkle.x; if (Math.abs(dPx) < 10) return null;
+
+        let upperComX = (nose.x * 0.20) + (((lSh.x + rSh.x) / 2) * 0.80);
+        let lowerComX = (lHip.x + rHip.x) / 2;
+        let totalComX = (upperComX * 0.6) + (lowerComX * 0.4);
+
+        let calcRatio = (comX) => {
+            let pctR = ((comX - lAnkle.x) / dPx) * 100, pctL = 100 - pctR;
+            if(pctR < 0) { pctR = 0; pctL = 100; } if(pctR > 100) { pctR = 100; pctL = 0; }
+            return { L: pctL, R: pctR };
+        };
+        return { upper: calcRatio(upperComX), lower: calcRatio(lowerComX), total: calcRatio(totalComX) };
+    }
+
+    function getPelvicDiff(kps) {
+        let asisL = kps.find(k=>k.name==='virtual_asis_l'), asisR = kps.find(k=>k.name==='virtual_asis_r');
+        if(asisL && asisR && pxToCmRatio) return Math.abs(asisL.y - asisR.y) * pxToCmRatio;
+        return null;
+    }
+
+    function getKendallStressData(kps, isLeft) {
+        let dir = isLeft ? -1 : 1;
+        let ear = isLeft ? kps[7] : kps[8], sh = isLeft ? kps[11] : kps[12], hip = isLeft ? kps[23] : kps[24], ankle = isLeft ? kps[27] : kps[28];
+        let targetAnkle = ankle && ankle.score > 0.1 ? ankle : null;
+        if (!targetAnkle) { let heel = isLeft ? kps[29] : kps[30]; if (heel && heel.score > 0.1) targetAnkle = heel; }
+        if (!ear || !sh || !hip || !targetAnkle) return null;
+
+        let ratio = pxToCmRatio || 0.15, footCm = parseFloat(footSizeInput.value) || 25;
+        let plumbX = targetAnkle.x + (dir * ((footCm * 0.15) / ratio));
+
+        let c2 = { x: ear.x - (dir * (1.0 / ratio)), name: "C2 (頸椎)", d0: 1.5 };
+        let th3 = { x: sh.x, name: "Th3 (胸椎)", d0: 1.0 };
+        let tiltRad = estimatedPelvicTilt * (Math.PI / 180);
+        let s2X = hip.x - (dir * ((3.0/ratio) * Math.cos(tiltRad) - (2.0/ratio) * Math.sin(tiltRad)));
+        let s2 = { x: s2X, name: "S2 (仙骨)", d0: 1.0 };
+        let l3X = s2.x + (dir * ((3.0 + (estimatedPelvicTilt * 0.1)) / ratio));
+        let l3 = { x: l3X, name: "L3 (腰椎)", d0: 2.0 };
+        let straightTh11X = l3.x + (th3.x - l3.x) * ((l3.y - (s2.y - ((s2.y - sh.y) * 0.6))) / (l3.y - th3.y));
+        let th11X = straightTh11X - (dir * ((1.5 + (estimatedPelvicTilt * 0.05)) / ratio));
+        let th11 = { x: th11X, name: "Th11 (胸腰)", d0: 1.0 };
+
+        return [c2, th3, th11, l3, s2].map(pt => {
+            let devCm = (pt.x - plumbX) * ratio * dir;
+            let stressPct = ((pt.d0 + Math.max(0, devCm)) / pt.d0) * 100;
+            if (devCm < -pt.d0) stressPct = Math.abs((pt.d0 + devCm)/pt.d0) * 100;
+            return { name: pt.name, dev: devCm, pct: stressPct };
+        });
+    }
+
+    function getOHSFrontData(kps) {
+        const evalSide = (hIdx, kIdx, aIdx, label) => {
+            let h=kps[hIdx], k=kps[kIdx], a=kps[aIdx]; if(!h||!k||!a) return null;
+            let refX = h.x + (a.x - h.x) * ((k.y - h.y) / (a.y - h.y));
+            let angle = Math.abs(180 - Math.abs(Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI);
+            if(angle > 2.0) {
+                let isIn = label==='R' ? k.x > refX : k.x < refX;
+                return { warn: isIn, text: (isIn?"ニーイン ":"ニーアウト ") + angle.toFixed(1)+"°" };
+            }
+            return { warn: false, text: "正常 (Straight)" };
+        };
+        return { r: evalSide(24,26,28,'R'), l: evalSide(23,25,27,'L') };
+    }
+
+    function getOHSSideData(kps) {
+        let lS = kps[11], lH = kps[23], lK = kps[25], lA = kps[27], lW = kps[15];
+        let rS = kps[12], rH = kps[24], rK = kps[26], rA = kps[28], rW = kps[16];
+        let isLeft = (lS && rS && lS.score > rS.score);
+        let s = isLeft?lS:rS, h = isLeft?lH:rH, k = isLeft?lK:rK, a = isLeft?lA:rA, w = isLeft?lW:rW;
+        if (!s || !h || !k || !a) return null;
+        let trunkLean = Math.abs(Math.atan2(s.x - h.x, h.y - s.y) * 180 / Math.PI);
+        let kneeAng = Math.abs((Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI);
+        if(kneeAng > 180) kneeAng = 360 - kneeAng;
+        let armAng = w ? Math.abs((Math.atan2(w.y-s.y, w.x-s.x) - Math.atan2(h.y-s.y, h.x-s.x)) * 180 / Math.PI) : null;
+        if(armAng && armAng > 180) armAng = 360 - armAng;
+        return { trunk: trunkLean, knee: kneeAng, arm: armAng };
+    }
+
+    // 🌟 V74: レポート・ダッシュボード表示機能
+    function prepareAndPrintReport() {
+        const dashGrid = document.getElementById('dashGrid');
+        let html = '';
+        
+        // 1. Static Frontal (Weight & Pelvis)
+        html += '<div class="dash-card"><h3>🧍 前額面アライメント (Frontal)</h3>';
+        let frontKps = window.reportDataStore['front'] || window.reportDataStore['back'];
+        if(frontKps) {
+             let wb = getWeightBearingData(frontKps);
+             let pDiff = getPelvicDiff(frontKps);
+             if(wb) {
+                 html += `<div class="dash-metric"><span>全身荷重配分 (左/右)</span> <span class="val ${Math.abs(wb.total.L-50)>5?'warn':'good'}">${wb.total.L.toFixed(1)}% / ${wb.total.R.toFixed(1)}%</span></div>`;
+                 html += `<div class="dash-metric"><span>上半身質量偏位 (左/右)</span> <span class="val">${wb.upper.L.toFixed(1)}% / ${wb.upper.R.toFixed(1)}%</span></div>`;
+                 html += `<div class="dash-metric"><span>下半身質量偏位 (左/右)</span> <span class="val">${wb.lower.L.toFixed(1)}% / ${wb.lower.R.toFixed(1)}%</span></div>`;
+             }
+             if(pDiff !== null) html += `<div class="dash-metric"><span>骨盤高低差</span> <span class="val ${pDiff>1.5?'warn':'good'}">${pDiff.toFixed(1)} cm</span></div>`;
+        } else {
+             html += '<p style="color:#aaa; text-align:center; padding: 20px 0;">未測定</p>';
+        }
+        html += '</div>';
+
+        // 2. Static Sagittal (Kendall)
+        html += '<div class="dash-card"><h3>🧍 矢状面アライメント (Sagittal)</h3>';
+        let sideKps = window.reportDataStore['l_side'] || window.reportDataStore['r_side'];
+        if(sideKps) {
+             let isLeft = !!window.reportDataStore['l_side'];
+             let stress = getKendallStressData(sideKps, isLeft);
+             if(stress) {
+                 stress.forEach(s => {
+                     html += `<div class="dash-metric"><span>${s.name}</span> <span class="val ${s.pct>150?'warn':'good'}">${s.dev > 0 ? '+':''}${s.dev.toFixed(1)}cm (${s.pct.toFixed(0)}% 負荷)</span></div>`;
+                 });
+             }
+        } else {
+             html += '<p style="color:#aaa; text-align:center; padding: 20px 0;">未測定</p>';
+        }
+        html += '</div>';
+
+        // 3. Dynamic OHS
+        html += '<div class="dash-card"><h3>🏋️ 動的機能: OHS (Dynamic)</h3>';
+        let ohsF = window.reportDataStore['dyn_overhead'];
+        let ohsS = window.reportDataStore['dyn_overhead_side'];
+        if(ohsF || ohsS) {
+            if(ohsF) {
+                let data = getOHSFrontData(ohsF);
+                if(data.r) html += `<div class="dash-metric"><span>右膝挙動</span> <span class="val ${data.r.warn?'warn':'good'}">${data.r.text}</span></div>`;
+                if(data.l) html += `<div class="dash-metric"><span>左膝挙動</span> <span class="val ${data.l.warn?'warn':'good'}">${data.l.text}</span></div>`;
+            } else {
+                html += `<div class="dash-metric"><span>前面 OHS</span> <span class="val">未測定</span></div>`;
+            }
+            if(ohsS) {
+                let data = getOHSSideData(ohsS);
+                if(data) {
+                    html += `<div class="dash-metric"><span>最大体幹前傾角</span> <span class="val ${data.trunk>45?'warn':'good'}">${data.trunk.toFixed(1)}°</span></div>`;
+                    html += `<div class="dash-metric"><span>最深膝屈曲角</span> <span class="val">${data.knee.toFixed(1)}°</span></div>`;
+                    if(data.arm) html += `<div class="dash-metric"><span>上腕アライメント</span> <span class="val ${data.arm<160?'warn':'good'}">${data.arm.toFixed(1)}°</span></div>`;
+                }
+            } else {
+                html += `<div class="dash-metric"><span>側面 OHS</span> <span class="val">未測定</span></div>`;
+            }
+        } else {
+            html += '<p style="color:#aaa; text-align:center; padding: 20px 0;">未測定</p>';
+        }
+        html += '</div>';
+
+        // 4. Other Functional Tests (Summary)
+        html += '<div class="dash-card"><h3>⚡ バランス＆可動性 (Mobility)</h3>';
+        const tests = [
+            { id: 'dyn_single_r', name: '片脚バランス (右)' },
+            { id: 'dyn_single_l', name: '片脚バランス (左)' },
+            { id: 'dyn_flex_fwd', name: '立位体前屈' },
+            { id: 'dyn_flex_bwd', name: '立位体後屈' },
+            { id: 'dyn_shoulder_r', name: '肩複合可動性 (右上)' },
+            { id: 'dyn_shoulder_l', name: '肩複合可動性 (左上)' }
+        ];
+        let hasOther = false;
+        tests.forEach(t => {
+            if(window.reportDataStore[t.id]) {
+                hasOther = true;
+                html += `<div class="dash-metric"><span>${t.name}</span> <span class="val good">データ取得済 ✅</span></div>`;
+            }
+        });
+        if(!hasOther) html += '<p style="color:#aaa; text-align:center; padding: 20px 0;">未測定</p>';
+        html += '</div>';
+
+        dashGrid.innerHTML = html;
+        document.getElementById('dashboardOverlay').style.display = 'block';
+    }
+
 </script>
 </body>
 </html>
