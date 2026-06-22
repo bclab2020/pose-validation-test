@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Academic Master V82 (Camera & Freeze Fix)</title>
+    <title>CONNECT AI - Academic Master V82 (Ultimate Stable Edition)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -96,7 +96,7 @@
         #customModal { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; background: rgba(0,0,0,0.85); z-index: 9999; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
         .modal-box { background: #1a1c20; border: 2px solid #00bfff; border-radius: 16px; padding: 25px; width: 90%; max-width: 450px; box-shadow: 0 10px 30px rgba(0,191,255,0.2); }
         .modal-title { margin-top: 0; color: #00bfff; font-size: 20px; font-weight: bold; }
-        .modal-body { color: #daffde; font-size: 15px; line-height: 1.6; margin: 20px 0; white-space: pre-wrap; }
+        .modal-body { color: #daffde; font-size: 15px; line-height: 1.6; margin: 20px 0; white-space: pre-wrap; word-wrap: break-word; max-height: 50vh; overflow-y: auto;}
         .modal-footer { display: flex; justify-content: flex-end; gap: 12px; }
         .modal-btn { padding: 8px 20px; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.2s; border:none; }
         .modal-ok { background: #00bfff; color: #000; }
@@ -117,6 +117,7 @@
             .dash-close, .dash-print { display: none; }
             #aiEvalCard { grid-column: 1 / -1; margin-top: 20px; break-inside: avoid; }
             #aiEvalContent { background: #f0f8ff !important; color: #000 !important; border-left: 4px solid #1976d2 !important; }
+            #generateAiEvalBtn { display: none; }
         }
     </style>
 </head>
@@ -124,7 +125,7 @@
 
 <div class="view-port">
     <canvas id="canvasMP"></canvas>
-    <div class="label">CONNECT AI - V82 Academic Master (Fix)</div>
+    <div class="label">CONNECT AI - V82 Ultimate Stable</div>
     <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     <div id="radarWrapperMP" class="radar-wrapper">
@@ -170,7 +171,7 @@
     <div class="dash-grid" id="dashGrid"></div>
 </div>
 
-<!-- インラインカスタムモーダル -->
+<!-- 🌟 インラインカスタムモーダル -->
 <div id="customModal">
     <div class="modal-box">
         <h3 id="modalTitle" class="modal-title"></h3>
@@ -186,13 +187,13 @@
     <div class="ui-top-buttons">
         <button id="toggleUiBtn" class="ui-top-btn">🔽 UIを隠す</button>
         <button id="showHistoryBtn" class="ui-top-btn">📂 履歴を開く</button>
-        <button id="showDashboardBtn" class="ui-top-btn dash-top-btn" onclick="prepareAndPrintReport()">📊 ダッシュボード</button>
+        <button id="showDashboardBtn" class="ui-top-btn dash-top-btn" onclick="window.prepareAndPrintReport()">📊 ダッシュボード</button>
     </div>
     
     <div id="controlsBox">
         <div class="controls" id="mainControls">
             <select id="videoSource" style="background:#fff; color:#000; border-radius:4px; padding:4px;">
-                <!-- JavaScriptでカメラリストが挿入されます -->
+                <option value="">カメラ検索中...</option>
             </select>
             <select id="camOrientation" style="background:#fff; color:#000; border-radius:4px; padding:4px;">
                 <option value="portrait" selected>📱 縦長 (9:16)</option>
@@ -208,7 +209,7 @@
             
             <button id="calibrateMatBtn">📏 マット校正</button>
 
-            <select id="modeSelect" class="mode-dropdown" onchange="switchReportTab(this.value)">
+            <select id="modeSelect" class="mode-dropdown" onchange="window.switchReportTab(this.value)">
                 <optgroup label="■ 静止姿勢アライメント">
                     <option value="front">🧍 前面</option><option value="back">🧍 後面</option><option value="l_side">🧍 左側面</option><option value="r_side">🧍 右側面</option>
                 </optgroup>
@@ -234,7 +235,7 @@
             <span id="frameCounter" style="color:#00bfff; font-weight:bold;">0 / 0</span>
             <button id="editFrameBtn">✂️ 微調整</button>
             <button id="exportVideoBtn" style="margin-left:auto;">🎥 動画出力</button>
-            <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 レポート</button>
+            <button id="printReportBtn" onclick="window.prepareAndPrintReport()">📄 レポート</button>
         </div>
     </div>
 </div>
@@ -256,10 +257,11 @@
     var dbManager = {
         dbName: "ConnectAIDB", storeName: "sessions", db: null,
         init: function() {
-            return new Promise((resolve) => {
+            return new Promise((resolve, reject) => {
                 var req = indexedDB.open(this.dbName, 1);
                 req.onupgradeneeded = e => { if(!e.target.result.objectStoreNames.contains(this.storeName)) e.target.result.createObjectStore(this.storeName, { keyPath: "id" }); };
                 req.onsuccess = e => { this.db = e.target.result; resolve(); };
+                req.onerror = e => { reject(e.target.error); };
             });
         },
         saveSession: function(data) {
@@ -289,7 +291,8 @@
     var ctxRadarMP = document.getElementById('canvasRadarMP').getContext('2d');
     var startBtn = document.getElementById('startBtn'), recBtn = document.getElementById('recBtn');
     
-    var detectors = [], isRunning = false, isRecording = false, isPausedForEdit = false, currentTab = "dyn_gait_front", appMode = "camera", isPlaying = false;
+    // 🌟 V82: 修正ポイント（currentStream変数の追加）
+    var detectors = [], isRunning = false, isRecording = false, isPausedForEdit = false, currentTab = "dyn_gait_front", appMode = "camera", isPlaying = false, currentStream = null;
     var playbackDataMP = [], mainRenderId = null, recordingDuration = 10000, poseDataLog = [], playbackRafId = null;
     var pxToCmRatio = null, estimatedPelvicTilt = 0, calibState = "idle", calibrationPoints = [];
     var renderSessionId = 0, playbackStartTime = 0, playbackBaseTime = 0, playbackTotalDuration = 0;
@@ -321,7 +324,6 @@
     };
     document.getElementById('closeHistoryBtn').onclick = () => { document.getElementById('historyPanel').style.display = 'none'; };
 
-    // 🌟 カメラ切り替え時に自動再起動させる
     document.getElementById('videoSource').onchange = () => { if (isRunning && !isRecording && appMode === 'camera') startBtn.click(); };
     document.getElementById('camOrientation').onchange = () => { if (isRunning && !isRecording && appMode === 'camera') startBtn.click(); };
 
@@ -341,7 +343,6 @@
         document.getElementById('tiltValDisplay').innerText = estimatedPelvicTilt === 0 ? "0°" : (estimatedPelvicTilt > 0 ? "+" + estimatedPelvicTilt + "° (前傾)" : estimatedPelvicTilt + "° (後傾)");
     };
 
-    // 🌟 ASIS補正ポイントの生成関数（復強版）
     function generateVirtualASIS(kps) {
         if(!kps) return kps;
         var height = parseFloat(document.getElementById('patientHeight').value) || 170;
@@ -469,21 +470,117 @@
         ctx.restore();
     }
 
-    function calculateWeightBearing(ctx, kps) {
-        if (currentTab.includes('side') || currentTab === 'dyn_gait_front') return;
-        var getK = name => kps.find(k => k.name === name);
-        let lAnkle = getK('left_ankle'), rAnkle = getK('right_ankle'); 
-        if (!lAnkle || !rAnkle || lAnkle.score < 0.3 || rAnkle.score < 0.3) return;
-        let nose = getK('nose'), lSh = getK('left_shoulder'), rSh = getK('right_shoulder'), lHip = getK('left_hip'), rHip = getK('right_hip');
-        let dPx = rAnkle.x - lAnkle.x; if (Math.abs(dPx) < 10) return;
-        
-        let totalComX = (nose.x * 0.1) + (((lSh.x + rSh.x)/2)*0.5) + (((lHip.x + rHip.x)/2)*0.4);
-        let pctR = ((totalComX - lAnkle.x) / dPx) * 100, pctL = 100 - pctR;
+    window.switchReportTab = function(val) { currentTab = val; gaitAngleHistory = []; gaitFrontHistory = []; }
 
-        ctx.save(); ctx.font = "bold 14px sans-serif"; ctx.fillStyle = "rgba(0,0,0,0.75)"; ctx.fillRect(canvasMP.width/2 - 140, canvasMP.height - 210, 280, 40);
-        ctx.textAlign = "center"; ctx.fillStyle = "#39ff14";
-        ctx.fillText(`【全身荷重】 左: ${pctL.toFixed(1)}% | 右: ${pctR.toFixed(1)}%`, canvasMP.width/2, canvasMP.height - 185);
-        ctx.restore();
+    window.refreshHistoryList = async function() {
+        var sessions = await dbManager.getAllSessions(); historyListContainer.innerHTML = '';
+        sessions.forEach(s => {
+            var item = document.createElement('div'); item.className = 'history-item';
+            item.innerHTML = `<div onclick="window.loadSession('${s.id}')"><b>${MODE_NAMES[s.mode] || s.mode}</b><br><small>${new Date(s.timestamp).toLocaleString()}</small></div><button class="history-action-btn del" onclick="event.stopPropagation(); window.deleteSession('${s.id}')">削除</button>`;
+            historyListContainer.appendChild(item);
+        });
+    };
+    
+    window.deleteSession = async function(id) { customConfirm("削除の確認", "データを削除しますか？", async () => { await dbManager.deleteSession(id); window.refreshHistoryList(); }); };
+    window.loadSession = async function(id) {
+        var sessions = await dbManager.getAllSessions(); var s = sessions.find(x=>x.id===id);
+        if(s) { poseDataLog = s.poseData; currentTab = s.mode; document.getElementById('modeSelect').value = s.mode; document.getElementById('historyPanel').style.display='none'; enterPlaybackMode(); }
+    };
+
+    // 🌟 V82: カメラ初期化のエラーキャッチ
+    async function init() {
+        try {
+            await dbManager.init();
+        } catch(e) {
+            console.error("DB Init Error:", e);
+        }
+
+        try {
+            var devices = await navigator.mediaDevices.enumerateDevices();
+            var vs = document.getElementById('videoSource');
+            vs.innerHTML = ''; 
+            var hasCam = false;
+            devices.forEach(d => { 
+                if(d.kind==='videoinput') {
+                    vs.appendChild(new Option(d.label || "カメラ", d.deviceId)); 
+                    hasCam = true;
+                } 
+            });
+            if(!hasCam) {
+                vs.innerHTML = '<option value="">カメラなし</option>';
+            }
+
+            await tf.setBackend('webgl'); 
+            await tf.ready();
+            detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
+            startBtn.innerText = "📷 システム起動"; 
+            startBtn.disabled = false;
+        } catch(e) { 
+            startBtn.innerText = "❌ 起動エラー"; 
+            customAlert("AI初期化エラー", "AIエンジンの準備中にエラーが発生しました。\n\n詳細: " + (e.message || e) + "\n\nネットワーク環境を確認し、ページをリロードしてください。");
+        }
+    }
+
+    // 🌟 V82: 究極のカメラ・フォールバック機構
+    startBtn.onclick = async function() {
+        renderSessionId++; var cur = renderSessionId;
+        var isPortrait = document.getElementById('camOrientation').value === 'portrait';
+        var vs = document.getElementById('videoSource').value;
+        
+        var constraints = { video: { width: { ideal: isPortrait ? 1080 : 1920 }, height: { ideal: isPortrait ? 1920 : 1080 } } };
+        if (vs) constraints.video.deviceId = { ideal: vs }; 
+
+        try {
+            if(currentStream) {
+                currentStream.getTracks().forEach(t=>t.stop());
+                video.pause();
+                video.srcObject = null;
+            }
+            var stream = await navigator.mediaDevices.getUserMedia(constraints);
+            startVideoStream(stream, cur);
+        } catch(e) {
+            console.warn("High-res camera request failed, trying fallback...", e);
+            try {
+                var fallbackConstraints = { video: true };
+                var streamFallback = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+                startVideoStream(streamFallback, cur);
+                customAlert("お知らせ", "指定された解像度でのカメラ起動に失敗したため、標準画質で起動しました。");
+            } catch(fallbackErr) {
+                customAlert("カメラ起動エラー", `カメラにアクセスできませんでした。\n\n【1回目のエラー】\n${e.message}\n\n【フォールバックエラー】\n${fallbackErr.message}\n\n・他のアプリ(Zoom等)がカメラを使用していないか確認してください。\n・ブラウザのカメラ許可設定を確認してください。`);
+            }
+        }
+    };
+
+    function startVideoStream(stream, cur) {
+        video.srcObject = stream; 
+        currentStream = stream;
+        video.onloadeddata = function() {
+            canvasMP.width = video.videoWidth; 
+            canvasMP.height = video.videoHeight;
+            canvasComb.width = video.videoWidth; 
+            canvasComb.height = video.videoHeight;
+            isRunning = true; 
+            video.play(); 
+            render(cur); 
+            recBtn.disabled = false;
+            video.onloadeddata = null; 
+        };
+    }
+
+    async function render(sid) {
+        if (sid !== renderSessionId || !isRunning || appMode === "playback") return;
+        ctxMP.drawImage(video, 0, 0, canvasMP.width, canvasMP.height);
+        var poses = await detectors[0].estimatePoses(video);
+        if (poses.length > 0) {
+            var kps = generateVirtualASIS(poses[0].keypoints); 
+            window.reportDataStore[currentTab] = kps;
+            if (isRecording) poseDataLog.push({ time: Date.now(), mode: currentTab, keypoints: kps });
+            drawSkeleton(ctxMP, kps, "#ff5252");
+            drawGaitSideAnalysis(ctxMP, kps);
+            drawGaitFrontAnalysis(ctxMP, kps);
+        }
+        ctxComb.drawImage(canvasMP, 0, 0, canvasMP.width, canvasMP.height);
+        requestAnimationFrame(() => render(sid));
     }
 
     recBtn.onclick = function() {
@@ -526,109 +623,11 @@
         drawSkeleton(ctxMP, kps, "#ffffff");
         drawGaitSideAnalysis(ctxMP, kps);
         drawGaitFrontAnalysis(ctxMP, kps);
-        calculateWeightBearing(ctxMP, kps);
         ctxComb.drawImage(canvasMP, 0,0,canvasMP.width,canvasMP.height);
         document.getElementById('frameCounter').innerText = `${idx} / ${playbackDataMP.length - 1}`;
     }
 
-    function switchReportTab(val) { currentTab = val; gaitAngleHistory = []; gaitFrontHistory = []; }
-
-    window.refreshHistoryList = async function() {
-        var sessions = await dbManager.getAllSessions(); historyListContainer.innerHTML = '';
-        sessions.forEach(s => {
-            var item = document.createElement('div'); item.className = 'history-item';
-            item.innerHTML = `<div onclick="window.loadSession('${s.id}')"><b>${MODE_NAMES[s.mode] || s.mode}</b><br><small>${new Date(s.timestamp).toLocaleString()}</small></div><button class="history-action-btn del" onclick="event.stopPropagation(); window.deleteSession('${s.id}')">削除</button>`;
-            historyListContainer.appendChild(item);
-        });
-    };
-    
-    window.deleteSession = async function(id) { customConfirm("削除の確認", "データを削除しますか？", async () => { await dbManager.deleteSession(id); window.refreshHistoryList(); }); };
-    window.loadSession = async function(id) {
-        var sessions = await dbManager.getAllSessions(); var s = sessions.find(x=>x.id===id);
-        if(s) { poseDataLog = s.poseData; currentTab = s.mode; document.getElementById('modeSelect').value = s.mode; document.getElementById('historyPanel').style.display='none'; enterPlaybackMode(); }
-    };
-
-    // 🌟 V82: カメラ初期化のバグ修正
-    async function init() {
-        await dbManager.init();
-        try {
-            var devices = await navigator.mediaDevices.enumerateDevices();
-            var vs = document.getElementById('videoSource');
-            vs.innerHTML = ''; // 「カメラ検索中...」を消去
-            var hasCam = false;
-            devices.forEach(d => { 
-                if(d.kind==='videoinput') {
-                    vs.appendChild(new Option(d.label || "カメラ", d.deviceId)); 
-                    hasCam = true;
-                } 
-            });
-            if(!hasCam) vs.innerHTML = '<option value="">カメラなし</option>';
-
-            await tf.setBackend('webgl'); await tf.ready();
-            detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
-            startBtn.innerText = "📷 システム起動"; startBtn.disabled = false;
-        } catch(e) { startBtn.innerText = "❌ 起動エラー"; }
-    }
-
-    // 🌟 V82: カメラ再起動・フリーズ回避のフォールバック機構
-    startBtn.onclick = async function() {
-        renderSessionId++; var cur = renderSessionId;
-        var isPortrait = document.getElementById('camOrientation').value === 'portrait';
-        var vs = document.getElementById('videoSource').value;
-        
-        var constraints = { video: { width: { ideal: isPortrait ? 1080 : 1920 }, height: { ideal: isPortrait ? 1920 : 1080 } } };
-        if (vs) constraints.video.deviceId = { ideal: vs };
-
-        try {
-            // 🌟 既存のストリームを完全に停止し、video要素をリセット
-            if(currentStream) {
-                currentStream.getTracks().forEach(t=>t.stop());
-                video.pause();
-                video.srcObject = null;
-            }
-            var stream = await navigator.mediaDevices.getUserMedia(constraints);
-            startVideoStream(stream, cur);
-        } catch(e) {
-            console.warn("High-res camera request failed, trying fallback...", e);
-            try {
-                // 安全網：解像度指定を外して再試行
-                var fallbackConstraints = { video: true };
-                if (vs) fallbackConstraints.video = { deviceId: { ideal: vs } };
-                var streamFallback = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
-                startVideoStream(streamFallback, cur);
-            } catch(fallbackErr) {
-                customAlert("カメラ起動エラー", `カメラにアクセスできませんでした。\n\n詳細: ${fallbackErr.message}\n\n・他のアプリ(Zoom等)がカメラを使用していないか確認してください。\n・ブラウザのカメラ許可設定を確認してください。`);
-            }
-        }
-    };
-
-    function startVideoStream(stream, cur) {
-        video.srcObject = stream; currentStream = stream;
-        video.onloadeddata = function() {
-            canvasMP.width = video.videoWidth; canvasMP.height = video.videoHeight;
-            canvasComb.width = video.videoWidth; canvasComb.height = video.videoHeight;
-            isRunning = true; video.play(); render(cur); recBtn.disabled = false;
-            video.onloadeddata = null; // 重複実行防止
-        };
-    }
-
-    async function render(sid) {
-        if (sid !== renderSessionId || !isRunning || appMode === "playback") return;
-        ctxMP.drawImage(video, 0, 0, canvasMP.width, canvasMP.height);
-        var poses = await detectors[0].estimatePoses(video);
-        if (poses.length > 0) {
-            var kps = generateVirtualASIS(poses[0].keypoints); // 🌟 V82復旧
-            window.reportDataStore[currentTab] = kps;
-            if (isRecording) poseDataLog.push({ time: Date.now(), mode: currentTab, keypoints: kps });
-            drawSkeleton(ctxMP, kps, "#ff5252");
-            drawGaitSideAnalysis(ctxMP, kps);
-            drawGaitFrontAnalysis(ctxMP, kps);
-            calculateWeightBearing(ctxMP, kps);
-        }
-        ctxComb.drawImage(canvasMP, 0, 0, canvasMP.width, canvasMP.height);
-        requestAnimationFrame(() => render(sid));
-    }
-
+    // 🌟 ダッシュボード＆LLM評価
     window.prepareAndPrintReport = function() {
         var grid = document.getElementById('dashGrid'); var html = '';
         html += '<div class="dash-card"><h3>🚶 歩行分析 (Frontal/Sagittal)</h3>';
@@ -644,34 +643,45 @@
         if(gaitFrontHistory.length===0 && gaitAngleHistory.length===0) html += '<p style="color:#aaa;">未計測</p>';
         html += '</div>';
 
+        // 🌟 V82: APIキーを画面上で入力できるUIに変更
         html += `<div class="dash-card" id="aiEvalCard" style="grid-column: 1 / -1;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 20px;">
                 <h3 style="margin:0; border:none; padding:0; color:#00bfff;">🧠 AI 臨床評価 (LLM Insight)</h3>
-                <button onclick="window.generateAiInsights()" style="background:#00bfff; color:#000; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-weight:bold;">評価を生成</button>
+                <div style="display:flex; gap:10px;">
+                    <input type="password" id="geminiApiKeyInput" placeholder="Gemini API Key" style="background:#222; color:#fff; border:1px solid #555; padding:6px; border-radius:4px; font-size:12px; width:200px;">
+                    <button onclick="window.generateAiInsights()" style="background:#00bfff; color:#000; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-weight:bold;">評価を生成</button>
+                </div>
             </div>
             <div id="aiEvalContent" style="color:#fff; line-height:1.6; font-size:15px; background:rgba(255,255,255,0.03); padding:20px; border-radius:8px; border-left:4px solid #00bfff;">
-                <span>右上の「評価を生成」ボタンを押してください。</span>
+                <span>APIキーを入力して「評価を生成」ボタンを押してください。</span>
             </div>
         </div>`;
         grid.innerHTML = html; document.getElementById('dashboardOverlay').style.display = 'block';
     }
 
     window.generateAiInsights = async function() {
-        const apiKey = ""; // ※ローカル実行時はここにGoogle AI StudioのAPIキーを入力
+        const apiKey = document.getElementById('geminiApiKeyInput').value.trim();
+        
+        if (!apiKey) {
+            document.getElementById('aiEvalContent').innerHTML = `<span style="color:#ff5252;">Google AI Studio で取得したAPIキーを入力欄に設定してください。</span>`;
+            return;
+        }
+
         document.getElementById('aiEvalContent').innerHTML = "<span style='color:#aaa;'>AIが分析中...</span>";
         let promptText = "【患者データ】\n";
         if(gaitFrontHistory.length > 0) promptText += `- トレンデレンブルグ徴候(骨盤傾斜): ${gaitFrontHistory[gaitFrontHistory.length-1].pelvicAngle.toFixed(1)}°\n- 体幹スウェイ: ${gaitFrontHistory[gaitFrontHistory.length-1].swayPct.toFixed(1)}%\n`;
-        
+        else promptText += "有意なデータがありません。\n";
+
         try {
             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }], systemInstruction: { parts: [{ text: "熟練したカイロプラクターとして、提供された数値から筋のアンバランスを150字で評価してください。" }] } })
             });
-            if(!res.ok) throw new Error("API_ERROR");
+            if(!res.ok) throw new Error(`HTTP Error: ${res.status}`);
             const data = await res.json();
             document.getElementById('aiEvalContent').innerHTML = data.candidates[0].content.parts[0].text.replace(/\n/g, '<br>');
         } catch(e) {
-            document.getElementById('aiEvalContent').innerHTML = `<span style="color:#ff5252;">評価の生成に失敗しました。APIキーが設定されているか確認してください。</span>`;
+            document.getElementById('aiEvalContent').innerHTML = `<span style="color:#ff5252;">評価の生成に失敗しました。APIキーが間違っているか、通信エラーです。(${e.message})</span>`;
         }
     };
 
