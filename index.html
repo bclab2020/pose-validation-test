@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Academic Master V79 (Gait Dynamics & Full Clinical Dashboard)</title>
+    <title>CONNECT AI - Academic Master V80 (Front Gait & Camera Fix)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -21,34 +21,26 @@
         #uiFloatingLayer { position: fixed; bottom: 15px; left: 50%; transform: translateX(-50%); width: 96%; max-width: 1200px; z-index: 100; display: flex; flex-direction: column; align-items: center; }
         
         .ui-top-buttons { display: flex; gap: 15px; margin-bottom: 10px; }
-        .ui-top-btn { background: rgba(0, 191, 255, 0.15); color: #00bfff; border: 1px solid #00bfff; border-radius: 20px; padding: 6px 20px; font-weight: bold; cursor: pointer; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); box-shadow: 0 4px 15px rgba(0,0,0,0.5); transition: 0.2s; pointer-events: auto; }
+        .ui-top-btn { background: rgba(0, 191, 255, 0.15); color: #00bfff; border: 1px solid #00bfff; border-radius: 20px; padding: 6px 20px; font-weight: bold; cursor: pointer; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); box-shadow: 0 4px 15px rgba(0,0,0,0.5); transition: 0.2s; }
         .ui-top-btn:hover { background: rgba(0, 191, 255, 0.3); }
         .dash-top-btn { background: rgba(255, 145, 0, 0.15); color: #ff9100; border: 1px solid #ff9100; }
         .dash-top-btn:hover { background: rgba(255, 145, 0, 0.3); }
 
         #controlsBox { width: 100%; display: flex; flex-direction: column; gap: 10px; }
-
-        .controls { background: rgba(20, 22, 26, 0.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 15px; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.8); box-sizing: border-box; align-items: center; }
-        
+        .controls { background: rgba(20, 22, 26, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 15px; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.8); box-sizing: border-box; }
         button, select, input { padding: 8px 12px; font-size: 14px; cursor: pointer; border-radius: 6px; border: none; font-weight: bold; transition: 0.2s; outline: none; }
-        .mode-dropdown { background: #333; color: #deff9a; border: 1px solid #555; padding: 8px; font-size: 14px; }
+        .mode-dropdown { background: #333; color: #deff9a; border: 1px solid #555; }
         .mode-dropdown optgroup { color: #aaa; background: #222; }
-        #durationSelect { background: #1976d2; color: #fff; border: 1px solid #0d47a1; }
+        
         #startBtn { background: #1976d2; color: white; }
         #startBtn:disabled { background: #555; cursor: not-allowed; }
         #recBtn { background: #d32f2f; color: white; min-width: 150px; font-size: 15px; box-shadow: 0 0 10px rgba(211,47,47,0.5); }
-        #downloadCsvBtn { background: #2e7d32; color: white; }
-        #printReportBtn { background: #ff9100; color: #000; box-shadow: 0 0 10px rgba(255,145,0,0.3); }
-        
-        .toggle-label { color: #00bfff; font-size: 13px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.5); padding: 6px 10px; border-radius: 6px; border: 1px solid #00bfff; }
-        .input-group { display: flex; align-items: center; gap: 5px; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 6px; border: 1px solid #555; }
-        .input-group input[type="number"] { width: 55px; background: transparent; color: #00bfff; text-align: right; border: none; font-weight: bold; border-bottom: 1px solid #444; border-radius: 0; padding: 2px; }
-        
         #calibrateMatBtn { background: #673ab7; color: white; }
-        #calibrateMatBtn.active { background: #ffeb3b; color: black; box-shadow: 0 0 15px rgba(255,235,59,0.8); animation: pulse 1s infinite; }
+        #calibrateMatBtn.active { background: #ffeb3b; color: black; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
         .info-panel { position: absolute; top: 55px; left: 15px; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 4px; color: #fff; font-size: 12px; z-index: 10; border-left: 3px solid #673ab7; pointer-events: none; }
-        #tiltPanel { display: none; position: absolute; top: 120px; left: 15px; background: rgba(15,15,15,0.9); border: 2px solid #ff9100; border-radius: 12px; padding: 15px; z-index: 500; box-shadow: 0 5px 20px rgba(255,145,0,0.3); }
+        #tiltPanel { display: none; position: absolute; top: 120px; left: 15px; background: rgba(15,15,15,0.9); border: 2px solid #ff9100; border-radius: 12px; padding: 15px; z-index: 500; }
         .tilt-header { color: #ff9100; font-size: 14px; font-weight: bold; margin-bottom: 10px; text-align: center; }
         .tilt-slider { width: 200px; cursor: pointer; }
         .tilt-val { display: block; text-align: center; color: white; font-size: 16px; font-weight: bold; margin-top: 5px; }
@@ -58,53 +50,59 @@
         #backToCamBtn { background: #555; color: white; }
         #editFrameBtn { background: #ff9100; color: #000; font-weight: bold; }
         #exportVideoBtn { background: #1976d2; color: white; }
-        #exportVideoBtn:disabled { background: #555; cursor: not-allowed; }
         
-        .label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 14px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; font-weight: bold; pointer-events: none; }
-        .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; display: none; z-index: 100; pointer-events: none; }
+        .label { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 4px; font-size: 14px; color: #deff9a; border: 1px solid #deff9a; z-index: 10; font-weight: bold; }
+        .timer-display { position: absolute; top: 15px; right: 15px; background: rgba(211, 47, 47, 0.9); color: white; padding: 8px 18px; font-size: 20px; font-weight: bold; border-radius: 6px; display: none; z-index: 100; }
         
-        .radar-wrapper { position: absolute; top: 60px; right: 15px; width: 150px; height: 150px; z-index: 200; touch-action: none; cursor: grab; transition: transform 0.2s, opacity 0.2s; }
-        .radar-wrapper.dragging { cursor: grabbing; transform: scale(1.1); opacity: 0.8; z-index: 999; box-shadow: 0 10px 25px rgba(0,0,0,0.8); border-radius: 50%; transition: none; }
+        .radar-wrapper { position: absolute; top: 60px; right: 15px; width: 150px; height: 150px; z-index: 200; touch-action: none; cursor: grab; }
+        .radar-wrapper.dragging { cursor: grabbing; transform: scale(1.1); opacity: 0.8; z-index: 999; border-radius: 50%; }
         .radar-box { width: 150px; height: 150px; background: rgba(0, 0, 0, 0.85); border-radius: 50%; box-shadow: 0 0 15px rgba(255,82,82,0.5); border: 2px solid #ff5252; pointer-events: none; }
-        .radar-title { position: absolute; top: -20px; left: 15px; font-size: 12px; background: rgba(0,0,0,0.8); padding: 3px 8px; border-radius: 4px; font-weight: bold; white-space: nowrap; pointer-events: none; color: #ff5252; border: 1px solid #ff5252; }
+        .radar-title { position: absolute; top: -20px; left: 15px; font-size: 12px; background: rgba(0,0,0,0.8); padding: 3px 8px; border-radius: 4px; font-weight: bold; color: #ff5252; border: 1px solid #ff5252; }
 
-        #dpadPanel { position: absolute; top: 30px; right: 30px; background: rgba(15, 15, 15, 0.95); border: 2px solid #00bfff; border-radius: 16px; padding: 15px 25px; z-index: 1000; display: none; flex-direction: column; align-items: center; box-shadow: 0 5px 20px rgba(0, 191, 255, 0.3); }
+        #dpadPanel { position: absolute; top: 30px; right: 30px; background: rgba(15, 15, 15, 0.95); border: 2px solid #00bfff; border-radius: 16px; padding: 15px 25px; z-index: 1000; display: none; flex-direction: column; align-items: center; }
         .dpad-header { color: #00bfff; font-size: 14px; font-weight: bold; margin-bottom: 12px; }
         .dpad-row { display: flex; justify-content: center; gap: 8px; margin: 4px 0; }
         .dpad-btn { width: 55px; height: 55px; border-radius: 12px; background: #2a2a2a; color: white; font-size: 24px; border: 1px solid #444; cursor: pointer; }
         .dpad-btn:active { background: #00bfff; color: black; }
-        .dpad-step-btn { font-size: 14px; background: #1976d2; border: none; font-weight: bold; }
-        .dpad-close { position: absolute; right: -10px; top: -10px; width: 32px; height: 32px; border-radius: 50%; background: #ff5252; color: white; border: none; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+        .dpad-close { position: absolute; right: -10px; top: -10px; width: 32px; height: 32px; border-radius: 50%; background: #ff5252; color: white; border: none; font-size: 14px; font-weight: bold; cursor: pointer; }
 
-        #dashboardOverlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; background: rgba(5,5,5,0.98); z-index: 3000; display: none; overflow-y: auto; padding: 40px; box-sizing: border-box; backdrop-filter: blur(10px); }
+        #historyPanel { position: absolute; top: 50px; right: 50px; background: rgba(20, 22, 26, 0.95); border: 2px solid #00bfff; border-radius: 16px; padding: 20px; z-index: 1500; display: none; flex-direction: column; width: 380px; max-height: 80vh; backdrop-filter: blur(10px); }
+        .history-header { color: #00bfff; font-size: 18px; font-weight: bold; margin-bottom: 15px; display: flex; justify-content: space-between; }
+        .history-list { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; flex-grow: 1; padding-right: 5px; }
+        .history-item { background: #2a2a2a; border-left: 4px solid #00bfff; padding: 10px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .history-mode { color: #fff; font-size: 14px; font-weight: bold; }
+        .history-actions { display: flex; gap: 5px; }
+        .history-action-btn { background: #444; color: white; border-radius: 4px; padding: 4px 8px; font-size: 12px; border: none; cursor: pointer; }
+        .history-action-btn.del { background: #d32f2f; }
+        .history-action-btn.vid { background: #1976d2; }
+        #closeHistoryBtn { background: transparent; border: none; color: #aaa; font-size: 20px; cursor: pointer; padding: 0; }
+
+        #dashboardOverlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; background: rgba(5,5,5,0.98); z-index: 3000; display: none; overflow-y: auto; padding: 40px; box-sizing: border-box; }
         .dash-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #00bfff; padding-bottom: 20px; margin-bottom: 30px; }
-        .dash-title { color: #00bfff; font-size: 32px; font-weight: bold; margin: 0; display: flex; align-items: center; gap: 10px; }
+        .dash-title { color: #00bfff; font-size: 32px; font-weight: bold; margin: 0; }
         .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 25px; max-width: 1400px; margin: 0 auto; }
-        .dash-card { background: #111; border: 1px solid #333; border-radius: 16px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .dash-card h3 { color: #deff9a; margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 15px; font-size: 18px; margin-bottom: 20px; }
-        .dash-metric { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 15px; background: rgba(255,255,255,0.03); padding: 10px 15px; border-radius: 8px; }
+        .dash-card { background: #111; border: 1px solid #333; border-radius: 16px; padding: 25px; }
+        .dash-card h3 { color: #deff9a; border-bottom: 1px solid #333; padding-bottom: 15px; font-size: 18px; margin-bottom: 20px; }
+        .dash-metric { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 15px; background: rgba(255,255,255,0.03); padding: 10px 15px; border-radius: 8px; }
         .dash-metric span:first-child { color: #aaa; }
-        .dash-metric .val { font-weight: bold; color: #fff; font-size: 16px; }
+        .dash-metric .val { font-weight: bold; color: #fff; }
         .dash-metric .val.warn { color: #ff5252; }
         .dash-metric .val.good { color: #39ff14; }
-        .dash-close, .dash-print { background: #333; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px; transition: 0.2s; }
+        .dash-close, .dash-print { background: #333; color: #fff; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px; border:none; }
         .dash-print { background: #ff9100; color: #000; margin-right: 10px; }
-        .dash-close:hover { background: #555; }
-        .dash-print:hover { filter: brightness(1.1); }
 
         @media print {
             body { background: white; color: black; overflow: visible; }
             #uiFloatingLayer, #tiltPanel, #dpadPanel, #historyPanel, .view-port { display: none !important; }
-            #dashboardOverlay { display: block !important; position: static; background: white; color: black; overflow: visible; padding: 0; }
-            .dash-card { background: #fff; border: 1px solid #ddd; box-shadow: none; break-inside: avoid; }
+            #dashboardOverlay { display: block !important; position: static; background: white; padding: 0; }
+            .dash-card { background: #fff; border: 1px solid #ddd; break-inside: avoid; }
             .dash-card h3 { color: #000; border-bottom: 2px solid #000; }
             .dash-metric { background: #f9f9f9; border: 1px solid #eee; }
             .dash-metric span:first-child { color: #333; }
             .dash-metric .val { color: #000; }
+            .dash-metric .val.warn { color: #d32f2f; }
+            .dash-metric .val.good { color: #2e7d32; }
             .dash-close, .dash-print { display: none; }
-            #aiEvalCard { grid-column: 1 / -1; margin-top: 20px; break-inside: avoid; }
-            #aiEvalContent { background: #f0f8ff !important; color: #000 !important; border-left: 4px solid #1976d2 !important; }
-            #generateAiEvalBtn { display: none; }
         }
     </style>
 </head>
@@ -112,10 +110,9 @@
 
 <div class="view-port">
     <canvas id="canvasMP"></canvas>
-    <div class="label">CONNECT AI - V79 Master Engine</div>
+    <div class="label">CONNECT AI - V80 Academic Master</div>
     <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
-    
     <div id="radarWrapperMP" class="radar-wrapper">
         <div class="radar-title">COP RADAR</div>
         <canvas id="canvasRadarMP" class="radar-box" width="150" height="150"></canvas>
@@ -134,17 +131,14 @@
     <div class="dpad-row"><button class="dpad-btn" id="dpadUp">▲</button></div>
     <div class="dpad-row">
         <button class="dpad-btn" id="dpadLeft">◀</button>
-        <button class="dpad-btn dpad-step-btn" id="dpadStep">1px</button>
+        <button class="dpad-btn" id="dpadStep" style="font-size:14px; background:#1976d2;">1px</button>
         <button class="dpad-btn" id="dpadRight">▶</button>
     </div>
     <div class="dpad-row"><button class="dpad-btn" id="dpadDown">▼</button></div>
 </div>
 
 <div id="historyPanel">
-    <div class="history-header">
-        📂 保存データ（履歴）
-        <button id="closeHistoryBtn">✖</button>
-    </div>
+    <div class="history-header">📂 保存データ（履歴） <button id="closeHistoryBtn">✖</button></div>
     <div class="history-list" id="historyListContainer"></div>
 </div>
 
@@ -171,27 +165,20 @@
     
     <div id="controlsBox">
         <div class="controls" id="mainControls">
-            <select id="videoSource" style="background:#fff; color:#000;"><option value="">カメラ検索中...</option></select>
-            
-            <select id="camOrientation" style="background:#fff; color:#000;">
-                <option value="portrait">📱 縦長 (9:16)</option>
-                <option value="landscape" selected>📺 横長 (16:9)</option>
+            <select id="videoSource" style="background:#fff; color:#000; border-radius:4px; padding:4px;"><option value="">カメラ検索中...</option></select>
+            <select id="camOrientation" style="background:#fff; color:#000; border-radius:4px; padding:4px;">
+                <option value="portrait" selected>📱 縦長 (9:16)</option>
+                <option value="landscape">📺 横長 (16:9)</option>
             </select>
 
             <button id="startBtn" disabled>⏳ 起動準備中...</button>
             
-            <div class="input-group">
+            <div style="display:flex; gap:5px; background:rgba(0,0,0,0.5); padding:4px 10px; border-radius:6px; border:1px solid #555;">
                 <span style="color:#aaa; font-size:12px;">身長</span>
-                <input type="number" id="patientHeight" value="170" min="100" max="220">
-                <span style="color:#aaa; font-size:12px;">cm</span>
-            </div>
-            <div class="input-group">
-                <span style="color:#aaa; font-size:12px;">足ｻｲｽﾞ</span>
-                <input type="number" id="footSize" value="25" min="15" max="40" step="0.5">
-                <span style="color:#aaa; font-size:12px;">cm</span>
+                <input type="number" id="patientHeight" value="170" style="width:40px; background:transparent; color:#00bfff; border:none; border-bottom:1px solid #444;">
             </div>
             
-            <button id="calibrateMatBtn">📏 マット校正(45cm)</button>
+            <button id="calibrateMatBtn">📏 マット校正</button>
 
             <select id="modeSelect" class="mode-dropdown" onchange="switchReportTab(this.value)">
                 <optgroup label="■ 静止姿勢アライメント">
@@ -199,7 +186,8 @@
                 </optgroup>
                 <optgroup label="■ 動的機能評価">
                     <option value="dyn_overhead">🏋️ OHS [前面]</option><option value="dyn_overhead_side">🏋️ OHS [側面]</option>
-                    <option value="dyn_gait_side" selected>🚶 歩行分析 [側面・矢状面]</option>
+                    <option value="dyn_gait_side">🚶 歩行分析 [側面]</option>
+                    <option value="dyn_gait_front" selected>🚶 歩行分析 [前面・足底]</option>
                 </optgroup>
             </select>
             
@@ -215,10 +203,9 @@
             <button id="backToCamBtn">🔙 再測定へ</button>
             <button id="playPauseBtn">▶ 再生</button>
             <input type="range" id="timelineSlider" min="0" max="100" value="0">
-            <span id="frameCounter" style="color:#00bfff; font-weight:bold; font-size:14px;">0 / 0</span>
+            <span id="frameCounter" style="color:#00bfff; font-weight:bold;">0 / 0</span>
             <button id="editFrameBtn">✂️ 微調整</button>
             <button id="exportVideoBtn" style="margin-left:auto;">🎥 動画出力</button>
-            <button id="downloadCsvBtn" disabled>📊 CSV</button>
             <button id="printReportBtn" onclick="prepareAndPrintReport()">📄 レポート</button>
         </div>
     </div>
@@ -228,25 +215,29 @@
 <video id="video" autoplay playsinline muted></video>
 
 <script>
-    // 1. データベース管理
+    var DURATION_MAP = { 
+        'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 
+        'dyn_overhead': 15000, 'dyn_overhead_side': 15000, 
+        'dyn_gait_side': 10000, 'dyn_gait_front': 10000 
+    };
+    var MODE_NAMES = { 'front': '🧍 前面', 'back': '🧍 後面', 'l_side': '🧍 左側面', 'r_side': '🧍 右側面', 'dyn_overhead': '🏋️ OHS [前面]', 'dyn_overhead_side': '🏋️ OHS [側面]', 'dyn_gait_side': '🚶 歩行分析 [側面]', 'dyn_gait_front': '🚶 歩行分析 [前面]' };
+
+    window.customOriginMarkers = {}; window.reportDataStore = {};
+    Object.keys(DURATION_MAP).forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
+
     var dbManager = {
         dbName: "ConnectAIDB", storeName: "sessions", db: null,
         init: function() {
-            return new Promise((resolve, reject) => {
-                var request = indexedDB.open(this.dbName, 1);
-                request.onupgradeneeded = function(e) {
-                    var db = e.target.result;
-                    if (!db.objectStoreNames.contains(dbManager.storeName)) db.createObjectStore(dbManager.storeName, { keyPath: "id" });
-                };
-                request.onsuccess = function(e) { dbManager.db = e.target.result; resolve(); };
-                request.onerror = function(e) { reject(e.target.errorCode); };
+            return new Promise((resolve) => {
+                var req = indexedDB.open(this.dbName, 1);
+                req.onupgradeneeded = e => { if(!e.target.result.objectStoreNames.contains(this.storeName)) e.target.result.createObjectStore(this.storeName, { keyPath: "id" }); };
+                req.onsuccess = e => { this.db = e.target.result; resolve(); };
             });
         },
         saveSession: function(data) {
             return new Promise((resolve) => {
                 var tx = this.db.transaction([this.storeName], "readwrite");
-                tx.objectStore(this.storeName).put(data);
-                tx.oncomplete = () => resolve();
+                tx.objectStore(this.storeName).put(data); tx.oncomplete = () => resolve();
             });
         },
         getAllSessions: function() {
@@ -254,7 +245,7 @@
                 if(!this.db) { resolve([]); return; }
                 var tx = this.db.transaction([this.storeName], "readonly");
                 var req = tx.objectStore(this.storeName).getAll();
-                req.onsuccess = (e) => resolve(e.target.result.sort((a,b)=>b.timestamp-a.timestamp));
+                req.onsuccess = e => resolve(e.target.result.sort((a,b)=>b.timestamp-a.timestamp));
             });
         },
         deleteSession: function(id) {
@@ -265,69 +256,108 @@
         }
     };
 
-    // 2. DOM Elements & Constants
-    var historyPanel = document.getElementById('historyPanel'), historyListContainer = document.getElementById('historyListContainer');
-    var showHistoryBtn = document.getElementById('showHistoryBtn'), closeHistoryBtn = document.getElementById('closeHistoryBtn');
     var video = document.getElementById('video'), canvasMP = document.getElementById('canvasMP'), ctxMP = canvasMP.getContext('2d');
     var canvasComb = document.getElementById('canvasCombined'), ctxComb = canvasComb.getContext('2d');
     var radarWrapperMP = document.getElementById('radarWrapperMP'), canvasRadarMP = document.getElementById('canvasRadarMP'), ctxRadarMP = canvasRadarMP.getContext('2d');
     var startBtn = document.getElementById('startBtn'), recBtn = document.getElementById('recBtn'), durationSelect = document.getElementById('durationSelect'), timerDisplay = document.getElementById('timerDisplay');
-    var camOrientation = document.getElementById('camOrientation'), heightInput = document.getElementById('patientHeight'), footSizeInput = document.getElementById('footSize'), calibrateMatBtn = document.getElementById('calibrateMatBtn'), infoPanel = document.getElementById('infoPanel');
-    var controlsBox = document.getElementById('controlsBox'), toggleUiBtn = document.getElementById('toggleUiBtn');
-    var MODE_NAMES = { 'front': '🧍 前面', 'back': '🧍 後面', 'l_side': '🧍 左側面', 'r_side': '🧍 右側面', 'dyn_overhead': '🏋️ OHS [前面]', 'dyn_overhead_side': '🏋️ OHS [側面]', 'dyn_gait_side': '🚶 歩行分析 [側面]' };
-
-    // 3. Global Variables
-    var detectors = [], isRunning = false, isRecording = false, isPausedForEdit = false, currentTab = "dyn_gait_side", appMode = "camera", isPlaying = false;
+    var videoSource = document.getElementById('videoSource'), camOrientation = document.getElementById('camOrientation'), heightInput = document.getElementById('patientHeight'), calibrateMatBtn = document.getElementById('calibrateMatBtn');
+    
+    var detectors = [], isRunning = false, isRecording = false, isPausedForEdit = false, currentTab = "dyn_gait_front", appMode = "camera", isPlaying = false;
     var playbackDataMP = [], mainRenderId = null, recordingDuration = 10000, coordinateBufferMP = [], poseDataLog = [], playbackRafId = null;
-    var selectedJointIndex = null, dpadStepVal = 1, isEditingPlaybackFrame = false, swayHistoryMP = [];
-    var activeRadarDrag = null, pxToCmRatio = null, estimatedPelvicTilt = 0, calibState = "idle", calibrationPoints = [], staticBackgroundData = null;
+    var pxToCmRatio = null, estimatedPelvicTilt = 0, calibState = "idle", calibrationPoints = [];
     var exportRecorder = null, exportChunks = [], isExportingVideo = false, renderSessionId = 0, playbackStartTime = 0, playbackBaseTime = 0, playbackTotalDuration = 0;
     
-    // 歩行測定用時系列バッファ
     var gaitAngleHistory = [];
+    var gaitFrontHistory = []; // 🌟 V80: 前面歩行用バッファ
 
-    window.currentAnchorPos = null; window.customOriginMarkers = {}; window.reportDataStore = {};
-    var DURATION_MAP = { 'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 'dyn_overhead': 15000, 'dyn_overhead_side': 15000, 'dyn_gait_side': 10000 };
-    Object.keys(DURATION_MAP).forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
+    document.getElementById('toggleUiBtn').onclick = () => { document.getElementById('controlsBox').style.display = document.getElementById('controlsBox').style.display === 'none' ? 'flex' : 'none'; };
+    document.getElementById('showHistoryBtn').onclick = async () => { 
+        var p = document.getElementById('historyPanel');
+        if(p.style.display === 'flex') p.style.display = 'none'; else { await window.refreshHistoryList(); p.style.display = 'flex'; }
+    };
+    document.getElementById('closeHistoryBtn').onclick = () => { document.getElementById('historyPanel').style.display = 'none'; };
 
-    // 4. UI Actions
-    showHistoryBtn.onclick = async function() { if(historyPanel.style.display === 'flex') historyPanel.style.display = 'none'; else { await window.refreshHistoryList(); historyPanel.style.display = 'flex'; } };
-    closeHistoryBtn.onclick = function() { historyPanel.style.display = 'none'; };
+    // 🌟 V80: カメラや解像度を変更した際に自動リスタートする機能
+    videoSource.onchange = function() { if (isRunning && !isRecording && appMode === 'camera') startBtn.click(); };
+    camOrientation.onchange = function() { if (isRunning && !isRecording && appMode === 'camera') startBtn.click(); };
 
-    // 5. Gait Analysis Core HUD Mapping
-    function drawGaitAnalysis(ctx, kps) {
+    calibrateMatBtn.onclick = function() {
+        if (calibState === "idle") { calibState = "wait_left"; calibrationPoints = []; calibrateMatBtn.classList.add('active'); calibrateMatBtn.innerText = "📍 左タップ"; } 
+        else if (calibState === "adjust_left") { calibState = "wait_right"; calibrateMatBtn.innerText = "📍 右タップ"; } 
+        else if (calibState === "adjust_right") {
+            var distPx = Math.hypot(calibrationPoints[1].x - calibrationPoints[0].x, calibrationPoints[1].y - calibrationPoints[0].y);
+            if(distPx > 10) pxToCmRatio = 45.0 / distPx; calibState = "idle"; calibrateMatBtn.classList.remove('active'); calibrateMatBtn.innerText = "✅ 校正完了";
+            setTimeout(() => { if(calibState==="idle") calibrateMatBtn.innerText = "📏 マット校正"; }, 2000);
+        } else { calibState = "idle"; calibrationPoints = []; calibrateMatBtn.classList.remove('active'); calibrateMatBtn.innerText = "📏 マット校正"; }
+    };
+
+    function drawGaitSideAnalysis(ctx, kps) {
         if (currentTab !== 'dyn_gait_side') return;
         let hip = kps[23], knee = kps[25], ankle = kps[27];
-        if (!hip || !knee || !ankle || hip.score < 0.2 || knee.score < 0.2 || ankle.score < 0.2) return;
+        if (!hip || !knee || !ankle || hip.score < 0.2 || knee.score < 0.2) return;
 
-        let calcAngle = (p1, p2, p3) => {
-            let a = Math.atan2(p3.y - p2.y, p3.x - p2.x) - Math.atan2(p1.y - p2.y, p1.x - p2.x);
-            let deg = Math.abs(a * 180 / Math.PI);
-            return deg > 180 ? 360 - deg : deg;
-        };
-
-        let kneeAngle = calcAngle(hip, knee, ankle);
+        let kneeAngle = Math.abs((Math.atan2(ankle.y - knee.y, ankle.x - knee.x) - Math.atan2(hip.y - knee.y, hip.x - knee.x)) * 180 / Math.PI);
+        if(kneeAngle > 180) kneeAngle = 360 - kneeAngle;
         let hipAngle = Math.abs(Math.atan2(knee.x - hip.x, knee.y - hip.y) * 180 / Math.PI);
 
-        if (!isExportingVideo) {
-            gaitAngleHistory.push({ knee: kneeAngle, hip: hipAngle });
-            if (gaitAngleHistory.length > 200) gaitAngleHistory.shift();
-        }
+        if (!isExportingVideo) { gaitAngleHistory.push({ knee: kneeAngle, hip: hipAngle }); if (gaitAngleHistory.length > 200) gaitAngleHistory.shift(); }
 
-        ctx.save();
-        ctx.font = "bold 16px sans-serif";
-        ctx.fillStyle = "rgba(0,0,0,0.7)";
-        ctx.fillRect(20, 80, 260, 95);
+        ctx.save(); ctx.font = "bold 16px sans-serif"; ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(20, 80, 260, 95);
         ctx.fillStyle = "#00bfff"; ctx.fillText(`膝関節角度: ${kneeAngle.toFixed(1)}°`, 35, 115);
         ctx.fillStyle = "#deff9a"; ctx.fillText(`大腿前傾角: ${hipAngle.toFixed(1)}°`, 35, 150);
 
         ctx.strokeStyle = "rgba(0, 191, 255, 0.5)"; ctx.lineWidth = 2.5; ctx.beginPath();
         for (let i = 0; i < gaitAngleHistory.length; i++) {
-            let gx = 30 + (i * 1.2);
-            let gy = 260 - (gaitAngleHistory[i].knee * 0.6);
+            let gx = 30 + (i * 1.2), gy = 260 - (gaitAngleHistory[i].knee * 0.6);
             if (i === 0) ctx.moveTo(gx, gy); else ctx.lineTo(gx, gy);
         }
         ctx.stroke(); ctx.restore();
+    }
+
+    // 🌟 V80: 前面歩行分析ロジック (トレンデレンブルグ＆スウェイ)
+    function drawGaitFrontAnalysis(ctx, kps) {
+        if (currentTab !== 'dyn_gait_front') return;
+        var lHip = kps[23], rHip = kps[24], nose = kps[0];
+        if (!lHip || !rHip || !nose || lHip.score < 0.2 || rHip.score < 0.2) return;
+
+        var pelvicAngle = Math.atan2(rHip.y - lHip.y, rHip.x - lHip.x) * 180 / Math.PI;
+        var pelvisMidX = (lHip.x + rHip.x) / 2;
+        var trunkShiftX = nose.x - pelvisMidX;
+        var stanceWidth = Math.abs(lHip.x - rHip.x);
+        var swayPct = stanceWidth > 0 ? (trunkShiftX / stanceWidth) * 100 : 0;
+
+        if (!isExportingVideo) {
+            gaitFrontHistory.push({ pelvicAngle: pelvicAngle, swayPct: swayPct });
+            if (gaitFrontHistory.length > 200) gaitFrontHistory.shift();
+        }
+
+        ctx.save();
+        ctx.font = "bold 16px sans-serif";
+        ctx.fillStyle = "rgba(0,0,0,0.7)";
+        ctx.fillRect(20, 80, 280, 95);
+        ctx.fillStyle = Math.abs(pelvicAngle) > 5 ? "#ff5252" : "#00bfff"; 
+        ctx.fillText(`骨盤傾斜 (Trendelenburg): ${pelvicAngle.toFixed(1)}°`, 35, 115);
+        ctx.fillStyle = Math.abs(swayPct) > 10 ? "#ff5252" : "#deff9a"; 
+        ctx.fillText(`体幹側方シフト (Sway): ${Math.abs(swayPct).toFixed(1)}%`, 35, 150);
+
+        ctx.strokeStyle = "rgba(222, 255, 154, 0.5)"; ctx.lineWidth = 2.5; ctx.beginPath();
+        for (var i = 0; i < gaitFrontHistory.length; i++) {
+            var gx = 30 + (i * 1.2);
+            var gy = 240 - (gaitFrontHistory[i].swayPct * 1.0); // Center=240
+            if (i === 0) ctx.moveTo(gx, gy); else ctx.lineTo(gx, gy);
+        }
+        ctx.stroke(); 
+        
+        ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 1; ctx.setLineDash([2,2]);
+        ctx.beginPath(); ctx.moveTo(30, 240); ctx.lineTo(270, 240); ctx.stroke(); ctx.setLineDash([]);
+        
+        ctx.strokeStyle = "#ff9100"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(lHip.x, lHip.y); ctx.lineTo(rHip.x, rHip.y); ctx.stroke();
+        
+        ctx.strokeStyle = "#deff9a"; ctx.lineWidth = 2; ctx.setLineDash([5,5]);
+        ctx.beginPath(); ctx.moveTo(nose.x, nose.y); ctx.lineTo(pelvisMidX, (lHip.y + rHip.y)/2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
     }
 
     function drawSkeleton(ctx, kps, color) {
@@ -335,11 +365,7 @@
         let pairs = [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]];
         
         if (currentTab === 'dyn_gait_side') {
-            pairs = [[11,23],[23,25],[25,27]];
-        } else if (currentTab === 'l_side') {
-            pairs = [[11,13],[13,15],[23,25],[25,27],[11,23]];
-        } else if (currentTab === 'r_side') {
-            pairs = [[12,14],[14,16],[24,26],[26,28],[12,24]];
+            pairs = [[11,23],[23,25],[25,27]]; // 片脚のみ
         }
 
         pairs.forEach(function([s,e]){
@@ -348,13 +374,10 @@
         });
         
         kps.forEach(function(k, i){
-            if(k && k.score > 0.1 && !k.name?.includes('virtual')){ 
-                ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(k.x, k.y, 4, 0, 2*Math.PI); ctx.fill(); 
-            }
+            if(k && k.score > 0.1){ ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(k.x, k.y, 4, 0, 2*Math.PI); ctx.fill(); }
         });
 
-        // 前面・OHS前面時の頭部アライメント
-        if (currentTab === 'front' || currentTab === 'dyn_overhead') {
+        if (currentTab === 'front' || currentTab === 'dyn_overhead' || currentTab === 'dyn_gait_front') {
             var earL = kps[7], earR = kps[8], nose = kps[0], shL = kps[11], shR = kps[12];
             if (earL && earR && earL.score > 0.1 && earR.score > 0.1) {
                 ctx.strokeStyle = "#deff9a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(earL.x, earL.y); ctx.lineTo(earR.x, earR.y); ctx.stroke();
@@ -372,7 +395,7 @@
     }
 
     function calculateWeightBearing(ctx, kps) {
-        if (currentTab.includes('side')) return;
+        if (currentTab.includes('side') || currentTab === 'dyn_gait_front') return; 
         let lAnkle = kps[27], rAnkle = kps[28]; if (!lAnkle || !rAnkle || lAnkle.score < 0.3 || rAnkle.score < 0.3) return;
         let nose = kps[0], lSh = kps[11], rSh = kps[12], lHip = kps[23], rHip = kps[24];
         let dPx = rAnkle.x - lAnkle.x; if (Math.abs(dPx) < 10) return;
@@ -386,36 +409,32 @@
     }
 
     function drawKendallAlignment(ctx, kps) {
-        if (currentTab !== 'l_side' && currentTab !== 'r_side') return;
-        let isLeft = currentTab === 'l_side', dir = isLeft ? -1 : 1;
+        if (!currentTab.includes('l_side') && !currentTab.includes('r_side')) return;
+        let isLeft = currentTab.includes('l_side'), dir = isLeft ? -1 : 1;
         let ear = kps[7], sh = isLeft ? kps[11] : kps[12], hip = isLeft ? kps[23] : kps[24], ankle = kps[27];
         if(!ear || !sh || !hip || !ankle || ear.score < 0.2) return;
-        let ratio = pxToCmRatio || 0.15, footCm = parseFloat(footSizeInput.value) || 25;
-        let plumbX = ankle.x + (dir * ((footCm * 0.15) / ratio));
+        let ratio = pxToCmRatio || 0.15, plumbX = ankle.x + (dir * ((25 * 0.15) / ratio));
 
         ctx.save(); ctx.strokeStyle = "rgba(57, 255, 20, 0.8)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(plumbX, 0); ctx.lineTo(plumbX, canvasMP.height); ctx.stroke();
-        
-        let c2 = { x: ear.x - (dir * (1.0 / ratio)), y: ear.y + (2.0 / ratio), name: "C2(頸椎)", d0: 1.5 };
+        let c2 = { x: ear.x - (dir * (1.0 / ratio)), y: ear.y + (2.0 / ratio) };
         ctx.fillStyle = "#ff9100"; ctx.beginPath(); ctx.arc(c2.x, c2.y, 6, 0, 2*Math.PI); ctx.fill();
-        let devCm = (c2.x - plumbX) * ratio * dir;
-        ctx.fillStyle = "white"; ctx.font = "bold 13px sans-serif"; ctx.fillText(`${c2.name}: ${devCm.toFixed(1)}cm`, c2.x + 15, c2.y);
+        ctx.fillStyle = "white"; ctx.font = "bold 13px sans-serif"; ctx.fillText(`C2: ${((c2.x - plumbX)*ratio*dir).toFixed(1)}cm`, c2.x + 15, c2.y);
         ctx.restore();
     }
 
-    // 6. Camera & Playback Pipeline Control
     recBtn.onclick = function() {
-        controlsBox.style.display = 'none'; toggleUiBtn.innerText = '🔼 UIを表示';
-        isRecording = true; poseDataLog = []; gaitAngleHistory = [];
-        recordingDuration = parseInt(durationSelect.value); var start = Date.now();
-        timerDisplay.style.display = "block";
+        controlsBox.style.display = 'none'; document.getElementById('toggleUiBtn').innerText = '🔼 UIを表示';
+        isRecording = true; poseDataLog = []; gaitAngleHistory = []; gaitFrontHistory = [];
+        recordingDuration = parseInt(document.getElementById('durationSelect').value); var start = Date.now();
+        document.getElementById('timerDisplay').style.display = "block";
         var timer = setInterval(async function() {
-            var diff = Date.now() - start; timerDisplay.innerText = "REC " + Math.max(0, (recordingDuration - diff) / 1000).toFixed(1) + "s";
+            var diff = Date.now() - start; document.getElementById('timerDisplay').innerText = "REC " + Math.max(0, (recordingDuration - diff) / 1000).toFixed(1) + "s";
             if (diff >= recordingDuration) { clearInterval(timer); await executePostProcessingStop(); }
         }, 100);
     };
 
     async function executePostProcessingStop() {
-        controlsBox.style.display = 'flex'; toggleUiBtn.innerText = '🔽 UIを隠す'; isRecording = false; timerDisplay.style.display = "none";
+        controlsBox.style.display = 'flex'; document.getElementById('toggleUiBtn').innerText = '🔽 UIを隠す'; isRecording = false; document.getElementById('timerDisplay').style.display = "none";
         if (poseDataLog.length > 0) {
             var session = { id: 'session_' + Date.now(), timestamp: Date.now(), mode: currentTab, poseData: JSON.parse(JSON.stringify(poseDataLog)) };
             await dbManager.saveSession(session);
@@ -426,49 +445,51 @@
     function enterPlaybackMode() {
         appMode = "playback"; document.getElementById('mainControls').style.display = 'none'; document.getElementById('playbackControls').style.display = 'flex';
         playbackDataMP = poseDataLog; document.getElementById('timelineSlider').max = playbackDataMP.length - 1; document.getElementById('timelineSlider').value = 0;
-        renderPlaybackFrame(0); togglePlay(true);
+        renderPlaybackFrame(0);
     }
 
-    function exitPlaybackMode() { appMode = "camera"; togglePlay(false); document.getElementById('playbackControls').style.display = 'none'; document.getElementById('mainControls').style.display = 'flex'; }
+    document.getElementById('backToCamBtn').onclick = function() { appMode = "camera"; document.getElementById('playbackControls').style.display = 'none'; document.getElementById('mainControls').style.display = 'flex'; togglePlay(false); };
+    document.getElementById('playPauseBtn').onclick = function() { togglePlay(!isPlaying); };
+    document.getElementById('timelineSlider').oninput = function() { togglePlay(false); renderPlaybackFrame(parseInt(this.value)); };
 
-    function togglePlay(play) { isPlaying = play; document.getElementById('playPauseBtn').innerText = play ? "⏸ 停止" : "▶ 再生"; if(play) { playbackStartTime = Date.now(); playbackLoop(); } else { cancelAnimationFrame(playbackRafId); } }
-    function playbackLoop() { if(!isPlaying) return; var slider = document.getElementById('timelineSlider'); var idx = parseInt(slider.value) + 1; if(idx >= playbackDataMP.length) idx = 0; slider.value = idx; renderPlaybackFrame(idx); playbackRafId = requestAnimationFrame(playbackLoop); }
+    function togglePlay(play) { isPlaying = play; document.getElementById('playPauseBtn').innerText = play ? "⏸ 停止" : "▶ 再生"; if(play) playbackLoop(); }
+    function playbackLoop() { if(!isPlaying) return; var slider = document.getElementById('timelineSlider'); var idx = parseInt(slider.value) + 1; if(idx >= playbackDataMP.length) idx = 0; slider.value = idx; renderPlaybackFrame(idx); setTimeout(playbackLoop, 33); }
 
     function renderPlaybackFrame(idx) {
         if (!playbackDataMP[idx]) return;
         ctxMP.fillStyle = "#111"; ctxMP.fillRect(0,0,canvasMP.width,canvasMP.height);
         var kps = playbackDataMP[idx].keypoints;
         drawSkeleton(ctxMP, kps, "#ffffff");
-        drawGaitAnalysis(ctxMP, kps);
+        drawGaitSideAnalysis(ctxMP, kps);
+        drawGaitFrontAnalysis(ctxMP, kps);
         drawKendallAlignment(ctxMP, kps);
         calculateWeightBearing(ctxMP, kps);
         ctxComb.drawImage(canvasMP, 0,0,canvasMP.width,canvasMP.height);
         document.getElementById('frameCounter').innerText = `${idx} / ${playbackDataMP.length - 1}`;
     }
 
-    function startVideoExport() { alert("動画出力を実行します。"); }
-
+    function switchReportTab(val) { currentTab = val; gaitAngleHistory = []; gaitFrontHistory = []; }
     window.refreshHistoryList = async function() {
         var sessions = await dbManager.getAllSessions(); historyListContainer.innerHTML = '';
-        if(sessions.length === 0) { historyListContainer.innerHTML = '<div style="color:#aaa; text-align:center; padding:10px;">履歴なし</div>'; return; }
         sessions.forEach(s => {
             var item = document.createElement('div'); item.className = 'history-item';
-            item.innerHTML = `<div onclick="window.loadSession('${s.id}')"><span class="history-mode">${MODE_NAMES[s.mode] || s.mode}</span><br><small>${new Date(s.timestamp).toLocaleString()}</small></div><button class="history-action-btn del" onclick="event.stopPropagation(); window.deleteSession('${s.id}')">削除</button>`;
+            item.innerHTML = `<div onclick="window.loadSession('${s.id}')"><b>${MODE_NAMES[s.mode] || s.mode}</b><br><small>${new Date(s.timestamp).toLocaleString()}</small></div><button class="history-action-btn del" onclick="event.stopPropagation(); window.deleteSession('${s.id}')">削除</button>`;
             historyListContainer.appendChild(item);
         });
     };
-
-    window.deleteSession = async function(id) { if(confirm("データを削除しますか？")) { await dbManager.deleteSession(id); window.refreshHistoryList(); } };
+    window.deleteSession = async function(id) { await dbManager.deleteSession(id); window.refreshHistoryList(); };
     window.loadSession = async function(id) {
         var sessions = await dbManager.getAllSessions(); var s = sessions.find(x=>x.id===id);
-        if(s) { poseDataLog = s.poseData; currentTab = s.mode; enterPlaybackMode(); }
+        if(s) { poseDataLog = s.poseData; currentTab = s.mode; document.getElementById('modeSelect').value = s.mode; document.getElementById('historyPanel').style.display='none'; enterPlaybackMode(); }
     };
 
     startBtn.onclick = async function() {
         renderSessionId++; var cur = renderSessionId;
         var isPortrait = camOrientation.value === 'portrait';
         var constraints = { video: { width: { ideal: isPortrait ? 1080 : 1920 }, height: { ideal: isPortrait ? 1920 : 1080 } } };
+        if (videoSource.value) constraints.video.deviceId = { exact: videoSource.value };
         try {
+            if(currentStream) currentStream.getTracks().forEach(t=>t.stop());
             var stream = await navigator.mediaDevices.getUserMedia(constraints);
             video.srcObject = stream; currentStream = stream;
             video.onloadeddata = function() {
@@ -484,11 +505,11 @@
         ctxMP.drawImage(video, 0, 0, canvasMP.width, canvasMP.height);
         var poses = await detectors[0].estimatePoses(video);
         if (poses.length > 0) {
-            var kps = generateVirtualASIS(poses[0].keypoints);
-            window.reportDataStore[currentTab] = kps;
+            var kps = poses[0].keypoints;
             if (isRecording) poseDataLog.push({ time: Date.now(), mode: currentTab, keypoints: kps });
             drawSkeleton(ctxMP, kps, "#ff5252");
-            drawGaitAnalysis(ctxMP, kps);
+            drawGaitSideAnalysis(ctxMP, kps);
+            drawGaitFrontAnalysis(ctxMP, kps);
             drawKendallAlignment(ctxMP, kps);
             calculateWeightBearing(ctxMP, kps);
         }
@@ -496,50 +517,57 @@
         requestAnimationFrame(() => render(sid));
     }
 
-    // 7. Clinical Dashboard Analytics Render Engine (LLM Setup Inside)
-    function prepareAndPrintReport() {
+    window.prepareAndPrintReport = function() {
         var grid = document.getElementById('dashGrid'); var html = '';
-        
-        // Frontal Card
-        html += '<div class="dash-card"><h3>🧍 前額面評価</h3>';
-        if(window.reportDataStore['front']) {
-            html += `<div class="dash-metric"><span>アライメント</span><span class="val good">計測データあり ✅</span></div>`;
-        } else html += '<p style="color:#aaa;">未計測</p>';
-        html += '</div>';
-
-        // Gait Card
-        html += '<div class="dash-card"><h3>🚶 歩行周期動態 (Gait Sagittal)</h3>';
+        html += '<div class="dash-card"><h3>🚶 歩行分析 (Frontal/Sagittal)</h3>';
+        if(gaitFrontHistory.length > 0) {
+            let last = gaitFrontHistory[gaitFrontHistory.length - 1];
+            html += `<div class="dash-metric"><span>骨盤傾斜角 (Trendelenburg)</span><span class="val ${Math.abs(last.pelvicAngle)>5?'warn':'good'}">${last.pelvicAngle.toFixed(1)}°</span></div>`;
+            html += `<div class="dash-metric"><span>体幹側方シフト (Sway)</span><span class="val ${Math.abs(last.swayPct)>10?'warn':'good'}">${Math.abs(last.swayPct).toFixed(1)}%</span></div>`;
+        }
         if(gaitAngleHistory.length > 0) {
             let last = gaitAngleHistory[gaitAngleHistory.length - 1];
             html += `<div class="dash-metric"><span>終末遊脚期 膝角度</span><span class="val good">${last.knee.toFixed(1)}°</span></div>`;
-            html += `<div class="dash-metric"><span>立脚中期 大腿傾斜</span><span class="val">${last.hip.toFixed(1)}°</span></div>`;
-        } else html += '<p style="color:#aaa;">歩行データ未ストック</p>';
+        }
+        if(gaitFrontHistory.length===0 && gaitAngleHistory.length===0) html += '<p style="color:#aaa;">未計測</p>';
         html += '</div>';
 
-        // LLM Inside Panel Card
         html += `<div class="dash-card" id="aiEvalCard" style="grid-column: 1 / -1;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 20px;">
                 <h3 style="margin:0; border:none; padding:0; color:#00bfff;">🧠 AI 臨床評価 (LLM Insight)</h3>
-                <button id="generateAiEvalBtn" onclick="window.generateAiInsights()" style="background:#00bfff; color:#000; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-weight:bold;">評価を生成</button>
+                <button onclick="window.generateAiInsights()" style="background:#00bfff; color:#000; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-weight:bold;">評価を生成</button>
             </div>
             <div id="aiEvalContent" style="color:#fff; line-height:1.6; font-size:15px; background:rgba(255,255,255,0.03); padding:20px; border-radius:8px; border-left:4px solid #00bfff;">
-                <span>「評価を生成」ボタンを押すと、歩行角およびアライメントデータから自動考察を展開します。</span>
+                <span>右上の「評価を生成」ボタンを押してください。</span>
             </div>
         </div>`;
-
         grid.innerHTML = html; document.getElementById('dashboardOverlay').style.display = 'block';
     }
 
-    window.generateAiInsights = function() {
-        document.getElementById('aiEvalContent').innerText = "生体力学データを抽出して分析中...";
-        setTimeout(() => {
-            document.getElementById('aiEvalContent').innerHTML = "<b>【歩行および姿勢の生体力学的考察】</b><br>立脚中期における大腿前傾角の過度な代償動作、および遊脚期における足関節の底屈制限が疑われます。LR（荷重応答期）における膝関節のクッション機構の弱化が認められるため、大腿四頭筋の偏心性収縮（エキセントリック）不全、および骨盤の代償性前傾運動が歩行効率を低下させている可能性があります。";
-        }, 1000);
+    window.generateAiInsights = async function() {
+        const apiKey = ""; // ※ローカル実行時はここにGoogle AI StudioのAPIキーを入力
+        document.getElementById('aiEvalContent').innerHTML = "<span style='color:#aaa;'>AIが分析中...</span>";
+        let promptText = "【患者データ】\n";
+        if(gaitFrontHistory.length > 0) promptText += `- トレンデレンブルグ徴候(骨盤傾斜): ${gaitFrontHistory[gaitFrontHistory.length-1].pelvicAngle.toFixed(1)}°\n- 体幹スウェイ: ${gaitFrontHistory[gaitFrontHistory.length-1].swayPct.toFixed(1)}%\n`;
+        
+        try {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }], systemInstruction: { parts: [{ text: "熟練したカイロプラクターとして、提供された数値から筋のアンバランスを150字で評価してください。" }] } })
+            });
+            if(!res.ok) throw new Error("API_ERROR");
+            const data = await res.json();
+            document.getElementById('aiEvalContent').innerHTML = data.candidates[0].content.parts[0].text.replace(/\n/g, '<br>');
+        } catch(e) {
+            document.getElementById('aiEvalContent').innerHTML = `<span style="color:#ff5252;">評価の生成に失敗しました。APIキーが設定されているか確認してください。</span>`;
+        }
     };
 
     async function init() {
         await dbManager.init();
         try {
+            var devices = await navigator.mediaDevices.enumerateDevices();
+            devices.forEach(d => { if(d.kind==='videoinput') videoSource.appendChild(new Option(d.label || "カメラ", d.deviceId)); });
             await tf.setBackend('webgl'); await tf.ready();
             detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
             startBtn.innerText = "📷 システム起動"; startBtn.disabled = false;
