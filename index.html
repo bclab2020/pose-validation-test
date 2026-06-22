@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Academic Master V82 (Ultimate Stable Edition)</title>
+    <title>CONNECT AI - Academic Master V76 (Stable Rollback Edition)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -125,7 +125,7 @@
 
 <div class="view-port">
     <canvas id="canvasMP"></canvas>
-    <div class="label">CONNECT AI - V82 Ultimate Stable</div>
+    <div class="label">CONNECT AI - V76 Stable Rollback Edition</div>
     <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     <div id="radarWrapperMP" class="radar-wrapper">
@@ -171,7 +171,6 @@
     <div class="dash-grid" id="dashGrid"></div>
 </div>
 
-<!-- 🌟 インラインカスタムモーダル -->
 <div id="customModal">
     <div class="modal-box">
         <h3 id="modalTitle" class="modal-title"></h3>
@@ -195,11 +194,7 @@
             <select id="videoSource" style="background:#fff; color:#000; border-radius:4px; padding:4px;">
                 <option value="">カメラ検索中...</option>
             </select>
-            <select id="camOrientation" style="background:#fff; color:#000; border-radius:4px; padding:4px;">
-                <option value="portrait" selected>📱 縦長 (9:16)</option>
-                <option value="landscape">📺 横長 (16:9)</option>
-            </select>
-
+            
             <button id="startBtn" disabled>⏳ 起動準備中...</button>
             
             <div style="display:flex; gap:5px; background:rgba(0,0,0,0.5); padding:4px 10px; border-radius:6px; border:1px solid #555;">
@@ -211,12 +206,13 @@
 
             <select id="modeSelect" class="mode-dropdown" onchange="window.switchReportTab(this.value)">
                 <optgroup label="■ 静止姿勢アライメント">
-                    <option value="front">🧍 前面</option><option value="back">🧍 後面</option><option value="l_side">🧍 左側面</option><option value="r_side">🧍 右側面</option>
+                    <option value="front" selected>🧍 前面</option><option value="back">🧍 後面</option><option value="l_side">🧍 左側面</option><option value="r_side">🧍 右側面</option>
                 </optgroup>
                 <optgroup label="■ 動的機能評価">
                     <option value="dyn_overhead">🏋️ OHS [前面]</option><option value="dyn_overhead_side">🏋️ OHS [側面]</option>
-                    <option value="dyn_gait_side">🚶 歩行分析 [側面]</option>
-                    <option value="dyn_gait_front" selected>🚶 歩行分析 [前面・足底]</option>
+                    <option value="dyn_single_r">🦵 片脚バランス [右軸]</option><option value="dyn_single_l">🦵 片脚バランス [左軸]</option>
+                    <option value="dyn_flex_fwd">🙇 立位体前屈</option><option value="dyn_flex_bwd">🤸 立位体後屈</option>
+                    <option value="dyn_shoulder_r">👐 肩複合可動性 [右上]</option><option value="dyn_shoulder_l">👐 肩複合可動性 [左上]</option>
                 </optgroup>
             </select>
             
@@ -244,24 +240,39 @@
 <video id="video" autoplay playsinline muted></video>
 
 <script>
+    // --- 1. グローバル定数と状態変数 (V76仕様) ---
     var DURATION_MAP = { 
         'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 
         'dyn_overhead': 15000, 'dyn_overhead_side': 15000, 
-        'dyn_gait_side': 10000, 'dyn_gait_front': 10000 
+        'dyn_single_r': 15000, 'dyn_single_l': 15000, 
+        'dyn_flex_fwd': 10000, 'dyn_flex_bwd': 10000, 
+        'dyn_shoulder_r': 10000, 'dyn_shoulder_l': 10000
     };
-    var MODE_NAMES = { 'front': '🧍 前面', 'back': '🧍 後面', 'l_side': '🧍 左側面', 'r_side': '🧍 右側面', 'dyn_overhead': '🏋️ OHS [前面]', 'dyn_overhead_side': '🏋️ OHS [側面]', 'dyn_gait_side': '🚶 歩行分析 [側面]', 'dyn_gait_front': '🚶 歩行分析 [前面]' };
+    var MODE_NAMES = { 'front': '🧍 前面', 'back': '🧍 後面', 'l_side': '🧍 左側面', 'r_side': '🧍 右側面', 'dyn_overhead': '🏋️ OHS [前面]', 'dyn_overhead_side': '🏋️ OHS [側面]', 'dyn_single_r': '🦵 片脚 [右]', 'dyn_single_l': '🦵 片脚 [左]', 'dyn_flex_fwd': '🙇 立位前屈', 'dyn_flex_bwd': '🤸 立位後屈', 'dyn_shoulder_r': '👐 肩複合 [右上]', 'dyn_shoulder_l': '👐 肩複合 [左上]' };
 
     window.customOriginMarkers = {}; window.reportDataStore = {};
     Object.keys(DURATION_MAP).forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
 
+    var detectors = [], isRunning = false, isRecording = false, isPausedForEdit = false, currentTab = "front", appMode = "camera", isPlaying = false, currentStream = null;
+    var playbackDataMP = [], mainRenderId = null, recordingDuration = 10000, coordinateBufferMP = [], poseDataLog = [], playbackRafId = null;
+    var pxToCmRatio = null, estimatedPelvicTilt = 0, calibState = "idle", calibrationPoints = [];
+    var exportRecorder = null, exportChunks = [], isExportingVideo = false, renderSessionId = 0, playbackStartTime = 0, playbackBaseTime = 0, playbackTotalDuration = 0;
+    var selectedJointIndex = null, dpadStepVal = 1, isEditingPlaybackFrame = false, swayHistoryMP = [];
+    var activeRadarDrag = null;
+
+    var video = document.getElementById('video'), canvasMP = document.getElementById('canvasMP'), ctxMP = canvasMP.getContext('2d');
+    var canvasComb = document.getElementById('canvasCombined'), ctxComb = canvasComb.getContext('2d');
+    var ctxRadarMP = document.getElementById('canvasRadarMP').getContext('2d');
+    var startBtn = document.getElementById('startBtn'), recBtn = document.getElementById('recBtn');
+
+    // --- 2. データベース管理 (IndexedDB) ---
     var dbManager = {
         dbName: "ConnectAIDB", storeName: "sessions", db: null,
         init: function() {
-            return new Promise((resolve, reject) => {
+            return new Promise((resolve) => {
                 var req = indexedDB.open(this.dbName, 1);
                 req.onupgradeneeded = e => { if(!e.target.result.objectStoreNames.contains(this.storeName)) e.target.result.createObjectStore(this.storeName, { keyPath: "id" }); };
                 req.onsuccess = e => { this.db = e.target.result; resolve(); };
-                req.onerror = e => { reject(e.target.error); };
             });
         },
         saveSession: function(data) {
@@ -286,20 +297,7 @@
         }
     };
 
-    var video = document.getElementById('video'), canvasMP = document.getElementById('canvasMP'), ctxMP = canvasMP.getContext('2d');
-    var canvasComb = document.getElementById('canvasCombined'), ctxComb = canvasComb.getContext('2d');
-    var ctxRadarMP = document.getElementById('canvasRadarMP').getContext('2d');
-    var startBtn = document.getElementById('startBtn'), recBtn = document.getElementById('recBtn');
-    
-    // 🌟 V82: 修正ポイント（currentStream変数の追加）
-    var detectors = [], isRunning = false, isRecording = false, isPausedForEdit = false, currentTab = "dyn_gait_front", appMode = "camera", isPlaying = false, currentStream = null;
-    var playbackDataMP = [], mainRenderId = null, recordingDuration = 10000, poseDataLog = [], playbackRafId = null;
-    var pxToCmRatio = null, estimatedPelvicTilt = 0, calibState = "idle", calibrationPoints = [];
-    var renderSessionId = 0, playbackStartTime = 0, playbackBaseTime = 0, playbackTotalDuration = 0;
-    
-    var gaitAngleHistory = [];
-    var gaitFrontHistory = []; 
-
+    // --- 3. UI コンポーネント制御 ---
     function customAlert(title, message) {
         document.getElementById('modalTitle').innerText = title;
         document.getElementById('modalMessage').innerText = message;
@@ -324,8 +322,8 @@
     };
     document.getElementById('closeHistoryBtn').onclick = () => { document.getElementById('historyPanel').style.display = 'none'; };
 
+    // カメラ変更時に自動再起動
     document.getElementById('videoSource').onchange = () => { if (isRunning && !isRecording && appMode === 'camera') startBtn.click(); };
-    document.getElementById('camOrientation').onchange = () => { if (isRunning && !isRecording && appMode === 'camera') startBtn.click(); };
 
     var calibrateMatBtn = document.getElementById('calibrateMatBtn');
     calibrateMatBtn.onclick = function() {
@@ -343,6 +341,38 @@
         document.getElementById('tiltValDisplay').innerText = estimatedPelvicTilt === 0 ? "0°" : (estimatedPelvicTilt > 0 ? "+" + estimatedPelvicTilt + "° (前傾)" : estimatedPelvicTilt + "° (後傾)");
     };
 
+    document.getElementById('dpadStep').onclick = function(e) { dpadStepVal = dpadStepVal === 1 ? 5 : 1; e.target.innerText = dpadStepVal + 'px'; };
+    var moveJoint = function(dx, dy) {
+        if (calibState === "adjust_left" && calibrationPoints[0]) { calibrationPoints[0].x += dx; calibrationPoints[0].y += dy; } 
+        else if (calibState === "adjust_right" && calibrationPoints[1]) { calibrationPoints[1].x += dx; calibrationPoints[1].y += dy; } 
+        else if (selectedJointIndex !== null) {
+            var kp = null; if(appMode === 'playback' && isEditingPlaybackFrame) { var fIdx = parseInt(document.getElementById('timelineSlider').value); if(playbackDataMP[fIdx]) kp = playbackDataMP[fIdx].keypoints[selectedJointIndex]; } 
+            else if (isPausedForEdit) { kp = window.reportDataStore[currentTab][selectedJointIndex]; } if(kp) { kp.x += dx; kp.y += dy; }
+        }
+        if(appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); else if (isPausedForEdit) refreshReportView();
+    };
+    document.getElementById('dpadUp').onclick = function() { moveJoint(0, -dpadStepVal); }; 
+    document.getElementById('dpadDown').onclick = function() { moveJoint(0, dpadStepVal); };
+    document.getElementById('dpadLeft').onclick = function() { moveJoint(-dpadStepVal, 0); }; 
+    document.getElementById('dpadRight').onclick = function() { moveJoint(dpadStepVal, 0); };
+    
+    var closeDpad = function() { 
+        if (calibState === "adjust_left") { calibState = "wait_left"; calibrateMatBtn.innerText = "📍 左端をタップ"; calibrationPoints=[]; document.getElementById('dpadPanel').style.display = 'none'; if(isPausedForEdit) refreshReportView(); return; }
+        if (calibState === "adjust_right") { calibState = "wait_right"; calibrateMatBtn.innerText = "📍 右端をタップ"; calibrationPoints.pop(); document.getElementById('dpadPanel').style.display = 'none'; if(isPausedForEdit) refreshReportView(); return; }
+        selectedJointIndex = null; document.getElementById('dpadPanel').style.display = 'none'; if(appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); else if(isPausedForEdit) refreshReportView(); 
+    };
+    document.getElementById('dpadClose').onclick = closeDpad;
+
+    document.getElementById('editFrameBtn').onclick = function() {
+        if(!isEditingPlaybackFrame) { togglePlay(false); isEditingPlaybackFrame = true; this.innerText = "✅ 編集完了"; this.style.background = "#39ff14"; } 
+        else { isEditingPlaybackFrame = false; this.innerText = "✂️ 微調整"; this.style.background = "#ff9100"; closeDpad(); }
+    };
+
+    document.getElementById('playPauseBtn').onclick = function() { togglePlay(); }; 
+    document.getElementById('backToCamBtn').onclick = function() { exitPlaybackMode(); };
+    document.getElementById('timelineSlider').oninput = function() { togglePlay(false); var fIdx = parseInt(document.getElementById('timelineSlider').value); renderPlaybackFrame(fIdx); };
+
+    // --- 4. 解析＆描画モジュール (V76仕様) ---
     function generateVirtualASIS(kps) {
         if(!kps) return kps;
         var height = parseFloat(document.getElementById('patientHeight').value) || 170;
@@ -368,81 +398,15 @@
         return kps;
     }
 
-    function drawGaitSideAnalysis(ctx, kps) {
-        if (currentTab !== 'dyn_gait_side') return;
-        let hip = kps.find(k=>k.name==='left_hip'), knee = kps.find(k=>k.name==='left_knee'), ankle = kps.find(k=>k.name==='left_ankle');
-        if (!hip || !knee || !ankle || hip.score < 0.2 || knee.score < 0.2) return;
-
-        let kneeAngle = Math.abs((Math.atan2(ankle.y - knee.y, ankle.x - knee.x) - Math.atan2(hip.y - knee.y, hip.x - knee.x)) * 180 / Math.PI);
-        if(kneeAngle > 180) kneeAngle = 360 - kneeAngle;
-        let hipAngle = Math.abs(Math.atan2(knee.x - hip.x, knee.y - hip.y) * 180 / Math.PI);
-
-        if (!isExportingVideo) { gaitAngleHistory.push({ knee: kneeAngle, hip: hipAngle }); if (gaitAngleHistory.length > 200) gaitAngleHistory.shift(); }
-
-        ctx.save(); ctx.font = "bold 16px sans-serif"; ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(20, 80, 260, 95);
-        ctx.fillStyle = "#00bfff"; ctx.fillText(`膝関節角度: ${kneeAngle.toFixed(1)}°`, 35, 115);
-        ctx.fillStyle = "#deff9a"; ctx.fillText(`大腿前傾角: ${hipAngle.toFixed(1)}°`, 35, 150);
-
-        ctx.strokeStyle = "rgba(0, 191, 255, 0.5)"; ctx.lineWidth = 2.5; ctx.beginPath();
-        for (let i = 0; i < gaitAngleHistory.length; i++) {
-            let gx = 30 + (i * 1.2), gy = 260 - (gaitAngleHistory[i].knee * 0.6);
-            if (i === 0) ctx.moveTo(gx, gy); else ctx.lineTo(gx, gy);
-        }
-        ctx.stroke(); ctx.restore();
-    }
-
-    function drawGaitFrontAnalysis(ctx, kps) {
-        if (currentTab !== 'dyn_gait_front') return;
-        var lHip = kps.find(k=>k.name==='left_hip'), rHip = kps.find(k=>k.name==='right_hip'), nose = kps.find(k=>k.name==='nose');
-        if (!lHip || !rHip || !nose || lHip.score < 0.2 || rHip.score < 0.2) return;
-
-        var pelvicAngle = Math.atan2(rHip.y - lHip.y, rHip.x - lHip.x) * 180 / Math.PI;
-        var pelvisMidX = (lHip.x + rHip.x) / 2;
-        var trunkShiftX = nose.x - pelvisMidX;
-        var stanceWidth = Math.abs(lHip.x - rHip.x);
-        var swayPct = stanceWidth > 0 ? (trunkShiftX / stanceWidth) * 100 : 0;
-
-        if (!isExportingVideo) {
-            gaitFrontHistory.push({ pelvicAngle: pelvicAngle, swayPct: swayPct });
-            if (gaitFrontHistory.length > 200) gaitFrontHistory.shift();
-        }
-
-        ctx.save(); ctx.font = "bold 16px sans-serif"; ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(20, 80, 280, 95);
-        ctx.fillStyle = Math.abs(pelvicAngle) > 5 ? "#ff5252" : "#00bfff"; 
-        ctx.fillText(`骨盤傾斜 (Trendelenburg): ${pelvicAngle.toFixed(1)}°`, 35, 115);
-        ctx.fillStyle = Math.abs(swayPct) > 10 ? "#ff5252" : "#deff9a"; 
-        ctx.fillText(`体幹側方シフト (Sway): ${Math.abs(swayPct).toFixed(1)}%`, 35, 150);
-
-        ctx.strokeStyle = "rgba(222, 255, 154, 0.5)"; ctx.lineWidth = 2.5; ctx.beginPath();
-        for (var i = 0; i < gaitFrontHistory.length; i++) {
-            var gx = 30 + (i * 1.2), gy = 240 - (gaitFrontHistory[i].swayPct * 1.0); 
-            if (i === 0) ctx.moveTo(gx, gy); else ctx.lineTo(gx, gy);
-        }
-        ctx.stroke(); 
-        ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 1; ctx.setLineDash([2,2]);
-        ctx.beginPath(); ctx.moveTo(30, 240); ctx.lineTo(270, 240); ctx.stroke(); ctx.setLineDash([]);
-        
-        ctx.strokeStyle = "#ff9100"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(lHip.x, lHip.y); ctx.lineTo(rHip.x, rHip.y); ctx.stroke();
-        ctx.strokeStyle = "#deff9a"; ctx.lineWidth = 2; ctx.setLineDash([5,5]);
-        ctx.beginPath(); ctx.moveTo(nose.x, nose.y); ctx.lineTo(pelvisMidX, (lHip.y + rHip.y)/2); ctx.stroke(); ctx.setLineDash([]);
-        ctx.restore();
-    }
-
     function drawSkeleton(ctx, kps, color) {
         ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 4;
         
         var getK = name => kps.find(k => k.name === name);
-        
-        var connections = [];
-        if (currentTab === 'dyn_gait_side') {
-            connections = [ ['left_shoulder','left_hip'], ['left_hip','left_knee'], ['left_knee','left_ankle'] ];
-        } else {
-            connections = [
-                ['left_shoulder','right_shoulder'], ['left_shoulder','left_hip'], ['right_shoulder','right_hip'], ['left_hip','right_hip'],
-                ['left_shoulder','left_elbow'], ['left_elbow','left_wrist'], ['right_shoulder','right_elbow'], ['right_elbow','right_wrist'],
-                ['left_hip','left_knee'], ['left_knee','left_ankle'], ['right_hip','right_knee'], ['right_knee','right_ankle']
-            ];
-        }
+        var connections = [
+            ['left_shoulder','right_shoulder'], ['left_shoulder','left_hip'], ['right_shoulder','right_hip'], ['left_hip','right_hip'],
+            ['left_shoulder','left_elbow'], ['left_elbow','left_wrist'], ['right_shoulder','right_elbow'], ['right_elbow','right_wrist'],
+            ['left_hip','left_knee'], ['left_knee','left_ankle'], ['right_hip','right_knee'], ['right_knee','right_ankle']
+        ];
 
         connections.forEach(function(pair) {
             var p1 = getK(pair[0]), p2 = getK(pair[1]);
@@ -453,7 +417,7 @@
             if(k && k.score > 0.1 && !k.name.includes('virtual')) { ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(k.x, k.y, 4, 0, 2*Math.PI); ctx.fill(); }
         });
 
-        if (currentTab === 'front' || currentTab === 'dyn_overhead' || currentTab === 'dyn_gait_front') {
+        if (currentTab === 'front' || currentTab === 'dyn_overhead') {
             var earL = getK('left_ear'), earR = getK('right_ear'), nose = getK('nose'), shL = getK('left_shoulder'), shR = getK('right_shoulder');
             if (earL && earR && earL.score > 0.1 && earR.score > 0.1) {
                 ctx.strokeStyle = "#deff9a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(earL.x, earL.y); ctx.lineTo(earR.x, earR.y); ctx.stroke();
@@ -467,75 +431,500 @@
                 ctx.beginPath(); ctx.moveTo((shL.x + shR.x)/2, (shL.y + shR.y)/2); ctx.lineTo(nose.x, nose.y); ctx.stroke(); ctx.setLineDash([]);
             }
         }
+
+        var asisL = kps.find(k=>k.name==='virtual_asis_l'), asisR = kps.find(k=>k.name==='virtual_asis_r');
+        var lHip = getK('left_hip'), rHip = getK('right_hip');
+        
+        if (currentTab !== 'r_side' && currentTab !== 'dyn_overhead_side') {
+            if(asisL && lHip) { 
+                ctx.strokeStyle="#39ff14"; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(lHip.x, lHip.y); ctx.lineTo(asisL.x, asisL.y); ctx.stroke(); 
+                ctx.fillStyle="#39ff14"; ctx.beginPath(); ctx.arc(asisL.x, asisL.y, 8, 0, 2*Math.PI); ctx.fill(); 
+            }
+        }
+        if (currentTab !== 'l_side' && currentTab !== 'dyn_overhead_side') {
+            if(asisR && rHip) { 
+                ctx.strokeStyle="#39ff14"; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(rHip.x, rHip.y); ctx.lineTo(asisR.x, asisR.y); ctx.stroke(); 
+                ctx.fillStyle="#39ff14"; ctx.beginPath(); ctx.arc(asisR.x, asisR.y, 8, 0, 2*Math.PI); ctx.fill(); 
+            }
+        }
+        
+        if((currentTab === 'front' || currentTab === 'back') && asisL && asisR) {
+            ctx.strokeStyle="rgba(57, 255, 20, 0.5)"; ctx.setLineDash([]); ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(asisL.x, asisL.y); ctx.lineTo(asisR.x, asisR.y); ctx.stroke();
+            if(pxToCmRatio) { var diffCm = Math.abs(asisL.y - asisR.y) * pxToCmRatio; ctx.fillStyle="#39ff14"; ctx.font="bold 16px sans-serif"; ctx.fillText("骨盤左右高低差: " + diffCm.toFixed(1) + "cm", Math.min(asisL.x, asisR.x), Math.min(asisL.y, asisR.y) - 20); }
+        } 
         ctx.restore();
     }
 
-    window.switchReportTab = function(val) { currentTab = val; gaitAngleHistory = []; gaitFrontHistory = []; }
+    function calculateWeightBearing(ctx, kps) {
+        if (currentTab !== 'front' && currentTab !== 'back' && currentTab !== 'dyn_overhead') return;
+        var getK = name => kps.find(k => k.name === name);
+        let lAnkle = getK('left_ankle'), rAnkle = getK('right_ankle'); 
+        if (!lAnkle || !rAnkle || lAnkle.score < 0.3 || rAnkle.score < 0.3) return;
+        let nose = getK('nose'), lSh = getK('left_shoulder'), rSh = getK('right_shoulder'), lHip = getK('left_hip'), rHip = getK('right_hip');
+        if (!nose || !lSh || !rSh || !lHip || !rHip) return;
 
-    window.refreshHistoryList = async function() {
-        var sessions = await dbManager.getAllSessions(); historyListContainer.innerHTML = '';
-        sessions.forEach(s => {
-            var item = document.createElement('div'); item.className = 'history-item';
-            item.innerHTML = `<div onclick="window.loadSession('${s.id}')"><b>${MODE_NAMES[s.mode] || s.mode}</b><br><small>${new Date(s.timestamp).toLocaleString()}</small></div><button class="history-action-btn del" onclick="event.stopPropagation(); window.deleteSession('${s.id}')">削除</button>`;
-            historyListContainer.appendChild(item);
+        let dPx = rAnkle.x - lAnkle.x; if (Math.abs(dPx) < 10) return;
+        let centerX = (lAnkle.x + rAnkle.x) / 2;
+
+        let upperComX = (nose.x * 0.20) + (((lSh.x + rSh.x) / 2) * 0.80);
+        let lowerComX = (lHip.x + rHip.x) / 2;
+        let totalComX = (upperComX * 0.6) + (lowerComX * 0.4);
+
+        let calcRatio = (comX) => {
+            let pctR = ((comX - lAnkle.x) / dPx) * 100, pctL = 100 - pctR;
+            if(pctR < 0) { pctR = 0; pctL = 100; } if(pctR > 100) { pctR = 100; pctL = 0; }
+            return { L: pctL, R: pctR };
+        };
+
+        let upperRatio = calcRatio(upperComX), lowerRatio = calcRatio(lowerComX), totalRatio = calcRatio(totalComX);
+
+        ctx.save(); ctx.font = "bold 14px sans-serif"; ctx.fillStyle = "rgba(0,0,0,0.75)"; ctx.fillRect(canvasMP.width/2 - 140, canvasMP.height - 210, 280, 85);
+        ctx.textAlign = "center";
+        ctx.fillStyle = Math.abs(totalRatio.L - 50) > 5 ? "#ff5252" : "#39ff14"; ctx.fillText(`【全身】 左: ${totalRatio.L.toFixed(1)}% | 右: ${totalRatio.R.toFixed(1)}%`, canvasMP.width/2, canvasMP.height - 185);
+        ctx.fillStyle = Math.abs(upperRatio.L - 50) > 5 ? "#ff9100" : "#fff"; ctx.fillText(`上半身偏位 左: ${upperRatio.L.toFixed(1)}% | 右: ${upperRatio.R.toFixed(1)}%`, canvasMP.width/2, canvasMP.height - 160);
+        ctx.fillStyle = Math.abs(lowerRatio.L - 50) > 5 ? "#ff9100" : "#fff"; ctx.fillText(`下半身偏位 左: ${lowerRatio.L.toFixed(1)}% | 右: ${lowerRatio.R.toFixed(1)}%`, canvasMP.width/2, canvasMP.height - 140);
+
+        ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.setLineDash([5,5]); ctx.beginPath(); ctx.moveTo(centerX, 0); ctx.lineTo(centerX, canvasMP.height); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = "#ff9100"; ctx.beginPath(); ctx.arc(upperComX, (lSh.y + rSh.y)/2, 6, 0, 2*Math.PI); ctx.fill();
+        ctx.fillStyle = "#ff9100"; ctx.beginPath(); ctx.arc(lowerComX, (lHip.y + rHip.y)/2, 6, 0, 2*Math.PI); ctx.fill();
+        ctx.fillStyle = "#ffeb3b"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(totalComX, (lAnkle.y + rAnkle.y)/2 - 10, 8, 0, 2*Math.PI); ctx.fill(); ctx.stroke(); 
+        ctx.restore();
+    }
+
+    function drawOHSFrontAnalysis(ctx, kps) {
+        if (currentTab !== 'dyn_overhead') return;
+        var getK = name => kps.find(k => k.name === name);
+        const evaluateSide = (h, k, a, label) => {
+            if(!h||!k||!a||h.score<0.3||k.score<0.3||a.score<0.3) return;
+            var refX = h.x + (a.x - h.x) * ((k.y - h.y) / (a.y - h.y));
+            var angle = Math.abs(180 - Math.abs(Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI);
+            if(angle > 2.0) {
+                var isIn = label==='R' ? k.x > refX : k.x < refX;
+                ctx.fillStyle = isIn ? "#ff5252" : "#ff9100";
+                ctx.fillText((isIn?"ニーイン ":"ニーアウト ") + angle.toFixed(1)+"°", k.x+(label==='R'?-120:20), k.y);
+            }
+        };
+        ctx.save(); ctx.font="bold 16px sans-serif"; 
+        evaluateSide(getK('right_hip'), getK('right_knee'), getK('right_ankle'), 'R'); 
+        evaluateSide(getK('left_hip'), getK('left_knee'), getK('left_ankle'), 'L'); 
+        ctx.restore();
+    }
+
+    function drawOHSSideAnalysis(ctx, kps) {
+        if (currentTab !== 'dyn_overhead_side') return;
+        var getK = name => kps.find(k => k.name === name);
+        var lS = getK('left_shoulder'), lH = getK('left_hip'), lK = getK('left_knee'), lA = getK('left_ankle'), lW = getK('left_wrist');
+        var rS = getK('right_shoulder'), rH = getK('right_hip'), rK = getK('right_knee'), rA = getK('right_ankle'), rW = getK('right_wrist');
+        var isLeftActive = (lS && rS && lS.score > rS.score);
+        var s = isLeftActive ? lS : rS, h = isLeftActive ? lH : rH, k = isLeftActive ? lK : rK, a = isLeftActive ? lA : rA, w = isLeftActive ? lW : rW;
+        if (!s || !h || !k || !a || s.score < 0.3 || h.score < 0.3 || k.score < 0.3) return;
+
+        var trunkLean = Math.abs(Math.atan2(s.x - h.x, h.y - s.y) * 180 / Math.PI);
+        var kneeAng = Math.abs((Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI);
+        if(kneeAng > 180) kneeAng = 360 - kneeAng;
+        var armAng = Math.abs((Math.atan2(w.y-s.y, w.x-s.x) - Math.atan2(h.y-s.y, h.x-s.x)) * 180 / Math.PI);
+        if(armAng > 180) armAng = 360 - armAng;
+
+        ctx.save(); ctx.font = "bold 16px sans-serif";
+        ctx.fillStyle = trunkLean > 45 ? "#ff5252" : "#39ff14"; ctx.fillText("体幹前傾: " + trunkLean.toFixed(1) + "°", s.x - 30, s.y - 30);
+        ctx.fillStyle = "#00bfff"; ctx.fillText("膝屈曲: " + kneeAng.toFixed(1) + "°", k.x + 20, k.y);
+        if(w && w.score > 0.3) {
+            ctx.fillStyle = armAng < 160 ? "#ff5252" : "#39ff14"; ctx.fillText("上腕アライメント: " + armAng.toFixed(1) + "°", s.x + 40, s.y + 20);
+            ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(w.x, w.y); ctx.stroke();
+        } ctx.restore();
+    }
+
+    function drawKendallAlignment(ctx, kps) {
+        if (currentTab !== 'l_side' && currentTab !== 'r_side') return;
+        var getK = name => kps.find(k => k.name === name);
+        var isLeft = currentTab === 'l_side';
+        var dir = isLeft ? -1 : 1; 
+
+        var ear = isLeft ? getK('left_ear') : getK('right_ear');
+        var sh = isLeft ? getK('left_shoulder') : getK('right_shoulder');
+        var hip = isLeft ? getK('left_hip') : getK('right_hip');
+        var ankle = isLeft ? getK('left_ankle') : getK('right_ankle');
+
+        var targetAnkle = ankle && ankle.score > 0.1 ? ankle : null;
+        if (!targetAnkle) {
+            var heel = isLeft ? getK('left_heel') : getK('right_heel');
+            if (heel && heel.score > 0.1) targetAnkle = heel;
+        }
+        
+        if (!ear || !sh || !hip || !targetAnkle || ear.score < 0.1 || sh.score < 0.1 || hip.score < 0.1) return;
+
+        var ratio = pxToCmRatio || 0.15;
+        var footCm = parseFloat(document.getElementById('footSize').value) || 25;
+        
+        var plumbOffsetPx = (footCm * 0.15) / ratio;
+        var plumbX = targetAnkle.x + (dir * plumbOffsetPx);
+
+        ctx.save();
+        ctx.strokeStyle = "rgba(57, 255, 20, 0.8)";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(plumbX, 0); ctx.lineTo(plumbX, canvasMP.height); ctx.stroke();
+
+        var c2 = { x: ear.x - (dir * (1.0 / ratio)), y: ear.y + (2.0 / ratio), name: "C2(頸椎)", d0: 1.5 };
+        var th3 = { x: sh.x, y: sh.y, name: "Th3(胸椎)", d0: 1.0 };
+        
+        var tiltRad = estimatedPelvicTilt * (Math.PI / 180);
+        var s2OffsetZ = 3.0 / ratio;
+        var s2OffsetY = 2.0 / ratio;
+        var s2X = hip.x - (dir * (s2OffsetZ * Math.cos(tiltRad) - s2OffsetY * Math.sin(tiltRad)));
+        var s2Y = hip.y + (s2OffsetZ * Math.sin(tiltRad) + s2OffsetY * Math.cos(tiltRad));
+        var s2 = { x: s2X, y: s2Y, name: "S2(仙骨)", d0: 1.0 };
+        
+        var lumbarDepth = (3.0 + (estimatedPelvicTilt * 0.1)) / ratio;
+        var l3Y = s2.y - ((s2.y - sh.y) * 0.3);
+        var l3X = s2.x + (dir * lumbarDepth);
+        var l3 = { x: l3X, y: l3Y, name: "L3(腰椎)", d0: 2.0 };
+        
+        var th11Y = s2.y - ((s2.y - sh.y) * 0.6);
+        var kyphosisDepth = (1.5 + (estimatedPelvicTilt * 0.05)) / ratio;
+        var straightTh11X = l3.x + (th3.x - l3.x) * ((l3.y - th11Y) / (l3.y - th3.y));
+        var th11X = straightTh11X - (dir * kyphosisDepth);
+        var th11 = { x: th11X, y: th11Y, name: "Th11(胸腰)", d0: 1.0 };
+
+        var pts = [c2, th3, th11, l3, s2];
+
+        ctx.strokeStyle = "rgba(255, 145, 0, 1.0)"; 
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(c2.x, c2.y);
+        ctx.bezierCurveTo(c2.x, th3.y, th3.x, c2.y, th3.x, th3.y);
+        ctx.bezierCurveTo(th3.x, th11.y, th11.x, th3.y, th11.x, th11.y);
+        ctx.bezierCurveTo(th11.x, l3.y, l3.x, th11.y, l3.x, l3.y);
+        ctx.bezierCurveTo(l3.x, s2.y, s2.x, l3.y, s2.x, s2.y);
+        ctx.stroke();
+
+        ctx.font = "bold 13px sans-serif";
+        pts.forEach(pt => {
+            ctx.fillStyle = "#ff9100";
+            ctx.beginPath(); ctx.arc(pt.x, pt.y, 6, 0, 2*Math.PI); ctx.fill();
+            
+            var devCm = (pt.x - plumbX) * ratio * dir;
+            var stressPct = ((pt.d0 + Math.max(0, devCm)) / pt.d0) * 100;
+            if (devCm < -pt.d0) stressPct = Math.abs((pt.d0 + devCm)/pt.d0) * 100;
+
+            var color = Math.abs(devCm) <= 1.5 ? "#39ff14" : "#ff5252";
+            var txt = `${pt.name} ${devCm > 0 ? "+" : ""}${devCm.toFixed(1)}cm (${stressPct.toFixed(0)}%)`;
+            
+            var tw = ctx.measureText(txt).width;
+            var tx = pt.x + (dir === 1 ? -tw - 10 : 10);
+            ctx.fillStyle = "rgba(0,0,0,0.85)";
+            ctx.fillRect(tx - 5, pt.y - 12, tw + 10, 18);
+            ctx.fillStyle = color;
+            ctx.fillText(txt, tx, pt.y);
+
+            ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+            ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.lineTo(plumbX, pt.y); ctx.stroke(); ctx.setLineDash([]);
         });
-    };
-    
-    window.deleteSession = async function(id) { customConfirm("削除の確認", "データを削除しますか？", async () => { await dbManager.deleteSession(id); window.refreshHistoryList(); }); };
-    window.loadSession = async function(id) {
-        var sessions = await dbManager.getAllSessions(); var s = sessions.find(x=>x.id===id);
-        if(s) { poseDataLog = s.poseData; currentTab = s.mode; document.getElementById('modeSelect').value = s.mode; document.getElementById('historyPanel').style.display='none'; enterPlaybackMode(); }
-    };
+        
+        ctx.fillStyle = "#39ff14"; ctx.fillText("重力線 (Plumb Line)", plumbX + 10, 50);
+        ctx.restore();
+    }
 
-    // 🌟 V82: カメラ初期化のエラーキャッチ
-    async function init() {
-        try {
-            await dbManager.init();
-        } catch(e) {
-            console.error("DB Init Error:", e);
+    function updateRadar(kps, canvas) {
+        var history = swayHistoryMP; var nose = kps.find(k => k.name === 'nose');
+        var originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2, originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
+        if (nose) {
+            var copX = nose.x - originX, hDist = originY - nose.y; if (history.length === 0 || history.baseHDist === undefined) history.baseHDist = hDist;
+            var copY = history.baseHDist - hDist;
+            if (currentTab.includes("side") || currentTab.includes("overhead_side")) { var shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (shoulder) copX = nose.x - shoulder.x; }
+            history.push({ x: copX, y: copY }); if (history.length > 150) history.shift(); drawSpecificRadar(ctxRadarMP, history, "#ff5252");
+        }
+    }
+
+    function drawPlaybackRadar(dataArray, currentFrameIdx, canvas) {
+        clearRadar(ctxRadarMP, "#ff5252"); var history = [], baseHDist = null;
+        for (var i = 0; i <= currentFrameIdx; i++) {
+            var frameData = dataArray[i]; if (!frameData) continue; var kps = frameData.keypoints, nose = kps.find(k => k.name === 'nose');
+            var originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2, originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
+            if (nose) {
+                var copX = nose.x - originX, hDist = originY - nose.y; if (baseHDist === null) baseHDist = hDist; var copY = baseHDist - hDist;
+                if (currentTab.includes("side") || currentTab.includes("overhead_side")) { var shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (shoulder) copX = nose.x - shoulder.x; }
+                history.push({ x: copX, y: copY });
+            }
+        }
+        if (history.length > 0) drawSpecificRadar(ctxRadarMP, history, "#ff5252");
+    }
+
+    function drawSpecificRadar(ctx, history, color) {
+        clearRadar(ctx, color); if (history.length < 2) return;
+        ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+        history.forEach(function(pt, idx) { 
+            var rX = 75 + (pt.x * 0.5), rY = 75 + (pt.y * 0.5), dist = Math.hypot(rX - 75, rY - 75);
+            if (dist > 65) { rX = 75 + ((rX - 75) * 65 / dist); rY = 75 + ((rY - 75) * 65 / dist); }
+            if (idx === 0) ctx.moveTo(rX, rY); else ctx.lineTo(rX, rY); 
+        });
+        ctx.stroke(); var lastPt = history[history.length - 1]; var lastRX = 75 + (lastPt.x * 0.5), lastRY = 75 + (lastPt.y * 0.5), lastDist = Math.hypot(lastRX - 75, lastRY - 75);
+        if (lastDist > 65) { lastRX = 75 + ((lastRX - 75) * 65 / lastDist); lastRY = 75 + ((lastRY - 75) * 65 / lastDist); }
+        ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(lastRX, lastRY, 4, 0, 2*Math.PI); ctx.fill(); ctx.restore();
+    }
+
+    function clearRadar(ctx, color) {
+        if (!ctx) return; ctx.clearRect(0, 0, 150, 150); ctx.strokeStyle = color + "44"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(75, 75, 30, 0, 2*Math.PI); ctx.stroke(); ctx.beginPath(); ctx.arc(75, 75, 60, 0, 2*Math.PI); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(75, 10); ctx.lineTo(75, 140); ctx.moveTo(10, 75); ctx.lineTo(140, 75); ctx.stroke(); 
+    }
+
+    function drawCenterGrid(ctx, canvas) { ctx.save(); ctx.strokeStyle="rgba(255,255,255,0.4)"; ctx.lineWidth=5; ctx.beginPath(); ctx.moveTo(canvas.width/2,0); ctx.lineTo(canvas.width/2,canvas.height); ctx.stroke(); ctx.restore(); }
+
+    function drawCrosshair(ctx, kp, canvas) {
+        if(!kp) return; ctx.save(); ctx.strokeStyle = "rgba(0, 191, 255, 0.7)"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(0, kp.y); ctx.lineTo(canvas.width, kp.y); ctx.moveTo(kp.x, 0); ctx.lineTo(kp.x, canvas.height); ctx.stroke();
+        ctx.beginPath(); ctx.arc(kp.x, kp.y, 14, 0, 2*Math.PI); ctx.strokeStyle = "#00bfff"; ctx.lineWidth = 3; ctx.setLineDash([]); ctx.stroke();
+        ctx.fillStyle = "rgba(0, 191, 255, 0.3)"; ctx.fill(); ctx.restore();
+    }
+
+    function runReviewLogic(ctx, getK, canvas) {
+        var nose = getK('nose'); var originX, originY;
+        if (currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) {
+            if (window.customOriginMarkers[currentTab]) { originX = window.customOriginMarkers[currentTab].x; originY = window.customOriginMarkers[currentTab].y; } else {
+                var footPtsX = [], footPtsY = []; ['left_ankle', 'right_ankle', 'left_heel', 'right_heel', 'left_foot_index', 'right_foot_index'].forEach(function(name) { var p = getK(name); if (p && p.score > 0.1) { footPtsX.push(p.x); footPtsY.push(p.y); } });
+                if (footPtsX.length >= 2) { originX = (Math.min(...footPtsX) + Math.max(...footPtsX)) / 2; originY = Math.max(...footPtsY); }
+            }
+        }
+        if (originX !== undefined && originY !== undefined) {
+            window.currentAnchorPos = { x: originX, y: originY };
+            var anchorColor = window.anchorStatus === "dragging" ? "rgba(255, 165, 0, 0.8)" : "rgba(0, 191, 255, 0.8)";
+            ctx.save(); ctx.fillStyle = anchorColor; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(originX, originY, 20, 0, 2*Math.PI); ctx.fill(); ctx.stroke(); 
+            if (document.getElementById('showSwayAlert').checked) {
+                ctx.strokeStyle = anchorColor; ctx.lineWidth = 3; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.moveTo(originX, originY); ctx.lineTo(originX, 0); ctx.stroke(); 
+                var sway = nose ? (nose.x - originX) : 0; var corridorColor = Math.abs(sway) > 30 ? "rgba(255, 0, 0, 0.15)" : "rgba(0, 255, 0, 0.1)";
+                ctx.fillStyle = corridorColor; ctx.fillRect(originX - 30, 0, 60, originY);
+            } ctx.restore();
+        }
+    }
+
+    function getEventPos(canvas, e) {
+        var rect = canvas.getBoundingClientRect(); var clientX, clientY;
+        if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; } else if (e.changedTouches && e.changedTouches.length > 0) { clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY; } else { clientX = e.clientX; clientY = e.clientY; }
+        if (clientX === undefined) return null;
+        var videoRatio = canvas.width / canvas.height, containerRatio = rect.width / rect.height; var renderWidth, renderHeight, offsetX, offsetY;
+        if (containerRatio > videoRatio) { renderHeight = rect.height; renderWidth = rect.height * videoRatio; offsetX = (rect.width - renderWidth) / 2; offsetY = 0; } else { renderWidth = rect.width; renderHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - renderHeight) / 2; }
+        var scaleX = canvas.width / renderWidth, scaleY = canvas.height / renderHeight; return { x: (clientX - rect.left - offsetX) * scaleX, y: (clientY - rect.top - offsetY) * scaleY, renderScale: scaleX };
+    }
+
+    function refreshReportView() {
+        if(appMode === 'playback') return; var w = video.videoWidth, h = video.videoHeight;
+        if (isPausedForEdit && staticBackgroundData) { ctxMP.drawImage(staticBackgroundData, 0, 0, w, h); } else { ctxMP.drawImage(video, 0, 0, w, h); }
+        drawCenterGrid(ctxMP, canvasMP);
+
+        if (calibState !== "idle") {
+            ctxMP.fillStyle = "#ffeb3b";
+            if (calibrationPoints[0]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[0].x, calibrationPoints[0].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_left") drawCrosshair(ctxMP, calibrationPoints[0], canvasMP); }
+            if (calibrationPoints[1]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[1].x, calibrationPoints[1].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_right") drawCrosshair(ctxMP, calibrationPoints[1], canvasMP); }
         }
 
+        if (window.reportDataStore[currentTab]) {
+            var kps = window.reportDataStore[currentTab]; drawSkeleton(ctxMP, kps, '#ff5252'); 
+            drawKendallAlignment(ctxMP, kps); calculateWeightBearing(ctxMP, kps); 
+            runReviewLogic(ctxMP, (n) => kps.find(k => k.name === n), canvasMP);
+            if (selectedJointIndex !== null) drawCrosshair(ctxMP, kps[selectedJointIndex], canvasMP); 
+        } ctxComb.drawImage(canvasMP, 0, 0, w, h);
+    }
+
+    radarWrapperMP.addEventListener('pointerdown', function(e) {
+        e.stopPropagation(); if (activeRadarDrag) return; initialTouch = { x: e.clientX, y: e.clientY };
+        longPressTimer = setTimeout(function() { var rect = radarWrapperMP.getBoundingClientRect(); activeRadarDrag = { element: radarWrapperMP, startX: initialTouch.x, startY: initialTouch.y, startLeft: rect.left, startTop: rect.top }; radarWrapperMP.style.right = 'auto'; radarWrapperMP.style.bottom = 'auto'; radarWrapperMP.style.left = rect.left + "px"; radarWrapperMP.style.top = rect.top + "px"; radarWrapperMP.classList.add('dragging'); isRadarMovedManually = true; }, 300);
+    });
+    radarWrapperMP.addEventListener('pointermove', function(e) { if (longPressTimer && initialTouch && Math.hypot(e.clientX - initialTouch.x, e.clientY - initialTouch.y) > 10) { clearTimeout(longPressTimer); longPressTimer = null; } });
+    var cancelPress = function() { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } };
+    radarWrapperMP.addEventListener('pointerup', cancelPress); radarWrapperMP.addEventListener('pointercancel', cancelPress);
+    window.addEventListener('pointermove', function(e) { if (activeRadarDrag) { e.preventDefault(); var dx = e.clientX - activeRadarDrag.startX, dy = e.clientY - activeRadarDrag.startY; activeRadarDrag.element.style.left = (activeRadarDrag.startLeft + dx) + "px"; activeRadarDrag.element.style.top = (activeRadarDrag.startTop + dy) + "px"; } }, { passive: false });
+    window.addEventListener('pointerup', function() { if (activeRadarDrag) { activeRadarDrag.element.classList.remove('dragging'); activeRadarDrag = null; } });
+
+    canvasMP.addEventListener('pointerdown', function(e) {
+        var pos = getEventPos(canvasMP, e); if (!pos) return;
+        if (calibState !== "idle") {
+            if (calibState === "wait_left" || calibState === "adjust_left") { calibrationPoints[0] = pos; calibState = "adjust_left"; calibrateMatBtn.innerText = "✅ 左端を確定"; document.getElementById('dpadPanel').style.display = 'flex'; } 
+            else if (calibState === "wait_right" || calibState === "adjust_right") { calibrationPoints[1] = pos; calibState = "adjust_right"; calibrateMatBtn.innerText = "✅ 右端を確定"; document.getElementById('dpadPanel').style.display = 'flex'; }
+            if (isPausedForEdit) refreshReportView(); return; 
+        }
+        var hitRadius = 80 * pos.renderScale; 
+        if ((currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) && window.currentAnchorPos && !isRecording && appMode !== 'playback') {
+            if (Math.hypot(window.currentAnchorPos.x - pos.x, window.currentAnchorPos.y - pos.y) < hitRadius * 1.5) { dragTarget = { type: 'anchor' }; window.anchorStatus = "dragging"; closeDpad(); return; }
+        }
+        var kpsToSearch = null; if (appMode === 'playback' && isEditingPlaybackFrame) { var fIdx = parseInt(document.getElementById('timelineSlider').value); if (playbackDataMP[fIdx]) kpsToSearch = playbackDataMP[fIdx].keypoints; } else if (isPausedForEdit && appMode !== 'playback') { kpsToSearch = window.reportDataStore[currentTab]; }
+        if (kpsToSearch) {
+            var closestIdx = -1, minDist = hitRadius; kpsToSearch.forEach(function(kp, idx) { if (kp && kp.score > 0.0) { var dist = Math.hypot(kp.x - pos.x, kp.y - pos.y); if (dist < minDist) { minDist = dist; closestIdx = idx; } } });
+            if (closestIdx !== -1) { selectedJointIndex = closestIdx; document.getElementById('dpadPanel').style.display = 'flex'; } else { closeDpad(); }
+            if (appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); else refreshReportView();
+        }
+    });
+
+    canvasMP.addEventListener('pointermove', function(e) { if (dragTarget && dragTarget.type === 'anchor') { if(e.cancelable) e.preventDefault(); var pos = getEventPos(canvasMP, e); if (!pos) return; var safeX = Math.max(0, Math.min(pos.x, canvasMP.width)), safeY = Math.max(0, Math.min(pos.y, canvasMP.height)); window.customOriginMarkers[currentTab] = { x: safeX, y: safeY }; window.currentAnchorPos = { x: safeX, y: safeY }; if (isPausedForEdit) refreshReportView(); } });
+    var handleEnd = function() { if (dragTarget && dragTarget.type === 'anchor') { window.anchorStatus = "locked"; dragTarget = null; canvasMP.style.cursor = 'default'; } };
+    canvasMP.addEventListener('pointerup', handleEnd); canvasMP.addEventListener('pointercancel', handleEnd);
+
+    window.switchReportTab = function(val) { 
+        if (isRecording) return; currentTab = val; staticBackgroundData = null; window.anchorStatus = "unlocked"; window.currentAnchorPos = null;
+        if(window.customOriginMarkers[val]) window.customOriginMarkers[val] = null; swayHistoryMP = []; clearRadar(ctxRadarMP, "#ff5252");
+        closeDpad(); isEditingPlaybackFrame = false; document.getElementById('editFrameBtn').innerText = "✂️ 微調整"; document.getElementById('editFrameBtn').style.background = "#ff9100";
+        if(DURATION_MAP[val]) { var recommended = DURATION_MAP[val].toString(); if(Array.from(document.getElementById('durationSelect').options).map(opt => opt.value).includes(recommended)) document.getElementById('durationSelect').value = recommended; }
+        document.getElementById('tiltPanel').style.display = (val === 'r_side' || val === 'l_side') ? 'block' : 'none';
+        appMode = 'camera'; 
+        document.getElementById('playbackControls').style.display = 'none'; 
+        document.getElementById('mainControls').style.display = 'flex'; 
+        isPausedForEdit = false; refreshReportView();
+    }
+
+    // --- 5. 録画と再生パイプライン ---
+    recBtn.onclick = function() {
+        controlsBox.style.display = 'none'; document.getElementById('toggleUiBtn').innerText = '🔼 UIを表示';
+        isPausedForEdit = false; staticBackgroundData = null; isRecording = true; closeDpad(); coordinateBufferMP = []; 
+        poseDataLog = []; 
+        recordingDuration = parseInt(document.getElementById('durationSelect').value); var start = Date.now(); swayHistoryMP = []; 
+        document.getElementById('timerDisplay').style.display = "block"; recBtn.disabled = true; document.getElementById('downloadCsvBtn').disabled = true;
+        
+        var timer = setInterval(async function() {
+            var elapsed = Date.now() - start; document.getElementById('timerDisplay').innerText = "REC " + Math.max(0, (recordingDuration - elapsed) / 1000).toFixed(1) + "s";
+            if (elapsed >= recordingDuration) { 
+                clearInterval(timer); 
+                await executePostProcessingStop(); 
+            }
+        }, 100);
+    };
+
+    async function executePostProcessingStop() {
+        controlsBox.style.display = 'flex'; document.getElementById('toggleUiBtn').innerText = '🔽 UIを隠す';
+        isRecording = false; document.getElementById('timerDisplay').style.display = "none";
+        
+        if (poseDataLog.length > 0) {
+            var session = { id: 'session_' + Date.now(), timestamp: Date.now(), mode: currentTab, poseData: JSON.parse(JSON.stringify(poseDataLog)) };
+            try { await dbManager.saveSession(session); window.refreshHistoryList(); } catch(err) { console.error("Auto-save failed", err); }
+        }
+
+        if (currentTab.startsWith("dyn_")) { 
+            var deepestKp = null; var maxY = 0;
+            poseDataLog.forEach(d => {
+                if(d.mode === currentTab) {
+                    var hip = d.keypoints.find(k=>k.name==='left_hip' || k.name==='right_hip');
+                    if(hip && hip.y > maxY) { maxY = hip.y; deepestKp = d.keypoints; }
+                }
+            });
+            if(deepestKp) window.reportDataStore[currentTab] = JSON.parse(JSON.stringify(deepestKp));
+            enterPlaybackMode(); 
+        } 
+        else {
+            isPausedForEdit = true; 
+            var bgCanvas = document.createElement('canvas'); bgCanvas.width = canvasMP.width; bgCanvas.height = canvasMP.height;
+            bgCanvas.getContext('2d').drawImage(video, 0, 0, canvasMP.width, canvasMP.height); staticBackgroundData = bgCanvas;
+            if (coordinateBufferMP.length > 0) {
+                var totalFrames = coordinateBufferMP.length; var avgKeypoints = JSON.parse(JSON.stringify(coordinateBufferMP[0]));
+                avgKeypoints.forEach(function(kp, kpIdx) { var sumX = 0, sumY = 0; for (var f = 0; f < totalFrames; f++) { if(coordinateBufferMP[f][kpIdx]) { sumX += coordinateBufferMP[f][kpIdx].x; sumY += coordinateBufferMP[f][kpIdx].y; } } kp.x = sumX / totalFrames; kp.y = sumY / totalFrames; kp.score = 1.00; });
+                window.reportDataStore[currentTab] = avgKeypoints;
+            } recBtn.disabled = false; document.getElementById('downloadCsvBtn').disabled = false; refreshReportView(); 
+        }
+    }
+
+    function enterPlaybackMode() {
+        appMode = 'playback'; document.getElementById('mainControls').style.display = 'none'; document.getElementById('playbackControls').style.display = 'flex';
+        playbackDataMP = poseDataLog.filter(d => d.mode === currentTab);
+        if (playbackDataMP.length > 1) { playbackBaseTime = playbackDataMP[0].time; playbackTotalDuration = playbackDataMP[playbackDataMP.length - 1].time - playbackBaseTime; } else { playbackBaseTime = 0; playbackTotalDuration = 0; }
+        var maxFrames = playbackDataMP.length - 1; document.getElementById('timelineSlider').max = maxFrames > 0 ? maxFrames : 0; document.getElementById('timelineSlider').value = 0; document.getElementById('frameCounter').innerText = "0 / " + document.getElementById('timelineSlider').max;
+        renderPlaybackFrame(0); togglePlay(true);
+    }
+    
+    function exitPlaybackMode() { 
+        appMode = 'camera'; togglePlay(false); 
+        document.getElementById('playbackControls').style.display = 'none'; document.getElementById('mainControls').style.display = 'flex'; 
+        isPausedForEdit = false; closeDpad(); isEditingPlaybackFrame=false; document.getElementById('editFrameBtn').innerText = "✂️ 微調整"; document.getElementById('editFrameBtn').style.background = "#ff9100"; 
+        if(isExportingVideo) { isExportingVideo = false; if(exportRecorder && exportRecorder.state !== "inactive") exportRecorder.stop(); document.getElementById('exportVideoBtn').innerText = "🎥 動画出力"; document.getElementById('exportVideoBtn').disabled = false; }
+    }
+
+    function togglePlay(forcePlay) {
+        if(isEditingPlaybackFrame && forcePlay !== false) return; 
+        if (forcePlay === true || !isPlaying) {
+            isPlaying = true; document.getElementById('playPauseBtn').innerText = "⏸ 停止";
+            if (playbackDataMP.length > 1) { var currentIdx = parseInt(document.getElementById('timelineSlider').value); if(currentIdx >= playbackDataMP.length) currentIdx = 0; playbackStartTime = Date.now() - (playbackDataMP[currentIdx].time - playbackBaseTime); } else { playbackStartTime = Date.now(); }
+            playbackLoop();
+        } else { isPlaying = false; document.getElementById('playPauseBtn').innerText = "▶ 再生"; cancelAnimationFrame(playbackRafId); }
+    }
+
+    function playbackLoop() {
+        if (!isPlaying) return; var now = Date.now(), elapsed = now - playbackStartTime; 
+        if (elapsed > playbackTotalDuration) { 
+            if (isExportingVideo) { togglePlay(false); if (exportRecorder && exportRecorder.state !== "inactive") exportRecorder.stop(); return; }
+            playbackStartTime = now; elapsed = 0; 
+        }
+        var targetTime = playbackBaseTime + elapsed, targetIdx = playbackDataMP.length - 1;
+        for (var i = 0; i < playbackDataMP.length; i++) { if (playbackDataMP[i].time >= targetTime) { targetIdx = i; break; } }
+        document.getElementById('timelineSlider').value = targetIdx; renderPlaybackFrame(targetIdx); playbackRafId = requestAnimationFrame(playbackLoop);
+    }
+
+    function renderPlaybackFrame(frameIdx) {
+        document.getElementById('frameCounter').innerText = frameIdx + " / " + document.getElementById('timelineSlider').max; 
+        ctxMP.fillStyle = "#111"; ctxMP.fillRect(0, 0, canvasMP.width, canvasMP.height); 
+        drawCenterGrid(ctxMP, canvasMP);
+        if (playbackDataMP[frameIdx]) {
+            var actualKps = playbackDataMP[frameIdx].keypoints; 
+            drawSkeleton(ctxMP, actualKps, '#ffffff'); 
+            drawOHSFrontAnalysis(ctxMP, actualKps);
+            drawOHSSideAnalysis(ctxMP, actualKps);
+            drawKendallAlignment(ctxMP, actualKps); 
+            calculateWeightBearing(ctxMP, actualKps); 
+            runReviewLogic(ctxMP, (n) => actualKps.find(k => k.name === n), canvasMP);
+            if (selectedJointIndex !== null && isEditingPlaybackFrame) { drawCrosshair(ctxMP, actualKps[selectedJointIndex], canvasMP); }
+            drawPlaybackRadar(playbackDataMP, frameIdx, canvasMP);
+        } ctxComb.drawImage(canvasMP, 0, 0, canvasMP.width, canvasMP.height);
+    }
+
+    function startVideoExport() {
+        if (isExportingVideo) return;
+        isExportingVideo = true; exportChunks = []; togglePlay(false); document.getElementById('timelineSlider').value = 0; renderPlaybackFrame(0);
+        try {
+            var stream = canvasComb.captureStream(30);
+            var mimeType = MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm;codecs=vp8';
+            exportRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+            exportRecorder.ondataavailable = function(e) { if (e.data.size > 0) exportChunks.push(e.data); };
+            exportRecorder.onstop = function() {
+                var ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+                var b = new Blob(exportChunks, { type: mimeType }); 
+                var a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `connect_ai_${currentTab}_${Date.now()}.${ext}`; a.click();
+                isExportingVideo = false; document.getElementById('exportVideoBtn').innerText = "🎥 動画出力"; document.getElementById('exportVideoBtn').disabled = false;
+            };
+            exportRecorder.start();
+            document.getElementById('exportVideoBtn').innerText = "録画出力中..."; document.getElementById('exportVideoBtn').disabled = true;
+            playbackStartTime = Date.now(); togglePlay(true);
+        } catch (e) { console.error(e); isExportingVideo = false; document.getElementById('exportVideoBtn').innerText = "🎥 動画出力"; document.getElementById('exportVideoBtn').disabled = false; customAlert("エラー", "動画出力に失敗しました。"); }
+    }
+    document.getElementById('exportVideoBtn').onclick = startVideoExport;
+
+    // --- 6. システム・カメラ初期化 ---
+    async function init() {
+        try { await dbManager.init(); } catch(e) { console.error("DB Init Error:", e); }
         try {
             var devices = await navigator.mediaDevices.enumerateDevices();
             var vs = document.getElementById('videoSource');
             vs.innerHTML = ''; 
             var hasCam = false;
             devices.forEach(d => { 
-                if(d.kind==='videoinput') {
-                    vs.appendChild(new Option(d.label || "カメラ", d.deviceId)); 
-                    hasCam = true;
-                } 
+                if(d.kind==='videoinput') { vs.appendChild(new Option(d.label || "カメラ", d.deviceId)); hasCam = true; } 
             });
-            if(!hasCam) {
-                vs.innerHTML = '<option value="">カメラなし</option>';
-            }
+            if(!hasCam) vs.innerHTML = '<option value="">カメラなし</option>';
 
             await tf.setBackend('webgl'); 
             await tf.ready();
             detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
-            startBtn.innerText = "📷 システム起動"; 
-            startBtn.disabled = false;
+            startBtn.innerText = "📷 システム起動"; startBtn.disabled = false; updateInfoPanel();
         } catch(e) { 
             startBtn.innerText = "❌ 起動エラー"; 
             customAlert("AI初期化エラー", "AIエンジンの準備中にエラーが発生しました。\n\n詳細: " + (e.message || e) + "\n\nネットワーク環境を確認し、ページをリロードしてください。");
         }
     }
+    window.addEventListener('load', init); 
 
-    // 🌟 V82: 究極のカメラ・フォールバック機構
+    // 🌟 V82: カメラ再起動・フリーズ回避（currentStream解決済）
     startBtn.onclick = async function() {
         renderSessionId++; var cur = renderSessionId;
-        var isPortrait = document.getElementById('camOrientation').value === 'portrait';
         var vs = document.getElementById('videoSource').value;
-        
-        var constraints = { video: { width: { ideal: isPortrait ? 1080 : 1920 }, height: { ideal: isPortrait ? 1920 : 1080 } } };
+        var constraints = { video: { width: { ideal: 1920 }, height: { ideal: 1080 } } };
         if (vs) constraints.video.deviceId = { ideal: vs }; 
 
         try {
-            if(currentStream) {
-                currentStream.getTracks().forEach(t=>t.stop());
-                video.pause();
-                video.srcObject = null;
-            }
+            if(currentStream) { currentStream.getTracks().forEach(t=>t.stop()); video.pause(); video.srcObject = null; }
             var stream = await navigator.mediaDevices.getUserMedia(constraints);
             startVideoStream(stream, cur);
         } catch(e) {
@@ -553,16 +942,11 @@
 
     function startVideoStream(stream, cur) {
         video.srcObject = stream; 
-        currentStream = stream;
+        currentStream = stream; // V82 FIX: 変数を保持
         video.onloadeddata = function() {
-            canvasMP.width = video.videoWidth; 
-            canvasMP.height = video.videoHeight;
-            canvasComb.width = video.videoWidth; 
-            canvasComb.height = video.videoHeight;
-            isRunning = true; 
-            video.play(); 
-            render(cur); 
-            recBtn.disabled = false;
+            canvasMP.width = video.videoWidth; canvasMP.height = video.videoHeight;
+            canvasComb.width = video.videoWidth; canvasComb.height = video.videoHeight;
+            isRunning = true; video.play(); render(cur); recBtn.disabled = false;
             video.onloadeddata = null; 
         };
     }
@@ -576,74 +960,75 @@
             window.reportDataStore[currentTab] = kps;
             if (isRecording) poseDataLog.push({ time: Date.now(), mode: currentTab, keypoints: kps });
             drawSkeleton(ctxMP, kps, "#ff5252");
-            drawGaitSideAnalysis(ctxMP, kps);
-            drawGaitFrontAnalysis(ctxMP, kps);
+            drawOHSFrontAnalysis(ctxMP, kps);
+            drawOHSSideAnalysis(ctxMP, kps);
+            drawKendallAlignment(ctxMP, kps);
+            calculateWeightBearing(ctxMP, kps);
         }
         ctxComb.drawImage(canvasMP, 0, 0, canvasMP.width, canvasMP.height);
         requestAnimationFrame(() => render(sid));
     }
 
-    recBtn.onclick = function() {
-        controlsBox.style.display = 'none'; document.getElementById('toggleUiBtn').innerText = '🔼 UIを表示';
-        isRecording = true; poseDataLog = []; gaitAngleHistory = []; gaitFrontHistory = [];
-        recordingDuration = parseInt(document.getElementById('durationSelect').value); var start = Date.now();
-        document.getElementById('timerDisplay').style.display = "block";
-        var timer = setInterval(async function() {
-            var diff = Date.now() - start; document.getElementById('timerDisplay').innerText = "REC " + Math.max(0, (recordingDuration - diff) / 1000).toFixed(1) + "s";
-            if (diff >= recordingDuration) { clearInterval(timer); await executePostProcessingStop(); }
-        }, 100);
-    };
-
-    async function executePostProcessingStop() {
-        controlsBox.style.display = 'flex'; document.getElementById('toggleUiBtn').innerText = '🔽 UIを隠す'; isRecording = false; document.getElementById('timerDisplay').style.display = "none";
-        if (poseDataLog.length > 0) {
-            var session = { id: 'session_' + Date.now(), timestamp: Date.now(), mode: currentTab, poseData: JSON.parse(JSON.stringify(poseDataLog)) };
-            await dbManager.saveSession(session);
-            enterPlaybackMode();
-        }
-    }
-
-    function enterPlaybackMode() {
-        appMode = "playback"; document.getElementById('mainControls').style.display = 'none'; document.getElementById('playbackControls').style.display = 'flex';
-        playbackDataMP = poseDataLog; document.getElementById('timelineSlider').max = playbackDataMP.length - 1; document.getElementById('timelineSlider').value = 0;
-        renderPlaybackFrame(0); togglePlay(true);
-    }
-
-    document.getElementById('backToCamBtn').onclick = function() { appMode = "camera"; document.getElementById('playbackControls').style.display = 'none'; document.getElementById('mainControls').style.display = 'flex'; togglePlay(false); };
-    document.getElementById('playPauseBtn').onclick = function() { togglePlay(!isPlaying); };
-    document.getElementById('timelineSlider').oninput = function() { togglePlay(false); renderPlaybackFrame(parseInt(this.value)); };
-
-    function togglePlay(play) { isPlaying = play; document.getElementById('playPauseBtn').innerText = play ? "⏸ 停止" : "▶ 再生"; if(play) playbackLoop(); }
-    function playbackLoop() { if(!isPlaying) return; var slider = document.getElementById('timelineSlider'); var idx = parseInt(slider.value) + 1; if(idx >= playbackDataMP.length) idx = 0; slider.value = idx; renderPlaybackFrame(idx); setTimeout(playbackLoop, 33); }
-
-    function renderPlaybackFrame(idx) {
-        if (!playbackDataMP[idx]) return;
-        ctxMP.fillStyle = "#111"; ctxMP.fillRect(0,0,canvasMP.width,canvasMP.height);
-        var kps = playbackDataMP[idx].keypoints;
-        drawSkeleton(ctxMP, kps, "#ffffff");
-        drawGaitSideAnalysis(ctxMP, kps);
-        drawGaitFrontAnalysis(ctxMP, kps);
-        ctxComb.drawImage(canvasMP, 0,0,canvasMP.width,canvasMP.height);
-        document.getElementById('frameCounter').innerText = `${idx} / ${playbackDataMP.length - 1}`;
-    }
-
-    // 🌟 ダッシュボード＆LLM評価
+    // --- 7. ダッシュボード & LLM ---
     window.prepareAndPrintReport = function() {
         var grid = document.getElementById('dashGrid'); var html = '';
-        html += '<div class="dash-card"><h3>🚶 歩行分析 (Frontal/Sagittal)</h3>';
-        if(gaitFrontHistory.length > 0) {
-            let last = gaitFrontHistory[gaitFrontHistory.length - 1];
-            html += `<div class="dash-metric"><span>骨盤傾斜角 (Trendelenburg)</span><span class="val ${Math.abs(last.pelvicAngle)>5?'warn':'good'}">${last.pelvicAngle.toFixed(1)}°</span></div>`;
-            html += `<div class="dash-metric"><span>体幹側方シフト (Sway)</span><span class="val ${Math.abs(last.swayPct)>10?'warn':'good'}">${Math.abs(last.swayPct).toFixed(1)}%</span></div>`;
+        
+        html += '<div class="dash-card"><h3>🧍 前額面アライメント (Frontal)</h3>';
+        var frontKps = window.reportDataStore['front'] || window.reportDataStore['back'];
+        if(frontKps) {
+             var wb = getWeightBearingData(frontKps);
+             var pDiff = getPelvicDiff(frontKps);
+             if(wb) {
+                 html += `<div class="dash-metric"><span>全身荷重配分 (左/右)</span> <span class="val ${Math.abs(wb.total.L-50)>5?'warn':'good'}">${wb.total.L.toFixed(1)}% / ${wb.total.R.toFixed(1)}%</span></div>`;
+                 html += `<div class="dash-metric"><span>上半身質量偏位 (左/右)</span> <span class="val">${wb.upper.L.toFixed(1)}% / ${wb.upper.R.toFixed(1)}%</span></div>`;
+                 html += `<div class="dash-metric"><span>下半身質量偏位 (左/右)</span> <span class="val">${wb.lower.L.toFixed(1)}% / ${wb.lower.R.toFixed(1)}%</span></div>`;
+             }
+             if(pDiff !== null) html += `<div class="dash-metric"><span>骨盤高低差</span> <span class="val ${pDiff>1.5?'warn':'good'}">${pDiff.toFixed(1)} cm</span></div>`;
+        } else {
+             html += '<p style="color:#aaa; text-align:center; padding: 20px 0;">未測定</p>';
         }
-        if(gaitAngleHistory.length > 0) {
-            let last = gaitAngleHistory[gaitAngleHistory.length - 1];
-            html += `<div class="dash-metric"><span>終末遊脚期 膝角度</span><span class="val good">${last.knee.toFixed(1)}°</span></div>`;
-        }
-        if(gaitFrontHistory.length===0 && gaitAngleHistory.length===0) html += '<p style="color:#aaa;">未計測</p>';
         html += '</div>';
 
-        // 🌟 V82: APIキーを画面上で入力できるUIに変更
+        html += '<div class="dash-card"><h3>🧍 矢状面アライメント (Sagittal)</h3>';
+        var sideKps = window.reportDataStore['l_side'] || window.reportDataStore['r_side'];
+        if(sideKps) {
+             var isLeft = !!window.reportDataStore['l_side'];
+             var stress = getKendallStressData(sideKps, isLeft);
+             if(stress) {
+                 stress.forEach(s => { html += `<div class="dash-metric"><span>${s.name}</span> <span class="val ${s.pct>150?'warn':'good'}">${s.dev > 0 ? '+':''}${s.dev.toFixed(1)}cm (${s.pct.toFixed(0)}% 負荷)</span></div>`; });
+             }
+        } else { html += '<p style="color:#aaa; text-align:center; padding: 20px 0;">未測定</p>'; }
+        html += '</div>';
+
+        html += '<div class="dash-card"><h3>🏋️ 動的機能: OHS (Dynamic)</h3>';
+        var ohsF = window.reportDataStore['dyn_overhead'];
+        var ohsS = window.reportDataStore['dyn_overhead_side'];
+        if(ohsF || ohsS) {
+            if(ohsF) {
+                var data = getOHSFrontData(ohsF);
+                if(data.r) html += `<div class="dash-metric"><span>右膝挙動</span> <span class="val ${data.r.warn?'warn':'good'}">${data.r.text}</span></div>`;
+                if(data.l) html += `<div class="dash-metric"><span>左膝挙動</span> <span class="val ${data.l.warn?'warn':'good'}">${data.l.text}</span></div>`;
+            } else { html += `<div class="dash-metric"><span>前面 OHS</span> <span class="val">未測定</span></div>`; }
+            if(ohsS) {
+                var data = getOHSSideData(ohsS);
+                if(data) {
+                    html += `<div class="dash-metric"><span>最大体幹前傾角</span> <span class="val ${data.trunk>45?'warn':'good'}">${data.trunk.toFixed(1)}°</span></div>`;
+                    html += `<div class="dash-metric"><span>最深膝屈曲角</span> <span class="val">${data.knee.toFixed(1)}°</span></div>`;
+                    if(data.arm) html += `<div class="dash-metric"><span>上腕アライメント</span> <span class="val ${data.arm<160?'warn':'good'}">${data.arm.toFixed(1)}°</span></div>`;
+                }
+            } else { html += `<div class="dash-metric"><span>側面 OHS</span> <span class="val">未測定</span></div>`; }
+        } else { html += '<p style="color:#aaa; text-align:center; padding: 20px 0;">未測定</p>'; }
+        html += '</div>';
+
+        html += '<div class="dash-card"><h3>⚡ バランス＆可動性 (Mobility)</h3>';
+        var tests = [ { id: 'dyn_single_r', name: '片脚バランス (右)' }, { id: 'dyn_single_l', name: '片脚バランス (左)' }, { id: 'dyn_flex_fwd', name: '立位体前屈' }, { id: 'dyn_flex_bwd', name: '立位体後屈' }, { id: 'dyn_shoulder_r', name: '肩複合可動性 (右上)' }, { id: 'dyn_shoulder_l', name: '肩複合可動性 (左上)' } ];
+        var hasOther = false;
+        tests.forEach(t => {
+            if(window.reportDataStore[t.id]) { hasOther = true; html += `<div class="dash-metric"><span>${t.name}</span> <span class="val good">データ取得済 ✅</span></div>`; }
+        });
+        if(!hasOther) html += '<p style="color:#aaa; text-align:center; padding: 20px 0;">未測定</p>';
+        html += '</div>';
+
         html += `<div class="dash-card" id="aiEvalCard" style="grid-column: 1 / -1;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 20px;">
                 <h3 style="margin:0; border:none; padding:0; color:#00bfff;">🧠 AI 臨床評価 (LLM Insight)</h3>
@@ -659,18 +1044,90 @@
         grid.innerHTML = html; document.getElementById('dashboardOverlay').style.display = 'block';
     }
 
+    // AI評価に必要なデータ取得補助関数 (V76仕様)
+    function getWeightBearingData(kps) {
+        var getK = name => kps.find(k => k.name === name);
+        var lAnkle = getK('left_ankle'), rAnkle = getK('right_ankle'); if (!lAnkle || !rAnkle) return null;
+        var nose = getK('nose'), lSh = getK('left_shoulder'), rSh = getK('right_shoulder'), lHip = getK('left_hip'), rHip = getK('right_hip');
+        if (!nose || !lSh || !rSh || !lHip || !rHip) return null;
+        var dPx = rAnkle.x - lAnkle.x; if (Math.abs(dPx) < 10) return null;
+        var upperComX = (nose.x * 0.20) + (((lSh.x + rSh.x) / 2) * 0.80);
+        var lowerComX = (lHip.x + rHip.x) / 2;
+        var totalComX = (upperComX * 0.6) + (lowerComX * 0.4);
+        var calcRatio = (comX) => { var pctR = ((comX - lAnkle.x) / dPx) * 100, pctL = 100 - pctR; if(pctR < 0) { pctR = 0; pctL = 100; } if(pctR > 100) { pctR = 100; pctL = 0; } return { L: pctL, R: pctR }; };
+        return { upper: calcRatio(upperComX), lower: calcRatio(lowerComX), total: calcRatio(totalComX) };
+    }
+    function getPelvicDiff(kps) { var asisL = kps.find(k=>k.name==='virtual_asis_l'), asisR = kps.find(k=>k.name==='virtual_asis_r'); if(asisL && asisR && pxToCmRatio) return Math.abs(asisL.y - asisR.y) * pxToCmRatio; return null; }
+    function getKendallStressData(kps, isLeft) {
+        var getK = name => kps.find(k => k.name === name);
+        var dir = isLeft ? -1 : 1;
+        var ear = isLeft ? getK('left_ear') : getK('right_ear'), sh = isLeft ? getK('left_shoulder') : getK('right_shoulder'), hip = isLeft ? getK('left_hip') : getK('right_hip'), ankle = isLeft ? getK('left_ankle') : getK('right_ankle');
+        var targetAnkle = ankle && ankle.score > 0.1 ? ankle : null; if (!targetAnkle) { var heel = isLeft ? getK('left_heel') : getK('right_heel'); if (heel && heel.score > 0.1) targetAnkle = heel; }
+        if (!ear || !sh || !hip || !targetAnkle) return null;
+        var ratio = pxToCmRatio || 0.15, footCm = parseFloat(document.getElementById('footSize').value) || 25, plumbX = targetAnkle.x + (dir * ((footCm * 0.15) / ratio));
+        var c2 = { x: ear.x - (dir * (1.0 / ratio)), name: "C2 (頸椎)", d0: 1.5 };
+        var th3 = { x: sh.x, name: "Th3 (胸椎)", d0: 1.0 };
+        var tiltRad = estimatedPelvicTilt * (Math.PI / 180);
+        var s2X = hip.x - (dir * ((3.0/ratio) * Math.cos(tiltRad) - (2.0/ratio) * Math.sin(tiltRad)));
+        var s2 = { x: s2X, name: "S2 (仙骨)", d0: 1.0 };
+        var l3X = s2.x + (dir * ((3.0 + (estimatedPelvicTilt * 0.1)) / ratio));
+        var l3 = { x: l3X, name: "L3 (腰椎)", d0: 2.0 };
+        var straightTh11X = l3.x + (th3.x - l3.x) * ((l3.y - (s2.y - ((s2.y - sh.y) * 0.6))) / (l3.y - th3.y));
+        var th11X = straightTh11X - (dir * ((1.5 + (estimatedPelvicTilt * 0.05)) / ratio));
+        var th11 = { x: th11X, name: "Th11 (胸腰)", d0: 1.0 };
+        return [c2, th3, th11, l3, s2].map(pt => { var devCm = (pt.x - plumbX) * ratio * dir; var stressPct = ((pt.d0 + Math.max(0, devCm)) / pt.d0) * 100; if (devCm < -pt.d0) stressPct = Math.abs((pt.d0 + devCm)/pt.d0) * 100; return { name: pt.name, dev: devCm, pct: stressPct }; });
+    }
+    function getOHSFrontData(kps) {
+        var getK = name => kps.find(k => k.name === name);
+        const evalSide = (h, k, a, label) => {
+            if(!h||!k||!a) return null; var refX = h.x + (a.x - h.x) * ((k.y - h.y) / (a.y - h.y));
+            var angle = Math.abs(180 - Math.abs(Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI);
+            if(angle > 2.0) { var isIn = label==='R' ? k.x > refX : k.x < refX; return { warn: isIn, text: (isIn?"ニーイン ":"ニーアウト ") + angle.toFixed(1)+"°" }; }
+            return { warn: false, text: "正常 (Straight)" };
+        };
+        return { r: evalSide(getK('right_hip'),getK('right_knee'),getK('right_ankle'),'R'), l: evalSide(getK('left_hip'),getK('left_knee'),getK('left_ankle'),'L') };
+    }
+    function getOHSSideData(kps) {
+        var getK = name => kps.find(k => k.name === name);
+        var lS = getK('left_shoulder'), lH = getK('left_hip'), lK = getK('left_knee'), lA = getK('left_ankle'), lW = getK('left_wrist');
+        var rS = getK('right_shoulder'), rH = getK('right_hip'), rK = getK('right_knee'), rA = getK('right_ankle'), rW = getK('right_wrist');
+        var isLeft = (lS && rS && lS.score > rS.score);
+        var s = isLeft?lS:rS, h = isLeft?lH:rH, k = isLeft?lK:rK, a = isLeft?lA:rA, w = isLeft?lW:rW;
+        if (!s || !h || !k || !a) return null;
+        var trunkLean = Math.abs(Math.atan2(s.x - h.x, h.y - s.y) * 180 / Math.PI);
+        var kneeAng = Math.abs((Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI); if(kneeAng > 180) kneeAng = 360 - kneeAng;
+        var armAng = w ? Math.abs((Math.atan2(w.y-s.y, w.x-s.x) - Math.atan2(h.y-s.y, h.x-s.x)) * 180 / Math.PI) : null; if(armAng && armAng > 180) armAng = 360 - armAng;
+        return { trunk: trunkLean, knee: kneeAng, arm: armAng };
+    }
+
     window.generateAiInsights = async function() {
         const apiKey = document.getElementById('geminiApiKeyInput').value.trim();
-        
-        if (!apiKey) {
-            document.getElementById('aiEvalContent').innerHTML = `<span style="color:#ff5252;">Google AI Studio で取得したAPIキーを入力欄に設定してください。</span>`;
-            return;
-        }
+        if (!apiKey) { document.getElementById('aiEvalContent').innerHTML = `<span style="color:#ff5252;">Google AI Studio で取得したAPIキーを入力欄に設定してください。</span>`; return; }
 
         document.getElementById('aiEvalContent').innerHTML = "<span style='color:#aaa;'>AIが分析中...</span>";
+        
         let promptText = "【患者データ】\n";
-        if(gaitFrontHistory.length > 0) promptText += `- トレンデレンブルグ徴候(骨盤傾斜): ${gaitFrontHistory[gaitFrontHistory.length-1].pelvicAngle.toFixed(1)}°\n- 体幹スウェイ: ${gaitFrontHistory[gaitFrontHistory.length-1].swayPct.toFixed(1)}%\n`;
-        else promptText += "有意なデータがありません。\n";
+        let frontKps = window.reportDataStore['front'] || window.reportDataStore['back'];
+        if(frontKps) {
+            let wb = getWeightBearingData(frontKps), pDiff = getPelvicDiff(frontKps);
+            if(wb) promptText += `- 前額面荷重配分: 左 ${wb.total.L.toFixed(1)}% / 右 ${wb.total.R.toFixed(1)}%\n`;
+            if(pDiff !== null) promptText += `- 骨盤高低差: ${pDiff.toFixed(1)} cm\n`;
+        }
+        let sideKps = window.reportDataStore['l_side'] || window.reportDataStore['r_side'];
+        if(sideKps) {
+            let isLeft = !!window.reportDataStore['l_side'], stress = getKendallStressData(sideKps, isLeft);
+            if(stress) { promptText += "- 矢状面トルクストレス:\n"; stress.forEach(s => promptText += `  ${s.name}: 変位 ${s.dev.toFixed(1)}cm, 負荷 ${s.pct.toFixed(0)}%\n`); }
+        }
+        let ohsF = window.reportDataStore['dyn_overhead'];
+        if(ohsF) {
+            let data = getOHSFrontData(ohsF); promptText += "- OHS前面:\n";
+            if(data.r && data.r.warn) promptText += `  右膝: ${data.r.text}\n`; if(data.l && data.l.warn) promptText += `  左膝: ${data.l.text}\n`;
+        }
+        let ohsS = window.reportDataStore['dyn_overhead_side'];
+        if(ohsS) {
+            let data = getOHSSideData(ohsS);
+            if(data) { promptText += `- OHS側面: 体幹前傾 ${data.trunk.toFixed(1)}°, 膝屈曲 ${data.knee.toFixed(1)}°`; if(data.arm) promptText += `, 上腕 ${data.arm.toFixed(1)}°`; promptText += "\n"; }
+        }
 
         try {
             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
@@ -684,8 +1141,6 @@
             document.getElementById('aiEvalContent').innerHTML = `<span style="color:#ff5252;">評価の生成に失敗しました。APIキーが間違っているか、通信エラーです。(${e.message})</span>`;
         }
     };
-
-    window.addEventListener('load', init);
 </script>
 </body>
 </html>
