@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Academic Master V80 (Front Gait & Camera Fix)</title>
+    <title>CONNECT AI - Academic Master V81 (Camera Fallback Fix)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -77,6 +77,7 @@
         .history-action-btn.vid { background: #1976d2; }
         #closeHistoryBtn { background: transparent; border: none; color: #aaa; font-size: 20px; cursor: pointer; padding: 0; }
 
+        /* 統合ダッシュボード */
         #dashboardOverlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; background: rgba(5,5,5,0.98); z-index: 3000; display: none; overflow-y: auto; padding: 40px; box-sizing: border-box; }
         .dash-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #00bfff; padding-bottom: 20px; margin-bottom: 30px; }
         .dash-title { color: #00bfff; font-size: 32px; font-weight: bold; margin: 0; }
@@ -91,6 +92,17 @@
         .dash-close, .dash-print { background: #333; color: #fff; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px; border:none; }
         .dash-print { background: #ff9100; color: #000; margin-right: 10px; }
 
+        /* インラインモーダルダイアログ */
+        #customModal { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; background: rgba(0,0,0,0.85); z-index: 9999; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
+        .modal-box { background: #1a1c20; border: 2px solid #00bfff; border-radius: 16px; padding: 25px; width: 90%; max-width: 450px; box-shadow: 0 10px 30px rgba(0,191,255,0.2); }
+        .modal-title { margin-top: 0; color: #00bfff; font-size: 20px; font-weight: bold; }
+        .modal-body { color: #daffde; font-size: 15px; line-height: 1.6; margin: 20px 0; white-space: pre-wrap; }
+        .modal-footer { display: flex; justify-content: flex-end; gap: 12px; }
+        .modal-btn { padding: 8px 20px; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.2s; border:none; }
+        .modal-ok { background: #00bfff; color: #000; }
+        .modal-cancel { background: #444; color: #fff; }
+        .modal-btn:hover { filter: brightness(1.1); }
+
         @media print {
             body { background: white; color: black; overflow: visible; }
             #uiFloatingLayer, #tiltPanel, #dpadPanel, #historyPanel, .view-port { display: none !important; }
@@ -103,6 +115,9 @@
             .dash-metric .val.warn { color: #d32f2f; }
             .dash-metric .val.good { color: #2e7d32; }
             .dash-close, .dash-print { display: none; }
+            #aiEvalCard { grid-column: 1 / -1; margin-top: 20px; break-inside: avoid; }
+            #aiEvalContent { background: #f0f8ff !important; color: #000 !important; border-left: 4px solid #1976d2 !important; }
+            #generateAiEvalBtn { display: none; }
         }
     </style>
 </head>
@@ -110,7 +125,7 @@
 
 <div class="view-port">
     <canvas id="canvasMP"></canvas>
-    <div class="label">CONNECT AI - V80 Academic Master</div>
+    <div class="label">CONNECT AI - V81 Safe Camera Fix</div>
     <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     <div id="radarWrapperMP" class="radar-wrapper">
@@ -154,6 +169,17 @@
         </div>
     </div>
     <div class="dash-grid" id="dashGrid"></div>
+</div>
+
+<div id="customModal">
+    <div class="modal-box">
+        <h3 id="modalTitle" class="modal-title"></h3>
+        <p id="modalMessage" class="modal-body"></p>
+        <div class="modal-footer">
+            <button id="modalCancelBtn" class="modal-btn modal-cancel">キャンセル</button>
+            <button id="modalOkBtn" class="modal-btn modal-ok">OK</button>
+        </div>
+    </div>
 </div>
 
 <div id="uiFloatingLayer">
@@ -258,17 +284,33 @@
 
     var video = document.getElementById('video'), canvasMP = document.getElementById('canvasMP'), ctxMP = canvasMP.getContext('2d');
     var canvasComb = document.getElementById('canvasCombined'), ctxComb = canvasComb.getContext('2d');
-    var radarWrapperMP = document.getElementById('radarWrapperMP'), canvasRadarMP = document.getElementById('canvasRadarMP'), ctxRadarMP = canvasRadarMP.getContext('2d');
-    var startBtn = document.getElementById('startBtn'), recBtn = document.getElementById('recBtn'), durationSelect = document.getElementById('durationSelect'), timerDisplay = document.getElementById('timerDisplay');
-    var videoSource = document.getElementById('videoSource'), camOrientation = document.getElementById('camOrientation'), heightInput = document.getElementById('patientHeight'), calibrateMatBtn = document.getElementById('calibrateMatBtn');
+    var ctxRadarMP = document.getElementById('canvasRadarMP').getContext('2d');
+    var startBtn = document.getElementById('startBtn'), recBtn = document.getElementById('recBtn');
     
     var detectors = [], isRunning = false, isRecording = false, isPausedForEdit = false, currentTab = "dyn_gait_front", appMode = "camera", isPlaying = false;
-    var playbackDataMP = [], mainRenderId = null, recordingDuration = 10000, coordinateBufferMP = [], poseDataLog = [], playbackRafId = null;
+    var playbackDataMP = [], mainRenderId = null, recordingDuration = 10000, poseDataLog = [], playbackRafId = null;
     var pxToCmRatio = null, estimatedPelvicTilt = 0, calibState = "idle", calibrationPoints = [];
-    var exportRecorder = null, exportChunks = [], isExportingVideo = false, renderSessionId = 0, playbackStartTime = 0, playbackBaseTime = 0, playbackTotalDuration = 0;
+    var renderSessionId = 0, playbackStartTime = 0, playbackBaseTime = 0, playbackTotalDuration = 0;
     
     var gaitAngleHistory = [];
-    var gaitFrontHistory = []; // 🌟 V80: 前面歩行用バッファ
+    var gaitFrontHistory = []; 
+
+    function customAlert(title, message) {
+        document.getElementById('modalTitle').innerText = title;
+        document.getElementById('modalMessage').innerText = message;
+        document.getElementById('modalCancelBtn').style.display = 'none';
+        document.getElementById('modalOkBtn').onclick = () => { document.getElementById('customModal').style.display = 'none'; };
+        document.getElementById('customModal').style.display = 'flex';
+    }
+
+    function customConfirm(title, message, onConfirm) {
+        document.getElementById('modalTitle').innerText = title;
+        document.getElementById('modalMessage').innerText = message;
+        document.getElementById('modalCancelBtn').style.display = 'block';
+        document.getElementById('modalCancelBtn').onclick = () => { document.getElementById('customModal').style.display = 'none'; };
+        document.getElementById('modalOkBtn').onclick = () => { document.getElementById('customModal').style.display = 'none'; if (onConfirm) onConfirm(); };
+        document.getElementById('customModal').style.display = 'flex';
+    }
 
     document.getElementById('toggleUiBtn').onclick = () => { document.getElementById('controlsBox').style.display = document.getElementById('controlsBox').style.display === 'none' ? 'flex' : 'none'; };
     document.getElementById('showHistoryBtn').onclick = async () => { 
@@ -277,10 +319,10 @@
     };
     document.getElementById('closeHistoryBtn').onclick = () => { document.getElementById('historyPanel').style.display = 'none'; };
 
-    // 🌟 V80: カメラや解像度を変更した際に自動リスタートする機能
-    videoSource.onchange = function() { if (isRunning && !isRecording && appMode === 'camera') startBtn.click(); };
-    camOrientation.onchange = function() { if (isRunning && !isRecording && appMode === 'camera') startBtn.click(); };
+    document.getElementById('videoSource').onchange = () => { if (isRunning && !isRecording && appMode === 'camera') startBtn.click(); };
+    document.getElementById('camOrientation').onchange = () => { if (isRunning && !isRecording && appMode === 'camera') startBtn.click(); };
 
+    var calibrateMatBtn = document.getElementById('calibrateMatBtn');
     calibrateMatBtn.onclick = function() {
         if (calibState === "idle") { calibState = "wait_left"; calibrationPoints = []; calibrateMatBtn.classList.add('active'); calibrateMatBtn.innerText = "📍 左タップ"; } 
         else if (calibState === "adjust_left") { calibState = "wait_right"; calibrateMatBtn.innerText = "📍 右タップ"; } 
@@ -289,6 +331,11 @@
             if(distPx > 10) pxToCmRatio = 45.0 / distPx; calibState = "idle"; calibrateMatBtn.classList.remove('active'); calibrateMatBtn.innerText = "✅ 校正完了";
             setTimeout(() => { if(calibState==="idle") calibrateMatBtn.innerText = "📏 マット校正"; }, 2000);
         } else { calibState = "idle"; calibrationPoints = []; calibrateMatBtn.classList.remove('active'); calibrateMatBtn.innerText = "📏 マット校正"; }
+    };
+
+    document.getElementById('pelvicTiltSlider').oninput = function(e) {
+        estimatedPelvicTilt = parseInt(e.target.value);
+        document.getElementById('tiltValDisplay').innerText = estimatedPelvicTilt === 0 ? "0°" : (estimatedPelvicTilt > 0 ? "+" + estimatedPelvicTilt + "° (前傾)" : estimatedPelvicTilt + "° (後傾)");
     };
 
     function drawGaitSideAnalysis(ctx, kps) {
@@ -314,7 +361,6 @@
         ctx.stroke(); ctx.restore();
     }
 
-    // 🌟 V80: 前面歩行分析ロジック (トレンデレンブルグ＆スウェイ)
     function drawGaitFrontAnalysis(ctx, kps) {
         if (currentTab !== 'dyn_gait_front') return;
         var lHip = kps[23], rHip = kps[24], nose = kps[0];
@@ -331,10 +377,7 @@
             if (gaitFrontHistory.length > 200) gaitFrontHistory.shift();
         }
 
-        ctx.save();
-        ctx.font = "bold 16px sans-serif";
-        ctx.fillStyle = "rgba(0,0,0,0.7)";
-        ctx.fillRect(20, 80, 280, 95);
+        ctx.save(); ctx.font = "bold 16px sans-serif"; ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(20, 80, 280, 95);
         ctx.fillStyle = Math.abs(pelvicAngle) > 5 ? "#ff5252" : "#00bfff"; 
         ctx.fillText(`骨盤傾斜 (Trendelenburg): ${pelvicAngle.toFixed(1)}°`, 35, 115);
         ctx.fillStyle = Math.abs(swayPct) > 10 ? "#ff5252" : "#deff9a"; 
@@ -342,21 +385,15 @@
 
         ctx.strokeStyle = "rgba(222, 255, 154, 0.5)"; ctx.lineWidth = 2.5; ctx.beginPath();
         for (var i = 0; i < gaitFrontHistory.length; i++) {
-            var gx = 30 + (i * 1.2);
-            var gy = 240 - (gaitFrontHistory[i].swayPct * 1.0); // Center=240
+            var gx = 30 + (i * 1.2), gy = 240 - (gaitFrontHistory[i].swayPct * 1.0); 
             if (i === 0) ctx.moveTo(gx, gy); else ctx.lineTo(gx, gy);
         }
         ctx.stroke(); 
-        
         ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 1; ctx.setLineDash([2,2]);
         ctx.beginPath(); ctx.moveTo(30, 240); ctx.lineTo(270, 240); ctx.stroke(); ctx.setLineDash([]);
-        
-        ctx.strokeStyle = "#ff9100"; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.moveTo(lHip.x, lHip.y); ctx.lineTo(rHip.x, rHip.y); ctx.stroke();
-        
+        ctx.strokeStyle = "#ff9100"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(lHip.x, lHip.y); ctx.lineTo(rHip.x, rHip.y); ctx.stroke();
         ctx.strokeStyle = "#deff9a"; ctx.lineWidth = 2; ctx.setLineDash([5,5]);
-        ctx.beginPath(); ctx.moveTo(nose.x, nose.y); ctx.lineTo(pelvisMidX, (lHip.y + rHip.y)/2); ctx.stroke();
-        ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(nose.x, nose.y); ctx.lineTo(pelvisMidX, (lHip.y + rHip.y)/2); ctx.stroke(); ctx.setLineDash([]);
         ctx.restore();
     }
 
@@ -364,9 +401,7 @@
         ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 4;
         let pairs = [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]];
         
-        if (currentTab === 'dyn_gait_side') {
-            pairs = [[11,23],[23,25],[25,27]]; // 片脚のみ
-        }
+        if (currentTab === 'dyn_gait_side') pairs = [[11,23],[23,25],[25,27]]; 
 
         pairs.forEach(function([s,e]){
             var p1 = kps[s], p2 = kps[e];
@@ -408,20 +443,6 @@
         ctx.restore();
     }
 
-    function drawKendallAlignment(ctx, kps) {
-        if (!currentTab.includes('l_side') && !currentTab.includes('r_side')) return;
-        let isLeft = currentTab.includes('l_side'), dir = isLeft ? -1 : 1;
-        let ear = kps[7], sh = isLeft ? kps[11] : kps[12], hip = isLeft ? kps[23] : kps[24], ankle = kps[27];
-        if(!ear || !sh || !hip || !ankle || ear.score < 0.2) return;
-        let ratio = pxToCmRatio || 0.15, plumbX = ankle.x + (dir * ((25 * 0.15) / ratio));
-
-        ctx.save(); ctx.strokeStyle = "rgba(57, 255, 20, 0.8)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(plumbX, 0); ctx.lineTo(plumbX, canvasMP.height); ctx.stroke();
-        let c2 = { x: ear.x - (dir * (1.0 / ratio)), y: ear.y + (2.0 / ratio) };
-        ctx.fillStyle = "#ff9100"; ctx.beginPath(); ctx.arc(c2.x, c2.y, 6, 0, 2*Math.PI); ctx.fill();
-        ctx.fillStyle = "white"; ctx.font = "bold 13px sans-serif"; ctx.fillText(`C2: ${((c2.x - plumbX)*ratio*dir).toFixed(1)}cm`, c2.x + 15, c2.y);
-        ctx.restore();
-    }
-
     recBtn.onclick = function() {
         controlsBox.style.display = 'none'; document.getElementById('toggleUiBtn').innerText = '🔼 UIを表示';
         isRecording = true; poseDataLog = []; gaitAngleHistory = []; gaitFrontHistory = [];
@@ -445,7 +466,7 @@
     function enterPlaybackMode() {
         appMode = "playback"; document.getElementById('mainControls').style.display = 'none'; document.getElementById('playbackControls').style.display = 'flex';
         playbackDataMP = poseDataLog; document.getElementById('timelineSlider').max = playbackDataMP.length - 1; document.getElementById('timelineSlider').value = 0;
-        renderPlaybackFrame(0);
+        renderPlaybackFrame(0); togglePlay(true);
     }
 
     document.getElementById('backToCamBtn').onclick = function() { appMode = "camera"; document.getElementById('playbackControls').style.display = 'none'; document.getElementById('mainControls').style.display = 'flex'; togglePlay(false); };
@@ -462,13 +483,13 @@
         drawSkeleton(ctxMP, kps, "#ffffff");
         drawGaitSideAnalysis(ctxMP, kps);
         drawGaitFrontAnalysis(ctxMP, kps);
-        drawKendallAlignment(ctxMP, kps);
         calculateWeightBearing(ctxMP, kps);
         ctxComb.drawImage(canvasMP, 0,0,canvasMP.width,canvasMP.height);
         document.getElementById('frameCounter').innerText = `${idx} / ${playbackDataMP.length - 1}`;
     }
 
     function switchReportTab(val) { currentTab = val; gaitAngleHistory = []; gaitFrontHistory = []; }
+
     window.refreshHistoryList = async function() {
         var sessions = await dbManager.getAllSessions(); historyListContainer.innerHTML = '';
         sessions.forEach(s => {
@@ -477,28 +498,49 @@
             historyListContainer.appendChild(item);
         });
     };
-    window.deleteSession = async function(id) { await dbManager.deleteSession(id); window.refreshHistoryList(); };
+    
+    window.deleteSession = async function(id) { customConfirm("削除の確認", "データを削除しますか？", async () => { await dbManager.deleteSession(id); window.refreshHistoryList(); }); };
     window.loadSession = async function(id) {
         var sessions = await dbManager.getAllSessions(); var s = sessions.find(x=>x.id===id);
         if(s) { poseDataLog = s.poseData; currentTab = s.mode; document.getElementById('modeSelect').value = s.mode; document.getElementById('historyPanel').style.display='none'; enterPlaybackMode(); }
     };
 
+    // 🌟 V81: カメラ接続・フォールバック安全機構
     startBtn.onclick = async function() {
         renderSessionId++; var cur = renderSessionId;
-        var isPortrait = camOrientation.value === 'portrait';
+        var isPortrait = document.getElementById('camOrientation').value === 'portrait';
+        var vs = document.getElementById('videoSource').value;
+        
+        // メイン解像度要求
         var constraints = { video: { width: { ideal: isPortrait ? 1080 : 1920 }, height: { ideal: isPortrait ? 1920 : 1080 } } };
-        if (videoSource.value) constraints.video.deviceId = { exact: videoSource.value };
+        if (vs) constraints.video.deviceId = { ideal: vs }; // exactではなくidealでエラー回避
+
         try {
             if(currentStream) currentStream.getTracks().forEach(t=>t.stop());
             var stream = await navigator.mediaDevices.getUserMedia(constraints);
-            video.srcObject = stream; currentStream = stream;
-            video.onloadeddata = function() {
-                canvasMP.width = video.videoWidth; canvasMP.height = video.videoHeight;
-                canvasComb.width = video.videoWidth; canvasComb.height = video.videoHeight;
-                isRunning = true; video.play(); render(cur); recBtn.disabled = false;
-            };
-        } catch(e) { alert("カメラ起動エラー。"); }
+            startVideoStream(stream, cur);
+        } catch(e) {
+            console.warn("Main camera request failed, trying fallback...", e);
+            try {
+                // 安全網：解像度指定を外して再試行
+                var fallbackConstraints = { video: true };
+                if (vs) fallbackConstraints.video = { deviceId: { ideal: vs } };
+                var streamFallback = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+                startVideoStream(streamFallback, cur);
+            } catch(fallbackErr) {
+                customAlert("カメラ起動エラー", `カメラにアクセスできませんでした。\n\n詳細: ${fallbackErr.message}\n\n・他のアプリ(Zoom等)がカメラを使用していないか確認してください。\n・ブラウザのカメラ許可設定を確認してください。`);
+            }
+        }
     };
+
+    function startVideoStream(stream, cur) {
+        video.srcObject = stream; currentStream = stream;
+        video.onloadeddata = function() {
+            canvasMP.width = video.videoWidth; canvasMP.height = video.videoHeight;
+            canvasComb.width = video.videoWidth; canvasComb.height = video.videoHeight;
+            isRunning = true; video.play(); render(cur); recBtn.disabled = false;
+        };
+    }
 
     async function render(sid) {
         if (sid !== renderSessionId || !isRunning || appMode === "playback") return;
@@ -510,7 +552,6 @@
             drawSkeleton(ctxMP, kps, "#ff5252");
             drawGaitSideAnalysis(ctxMP, kps);
             drawGaitFrontAnalysis(ctxMP, kps);
-            drawKendallAlignment(ctxMP, kps);
             calculateWeightBearing(ctxMP, kps);
         }
         ctxComb.drawImage(canvasMP, 0, 0, canvasMP.width, canvasMP.height);
@@ -567,7 +608,7 @@
         await dbManager.init();
         try {
             var devices = await navigator.mediaDevices.enumerateDevices();
-            devices.forEach(d => { if(d.kind==='videoinput') videoSource.appendChild(new Option(d.label || "カメラ", d.deviceId)); });
+            devices.forEach(d => { if(d.kind==='videoinput') document.getElementById('videoSource').appendChild(new Option(d.label || "カメラ", d.deviceId)); });
             await tf.setBackend('webgl'); await tf.ready();
             detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
             startBtn.innerText = "📷 システム起動"; startBtn.disabled = false;
