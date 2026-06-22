@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Academic Master V81 (Camera Fallback Fix)</title>
+    <title>CONNECT AI - Academic Master V82 (Camera & Freeze Fix)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -12,7 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 
     <style>
-        body { margin: 0; font-family: sans-serif; background: #000; color: white; overflow: hidden; }
+        body { margin: 0; font-family: 'Noto Sans JP', sans-serif; background: #000; color: white; overflow: hidden; }
         
         .view-port { position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; z-index: 1; display: flex; align-items: center; justify-content: center; background: #050505; }
         canvas { width: 100%; height: 100%; object-fit: contain; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -117,7 +117,6 @@
             .dash-close, .dash-print { display: none; }
             #aiEvalCard { grid-column: 1 / -1; margin-top: 20px; break-inside: avoid; }
             #aiEvalContent { background: #f0f8ff !important; color: #000 !important; border-left: 4px solid #1976d2 !important; }
-            #generateAiEvalBtn { display: none; }
         }
     </style>
 </head>
@@ -125,7 +124,7 @@
 
 <div class="view-port">
     <canvas id="canvasMP"></canvas>
-    <div class="label">CONNECT AI - V81 Safe Camera Fix</div>
+    <div class="label">CONNECT AI - V82 Academic Master (Fix)</div>
     <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     <div id="radarWrapperMP" class="radar-wrapper">
@@ -171,6 +170,7 @@
     <div class="dash-grid" id="dashGrid"></div>
 </div>
 
+<!-- インラインカスタムモーダル -->
 <div id="customModal">
     <div class="modal-box">
         <h3 id="modalTitle" class="modal-title"></h3>
@@ -191,7 +191,9 @@
     
     <div id="controlsBox">
         <div class="controls" id="mainControls">
-            <select id="videoSource" style="background:#fff; color:#000; border-radius:4px; padding:4px;"><option value="">カメラ検索中...</option></select>
+            <select id="videoSource" style="background:#fff; color:#000; border-radius:4px; padding:4px;">
+                <!-- JavaScriptでカメラリストが挿入されます -->
+            </select>
             <select id="camOrientation" style="background:#fff; color:#000; border-radius:4px; padding:4px;">
                 <option value="portrait" selected>📱 縦長 (9:16)</option>
                 <option value="landscape">📺 横長 (16:9)</option>
@@ -319,6 +321,7 @@
     };
     document.getElementById('closeHistoryBtn').onclick = () => { document.getElementById('historyPanel').style.display = 'none'; };
 
+    // 🌟 カメラ切り替え時に自動再起動させる
     document.getElementById('videoSource').onchange = () => { if (isRunning && !isRecording && appMode === 'camera') startBtn.click(); };
     document.getElementById('camOrientation').onchange = () => { if (isRunning && !isRecording && appMode === 'camera') startBtn.click(); };
 
@@ -338,9 +341,35 @@
         document.getElementById('tiltValDisplay').innerText = estimatedPelvicTilt === 0 ? "0°" : (estimatedPelvicTilt > 0 ? "+" + estimatedPelvicTilt + "° (前傾)" : estimatedPelvicTilt + "° (後傾)");
     };
 
+    // 🌟 ASIS補正ポイントの生成関数（復強版）
+    function generateVirtualASIS(kps) {
+        if(!kps) return kps;
+        var height = parseFloat(document.getElementById('patientHeight').value) || 170;
+        var distanceCm = height * 0.085, ratio = pxToCmRatio || 0.15, distancePx = distanceCm / ratio;
+        var angleRad = (45 - estimatedPelvicTilt) * (Math.PI / 180);
+        var upwardOffsetPx = distancePx * Math.sin(angleRad), forwardOffsetPx = distancePx * Math.cos(angleRad);
+        
+        var lHip = kps.find(k=>k.name==='left_hip'||k.name==='23');
+        var rHip = kps.find(k=>k.name==='right_hip'||k.name==='24');
+        
+        if (lHip && rHip && lHip.score > 0.5 && rHip.score > 0.5) {
+            var asisL = { x: lHip.x, y: lHip.y - upwardOffsetPx, score: 1.0, name: 'virtual_asis_l' };
+            var asisR = { x: rHip.x, y: rHip.y - upwardOffsetPx, score: 1.0, name: 'virtual_asis_r' };
+            
+            if (currentTab === 'r_side') { asisL.x += forwardOffsetPx; asisR.x += forwardOffsetPx; } 
+            else if (currentTab === 'l_side') { asisL.x -= forwardOffsetPx; asisR.x -= forwardOffsetPx; }
+            
+            var newKps = JSON.parse(JSON.stringify(kps)); 
+            newKps.push(asisL); 
+            newKps.push(asisR); 
+            return newKps;
+        } 
+        return kps;
+    }
+
     function drawGaitSideAnalysis(ctx, kps) {
         if (currentTab !== 'dyn_gait_side') return;
-        let hip = kps[23], knee = kps[25], ankle = kps[27];
+        let hip = kps.find(k=>k.name==='left_hip'), knee = kps.find(k=>k.name==='left_knee'), ankle = kps.find(k=>k.name==='left_ankle');
         if (!hip || !knee || !ankle || hip.score < 0.2 || knee.score < 0.2) return;
 
         let kneeAngle = Math.abs((Math.atan2(ankle.y - knee.y, ankle.x - knee.x) - Math.atan2(hip.y - knee.y, hip.x - knee.x)) * 180 / Math.PI);
@@ -363,7 +392,7 @@
 
     function drawGaitFrontAnalysis(ctx, kps) {
         if (currentTab !== 'dyn_gait_front') return;
-        var lHip = kps[23], rHip = kps[24], nose = kps[0];
+        var lHip = kps.find(k=>k.name==='left_hip'), rHip = kps.find(k=>k.name==='right_hip'), nose = kps.find(k=>k.name==='nose');
         if (!lHip || !rHip || !nose || lHip.score < 0.2 || rHip.score < 0.2) return;
 
         var pelvicAngle = Math.atan2(rHip.y - lHip.y, rHip.x - lHip.x) * 180 / Math.PI;
@@ -391,6 +420,7 @@
         ctx.stroke(); 
         ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 1; ctx.setLineDash([2,2]);
         ctx.beginPath(); ctx.moveTo(30, 240); ctx.lineTo(270, 240); ctx.stroke(); ctx.setLineDash([]);
+        
         ctx.strokeStyle = "#ff9100"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(lHip.x, lHip.y); ctx.lineTo(rHip.x, rHip.y); ctx.stroke();
         ctx.strokeStyle = "#deff9a"; ctx.lineWidth = 2; ctx.setLineDash([5,5]);
         ctx.beginPath(); ctx.moveTo(nose.x, nose.y); ctx.lineTo(pelvisMidX, (lHip.y + rHip.y)/2); ctx.stroke(); ctx.setLineDash([]);
@@ -399,21 +429,31 @@
 
     function drawSkeleton(ctx, kps, color) {
         ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 4;
-        let pairs = [[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28]];
         
-        if (currentTab === 'dyn_gait_side') pairs = [[11,23],[23,25],[25,27]]; 
+        var getK = name => kps.find(k => k.name === name);
+        
+        var connections = [];
+        if (currentTab === 'dyn_gait_side') {
+            connections = [ ['left_shoulder','left_hip'], ['left_hip','left_knee'], ['left_knee','left_ankle'] ];
+        } else {
+            connections = [
+                ['left_shoulder','right_shoulder'], ['left_shoulder','left_hip'], ['right_shoulder','right_hip'], ['left_hip','right_hip'],
+                ['left_shoulder','left_elbow'], ['left_elbow','left_wrist'], ['right_shoulder','right_elbow'], ['right_elbow','right_wrist'],
+                ['left_hip','left_knee'], ['left_knee','left_ankle'], ['right_hip','right_knee'], ['right_knee','right_ankle']
+            ];
+        }
 
-        pairs.forEach(function([s,e]){
-            var p1 = kps[s], p2 = kps[e];
-            if(p1 && p2 && p1.score > 0.1 && p2.score > 0.1){ ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); }
+        connections.forEach(function(pair) {
+            var p1 = getK(pair[0]), p2 = getK(pair[1]);
+            if(p1 && p2 && p1.score > 0.1 && p2.score > 0.1) { ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); }
         });
         
-        kps.forEach(function(k, i){
-            if(k && k.score > 0.1){ ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(k.x, k.y, 4, 0, 2*Math.PI); ctx.fill(); }
+        kps.forEach(function(k){
+            if(k && k.score > 0.1 && !k.name.includes('virtual')) { ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(k.x, k.y, 4, 0, 2*Math.PI); ctx.fill(); }
         });
 
         if (currentTab === 'front' || currentTab === 'dyn_overhead' || currentTab === 'dyn_gait_front') {
-            var earL = kps[7], earR = kps[8], nose = kps[0], shL = kps[11], shR = kps[12];
+            var earL = getK('left_ear'), earR = getK('right_ear'), nose = getK('nose'), shL = getK('left_shoulder'), shR = getK('right_shoulder');
             if (earL && earR && earL.score > 0.1 && earR.score > 0.1) {
                 ctx.strokeStyle = "#deff9a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(earL.x, earL.y); ctx.lineTo(earR.x, earR.y); ctx.stroke();
                 if (nose && nose.score > 0.1) {
@@ -430,10 +470,13 @@
     }
 
     function calculateWeightBearing(ctx, kps) {
-        if (currentTab.includes('side') || currentTab === 'dyn_gait_front') return; 
-        let lAnkle = kps[27], rAnkle = kps[28]; if (!lAnkle || !rAnkle || lAnkle.score < 0.3 || rAnkle.score < 0.3) return;
-        let nose = kps[0], lSh = kps[11], rSh = kps[12], lHip = kps[23], rHip = kps[24];
+        if (currentTab.includes('side') || currentTab === 'dyn_gait_front') return;
+        var getK = name => kps.find(k => k.name === name);
+        let lAnkle = getK('left_ankle'), rAnkle = getK('right_ankle'); 
+        if (!lAnkle || !rAnkle || lAnkle.score < 0.3 || rAnkle.score < 0.3) return;
+        let nose = getK('nose'), lSh = getK('left_shoulder'), rSh = getK('right_shoulder'), lHip = getK('left_hip'), rHip = getK('right_hip');
         let dPx = rAnkle.x - lAnkle.x; if (Math.abs(dPx) < 10) return;
+        
         let totalComX = (nose.x * 0.1) + (((lSh.x + rSh.x)/2)*0.5) + (((lHip.x + rHip.x)/2)*0.4);
         let pctR = ((totalComX - lAnkle.x) / dPx) * 100, pctL = 100 - pctR;
 
@@ -505,22 +548,48 @@
         if(s) { poseDataLog = s.poseData; currentTab = s.mode; document.getElementById('modeSelect').value = s.mode; document.getElementById('historyPanel').style.display='none'; enterPlaybackMode(); }
     };
 
-    // 🌟 V81: カメラ接続・フォールバック安全機構
+    // 🌟 V82: カメラ初期化のバグ修正
+    async function init() {
+        await dbManager.init();
+        try {
+            var devices = await navigator.mediaDevices.enumerateDevices();
+            var vs = document.getElementById('videoSource');
+            vs.innerHTML = ''; // 「カメラ検索中...」を消去
+            var hasCam = false;
+            devices.forEach(d => { 
+                if(d.kind==='videoinput') {
+                    vs.appendChild(new Option(d.label || "カメラ", d.deviceId)); 
+                    hasCam = true;
+                } 
+            });
+            if(!hasCam) vs.innerHTML = '<option value="">カメラなし</option>';
+
+            await tf.setBackend('webgl'); await tf.ready();
+            detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
+            startBtn.innerText = "📷 システム起動"; startBtn.disabled = false;
+        } catch(e) { startBtn.innerText = "❌ 起動エラー"; }
+    }
+
+    // 🌟 V82: カメラ再起動・フリーズ回避のフォールバック機構
     startBtn.onclick = async function() {
         renderSessionId++; var cur = renderSessionId;
         var isPortrait = document.getElementById('camOrientation').value === 'portrait';
         var vs = document.getElementById('videoSource').value;
         
-        // メイン解像度要求
         var constraints = { video: { width: { ideal: isPortrait ? 1080 : 1920 }, height: { ideal: isPortrait ? 1920 : 1080 } } };
-        if (vs) constraints.video.deviceId = { ideal: vs }; // exactではなくidealでエラー回避
+        if (vs) constraints.video.deviceId = { ideal: vs };
 
         try {
-            if(currentStream) currentStream.getTracks().forEach(t=>t.stop());
+            // 🌟 既存のストリームを完全に停止し、video要素をリセット
+            if(currentStream) {
+                currentStream.getTracks().forEach(t=>t.stop());
+                video.pause();
+                video.srcObject = null;
+            }
             var stream = await navigator.mediaDevices.getUserMedia(constraints);
             startVideoStream(stream, cur);
         } catch(e) {
-            console.warn("Main camera request failed, trying fallback...", e);
+            console.warn("High-res camera request failed, trying fallback...", e);
             try {
                 // 安全網：解像度指定を外して再試行
                 var fallbackConstraints = { video: true };
@@ -539,6 +608,7 @@
             canvasMP.width = video.videoWidth; canvasMP.height = video.videoHeight;
             canvasComb.width = video.videoWidth; canvasComb.height = video.videoHeight;
             isRunning = true; video.play(); render(cur); recBtn.disabled = false;
+            video.onloadeddata = null; // 重複実行防止
         };
     }
 
@@ -547,7 +617,8 @@
         ctxMP.drawImage(video, 0, 0, canvasMP.width, canvasMP.height);
         var poses = await detectors[0].estimatePoses(video);
         if (poses.length > 0) {
-            var kps = poses[0].keypoints;
+            var kps = generateVirtualASIS(poses[0].keypoints); // 🌟 V82復旧
+            window.reportDataStore[currentTab] = kps;
             if (isRecording) poseDataLog.push({ time: Date.now(), mode: currentTab, keypoints: kps });
             drawSkeleton(ctxMP, kps, "#ff5252");
             drawGaitSideAnalysis(ctxMP, kps);
@@ -604,16 +675,6 @@
         }
     };
 
-    async function init() {
-        await dbManager.init();
-        try {
-            var devices = await navigator.mediaDevices.enumerateDevices();
-            devices.forEach(d => { if(d.kind==='videoinput') document.getElementById('videoSource').appendChild(new Option(d.label || "カメラ", d.deviceId)); });
-            await tf.setBackend('webgl'); await tf.ready();
-            detectors[0] = await poseDetection.createDetector(poseDetection.SupportedModels.BlazePose, { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose', modelType: 'full' });
-            startBtn.innerText = "📷 システム起動"; startBtn.disabled = false;
-        } catch(e) { startBtn.innerText = "❌ 起動エラー"; }
-    }
     window.addEventListener('load', init);
 </script>
 </body>
