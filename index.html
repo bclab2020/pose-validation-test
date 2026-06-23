@@ -89,7 +89,7 @@
         .dash-metric .val { font-weight: bold; color: #fff; font-size: 16px; }
         .dash-metric .val.warn { color: #ff5252; }
         .dash-metric .val.good { color: #39ff14; }
-        .dash-close, .dash-print { background: #333; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px; transition: 0.2s; border:none; }
+        .dash-close, .dash-print { background: #333; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px; transition: 0.2s; border:none;}
         .dash-print { background: #ff9100; color: #000; margin-right: 10px; }
         .dash-close:hover { background: #555; }
         .dash-print:hover { filter: brightness(1.1); }
@@ -215,6 +215,7 @@
 
             <button id="calibrateMatBtn">📏 マット校正</button>
 
+            <!-- V76 ロールバック: 歩行分析なし -->
             <select id="modeSelect" class="mode-dropdown" onchange="window.switchReportTab(this.value)">
                 <optgroup label="■ 静止姿勢アライメント">
                     <option value="front" selected>🧍 前面</option><option value="back">🧍 後面</option><option value="l_side">🧍 左側面</option><option value="r_side">🧍 右側面</option>
@@ -724,7 +725,7 @@
         if (clientX === undefined) return null;
         var videoRatio = canvas.width / canvas.height, containerRatio = rect.width / rect.height; var renderWidth, renderHeight, offsetX, offsetY;
         if (containerRatio > videoRatio) { renderHeight = rect.height; renderWidth = rect.height * videoRatio; offsetX = (rect.width - renderWidth) / 2; offsetY = 0; } else { renderWidth = rect.width; renderHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - renderHeight) / 2; }
-        var scaleX = canvas.width / renderWidth, scaleY = canvas.height / renderHeight; return { x: (clientX - rect.left - offsetX) * scaleX, y: (clientY - rect.top - offsetY) * scaleY, renderScale: scaleX };
+        var scaleX = canvas.width / renderWidth, scaleY = canvas.height / renderHeight; return { x: (clientX - rect.left - offsetX) * scaleX, y: (clientY - top - offsetY) * scaleY, renderScale: scaleX };
     }
 
     function refreshReportView() {
@@ -930,12 +931,22 @@
     async function init() {
         try { await dbManager.init(); } catch(e) { console.error("DB Init Error:", e); }
         try {
+            // iOS対応：最初に仮のアクセスを求め、背面等のカメララベルと識別IDをご自身のiPhoneから強制解放させる
+            try {
+                var streamPermission = await navigator.mediaDevices.getUserMedia({ video: true });
+                streamPermission.getTracks().forEach(t => t.stop());
+            } catch(pErr) { console.log("iOS Permission Check:", pErr); }
+
             var devices = await navigator.mediaDevices.enumerateDevices();
             var vs = document.getElementById('videoSource');
             vs.innerHTML = ''; 
             var hasCam = false;
             devices.forEach(d => { 
-                if(d.kind==='videoinput') { vs.appendChild(new Option(d.label || "カメラ", d.deviceId)); hasCam = true; } 
+                if(d.kind==='videoinput') {
+                    var label = d.label || ("カメラ " + (vs.length + 1));
+                    vs.appendChild(new Option(label, d.deviceId)); 
+                    hasCam = true;
+                } 
             });
             if(!hasCam) vs.innerHTML = '<option value="">カメラなし</option>';
 
@@ -950,12 +961,27 @@
     }
     window.addEventListener('load', init); 
 
-    // 🌟 V76 安定版：カメラ再起動・フリーズ回避
+    // 🌟 V76 安定版：カメラ再起動・フリーズ回避（iOSアウトカメラ対応）
     startBtn.onclick = async function() {
         renderSessionId++; var cur = renderSessionId;
         var vs = document.getElementById('videoSource').value;
-        var constraints = { video: { width: { ideal: 1920 }, height: { ideal: 1080 } } };
-        if (vs) constraints.video.deviceId = { ideal: vs }; 
+        
+        var constraints = { 
+            video: { 
+                width: { ideal: 1920 }, 
+                height: { ideal: 1080 },
+                facingMode: { ideal: "environment" } // デフォルトで背面を理想とする
+            } 
+        };
+        if (vs) {
+            constraints.video.deviceId = { ideal: vs };
+            var selText = document.getElementById('videoSource').options[document.getElementById('videoSource').selectedIndex].text;
+            if(/back|背面|environment|アウト/i.test(selText)) {
+                constraints.video.facingMode = { ideal: "environment" };
+            } else if(/front|前面|user|イン/i.test(selText)) {
+                constraints.video.facingMode = { ideal: "user" };
+            }
+        } 
 
         try {
             if(currentStream) { currentStream.getTracks().forEach(t=>t.stop()); video.pause(); video.srcObject = null; }
@@ -964,8 +990,8 @@
         } catch(e) {
             console.warn("High-res camera request failed, trying fallback...", e);
             try {
-                var fallbackConstraints = { video: true };
-                if (vs) fallbackConstraints.video = { deviceId: { ideal: vs } };
+                var fallbackConstraints = { video: { facingMode: { ideal: "environment" } } };
+                if (vs) fallbackConstraints.video.deviceId = { ideal: vs };
                 var streamFallback = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
                 startVideoStream(streamFallback, cur);
                 customAlert("お知らせ", "指定された解像度でのカメラ起動に失敗したため、標準画質で起動しました。");
