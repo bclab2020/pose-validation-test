@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Academic Master V76 (Stable Rollback Edition)</title>
+    <title>CONNECT AI - Academic Master V76 (iOS Stable Edition)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -83,13 +83,13 @@
         .dash-title { color: #00bfff; font-size: 32px; font-weight: bold; margin: 0; display: flex; align-items: center; gap: 10px; }
         .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 25px; max-width: 1400px; margin: 0 auto; }
         .dash-card { background: #111; border: 1px solid #333; border-radius: 16px; padding: 25px; }
-        .dash-card h3 { color: #deff9a; margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 15px; font-size: 18px; margin-bottom: 20px; }
+        .dash-card h3 { color: #deff9a; border-bottom: 1px solid #333; padding-bottom: 15px; font-size: 18px; margin-bottom: 20px; }
         .dash-metric { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 15px; background: rgba(255,255,255,0.03); padding: 10px 15px; border-radius: 8px; }
         .dash-metric span:first-child { color: #aaa; }
         .dash-metric .val { font-weight: bold; color: #fff; font-size: 16px; }
         .dash-metric .val.warn { color: #ff5252; }
         .dash-metric .val.good { color: #39ff14; }
-        .dash-close, .dash-print { background: #333; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px; transition: 0.2s; }
+        .dash-close, .dash-print { background: #333; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px; transition: 0.2s; border:none;}
         .dash-print { background: #ff9100; color: #000; margin-right: 10px; }
         .dash-close:hover { background: #555; }
         .dash-print:hover { filter: brightness(1.1); }
@@ -129,7 +129,7 @@
 
 <div class="view-port">
     <canvas id="canvasMP"></canvas>
-    <div class="label">CONNECT AI - V76 Stable Base Edition</div>
+    <div class="label">CONNECT AI - V76 iOS Stable Base</div>
     <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     <div id="radarWrapperMP" class="radar-wrapper">
@@ -224,7 +224,7 @@
                 <option value="5000">⏱️ 5秒</option><option value="10000" selected>⏱️ 10秒</option><option value="15000">⏱️ 15秒</option>
             </select>
             
-            <label class="toggle-label"><input type="checkbox" id="showSwayAlert"> 警告</label>
+            <label class="toggle-label"><input type="checkbox" id="showSwayAlert" checked> 警告</label>
             <button id="recBtn" disabled>🔴 録画スタート</button>
         </div>
 
@@ -244,7 +244,7 @@
 <video id="video" autoplay playsinline muted></video>
 
 <script>
-    // --- 1. グローバル定数と状態変数 (V76仕様) ---
+    // --- 1. グローバル定数と状態変数 ---
     var DURATION_MAP = { 
         'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 
         'dyn_overhead': 15000, 'dyn_overhead_side': 15000, 
@@ -324,89 +324,6 @@
         document.getElementById('infoPanel').innerHTML = scaleText + "<br>骨盤傾斜: " + (estimatedPelvicTilt > 0 ? '+' : '') + estimatedPelvicTilt + "°";
     }
 
-    document.getElementById('toggleUiBtn').onclick = () => { document.getElementById('controlsBox').style.display = document.getElementById('controlsBox').style.display === 'none' ? 'flex' : 'none'; };
-    document.getElementById('showHistoryBtn').onclick = async () => { 
-        var p = document.getElementById('historyPanel');
-        if(p.style.display === 'flex') p.style.display = 'none'; else { await window.refreshHistoryList(); p.style.display = 'flex'; }
-    };
-    document.getElementById('closeHistoryBtn').onclick = () => { document.getElementById('historyPanel').style.display = 'none'; };
-
-    document.getElementById('videoSource').onchange = () => { if (isRunning && !isRecording && appMode === 'camera') startBtn.click(); };
-
-    var calibrateMatBtn = document.getElementById('calibrateMatBtn');
-    calibrateMatBtn.onclick = function() {
-        if (calibState === "idle") { calibState = "wait_left"; calibrationPoints = []; calibrateMatBtn.classList.add('active'); calibrateMatBtn.innerText = "📍 左タップ"; } 
-        else if (calibState === "adjust_left") { calibState = "wait_right"; calibrateMatBtn.innerText = "📍 右タップ"; } 
-        else if (calibState === "adjust_right") {
-            var distPx = Math.hypot(calibrationPoints[1].x - calibrationPoints[0].x, calibrationPoints[1].y - calibrationPoints[0].y);
-            if(distPx > 10) pxToCmRatio = 45.0 / distPx; calibState = "idle"; calibrateMatBtn.classList.remove('active'); calibrateMatBtn.innerText = "✅ 校正完了"; updateInfoPanel();
-            setTimeout(() => { if(calibState==="idle") calibrateMatBtn.innerText = "📏 マット校正"; }, 2000);
-        } else { calibState = "idle"; calibrationPoints = []; calibrateMatBtn.classList.remove('active'); calibrateMatBtn.innerText = "📏 マット校正"; }
-    };
-
-    document.getElementById('pelvicTiltSlider').oninput = function(e) {
-        estimatedPelvicTilt = parseInt(e.target.value);
-        document.getElementById('tiltValDisplay').innerText = estimatedPelvicTilt === 0 ? "0°" : (estimatedPelvicTilt > 0 ? "+" + estimatedPelvicTilt + "° (前傾)" : estimatedPelvicTilt + "° (後傾)");
-        updateInfoPanel();
-    };
-
-    document.getElementById('dpadStep').onclick = function(e) { dpadStepVal = dpadStepVal === 1 ? 5 : 1; e.target.innerText = dpadStepVal + 'px'; };
-    var moveJoint = function(dx, dy) {
-        if (calibState === "adjust_left" && calibrationPoints[0]) { calibrationPoints[0].x += dx; calibrationPoints[0].y += dy; } 
-        else if (calibState === "adjust_right" && calibrationPoints[1]) { calibrationPoints[1].x += dx; calibrationPoints[1].y += dy; } 
-        else if (selectedJointIndex !== null) {
-            var kp = null; if(appMode === 'playback' && isEditingPlaybackFrame) { var fIdx = parseInt(document.getElementById('timelineSlider').value); if(playbackDataMP[fIdx]) kp = playbackDataMP[fIdx].keypoints[selectedJointIndex]; } 
-            else if (isPausedForEdit) { kp = window.reportDataStore[currentTab][selectedJointIndex]; } if(kp) { kp.x += dx; kp.y += dy; }
-        }
-        if(appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); else if (isPausedForEdit) refreshReportView();
-    };
-    document.getElementById('dpadUp').onclick = function() { moveJoint(0, -dpadStepVal); }; 
-    document.getElementById('dpadDown').onclick = function() { moveJoint(0, dpadStepVal); };
-    document.getElementById('dpadLeft').onclick = function() { moveJoint(-dpadStepVal, 0); }; 
-    document.getElementById('dpadRight').onclick = function() { moveJoint(dpadStepVal, 0); };
-    
-    var closeDpad = function() { 
-        if (calibState === "adjust_left") { calibState = "wait_left"; calibrateMatBtn.innerText = "📍 左端をタップ"; calibrationPoints=[]; document.getElementById('dpadPanel').style.display = 'none'; if(isPausedForEdit) refreshReportView(); return; }
-        if (calibState === "adjust_right") { calibState = "wait_right"; calibrateMatBtn.innerText = "📍 右端をタップ"; calibrationPoints.pop(); document.getElementById('dpadPanel').style.display = 'none'; if(isPausedForEdit) refreshReportView(); return; }
-        selectedJointIndex = null; document.getElementById('dpadPanel').style.display = 'none'; if(appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); else if(isPausedForEdit) refreshReportView(); 
-    };
-    document.getElementById('dpadClose').onclick = closeDpad;
-
-    document.getElementById('editFrameBtn').onclick = function() {
-        if(!isEditingPlaybackFrame) { togglePlay(false); isEditingPlaybackFrame = true; this.innerText = "✅ 編集完了"; this.style.background = "#39ff14"; } 
-        else { isEditingPlaybackFrame = false; this.innerText = "✂️ 微調整"; this.style.background = "#ff9100"; closeDpad(); }
-    };
-
-    document.getElementById('playPauseBtn').onclick = function() { togglePlay(); }; 
-    document.getElementById('backToCamBtn').onclick = function() { exitPlaybackMode(); };
-    document.getElementById('timelineSlider').oninput = function() { togglePlay(false); var fIdx = parseInt(document.getElementById('timelineSlider').value); renderPlaybackFrame(fIdx); };
-
-    // --- 4. 解析＆描画モジュール (V76仕様) ---
-    function generateVirtualASIS(kps) {
-        if(!kps) return kps;
-        var height = parseFloat(document.getElementById('patientHeight').value) || 170;
-        var distanceCm = height * 0.085, ratio = pxToCmRatio || 0.15, distancePx = distanceCm / ratio;
-        var angleRad = (45 - estimatedPelvicTilt) * (Math.PI / 180);
-        var upwardOffsetPx = distancePx * Math.sin(angleRad), forwardOffsetPx = distancePx * Math.cos(angleRad);
-        
-        var lHip = kps.find(k=>k.name==='left_hip'||k.name==='23');
-        var rHip = kps.find(k=>k.name==='right_hip'||k.name==='24');
-        
-        if (lHip && rHip && lHip.score > 0.5 && rHip.score > 0.5) {
-            var asisL = { x: lHip.x, y: lHip.y - upwardOffsetPx, score: 1.0, name: 'virtual_asis_l' };
-            var asisR = { x: rHip.x, y: rHip.y - upwardOffsetPx, score: 1.0, name: 'virtual_asis_r' };
-            
-            if (currentTab === 'r_side') { asisL.x += forwardOffsetPx; asisR.x += forwardOffsetPx; } 
-            else if (currentTab === 'l_side') { asisL.x -= forwardOffsetPx; asisR.x -= forwardOffsetPx; }
-            
-            var newKps = JSON.parse(JSON.stringify(kps)); 
-            newKps.push(asisL); 
-            newKps.push(asisR); 
-            return newKps;
-        } 
-        return kps;
-    }
-
     function drawCenterGrid(ctx, canvas) { 
         ctx.save(); ctx.strokeStyle="rgba(255,255,255,0.4)"; ctx.lineWidth=5; 
         ctx.beginPath(); ctx.moveTo(canvas.width/2,0); ctx.lineTo(canvas.width/2,canvas.height); ctx.stroke(); 
@@ -464,6 +381,60 @@
         }
     }
 
+    function getEventPos(canvas, e) {
+        var rect = canvas.getBoundingClientRect(); var clientX, clientY;
+        if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; } else if (e.changedTouches && e.changedTouches.length > 0) { clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY; } else { clientX = e.clientX; clientY = e.clientY; }
+        if (clientX === undefined) return null;
+        var videoRatio = canvas.width / canvas.height, containerRatio = rect.width / rect.height; var renderWidth, renderHeight, offsetX, offsetY;
+        if (containerRatio > videoRatio) { renderHeight = rect.height; renderWidth = rect.height * videoRatio; offsetX = (rect.width - renderWidth) / 2; offsetY = 0; } else { renderWidth = rect.width; renderHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - renderHeight) / 2; }
+        var scaleX = canvas.width / renderWidth, scaleY = canvas.height / renderHeight; return { x: (clientX - rect.left - offsetX) * scaleX, y: (clientY - rect.top - offsetY) * scaleY, renderScale: scaleX };
+    }
+
+    function refreshReportView() {
+        if(appMode === 'playback') return; var w = video.videoWidth, h = video.videoHeight;
+        if (isPausedForEdit && staticBackgroundData) { ctxMP.drawImage(staticBackgroundData, 0, 0, w, h); } else { ctxMP.drawImage(video, 0, 0, w, h); }
+        drawCenterGrid(ctxMP, canvasMP);
+
+        if (calibState !== "idle") {
+            ctxMP.fillStyle = "#ffeb3b";
+            if (calibrationPoints[0]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[0].x, calibrationPoints[0].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_left") drawCrosshair(ctxMP, calibrationPoints[0], canvasMP); }
+            if (calibrationPoints[1]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[1].x, calibrationPoints[1].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_right") drawCrosshair(ctxMP, calibrationPoints[1], canvasMP); }
+        }
+
+        if (window.reportDataStore[currentTab]) {
+            var kps = window.reportDataStore[currentTab]; drawSkeleton(ctxMP, kps, '#ff5252'); 
+            drawKendallAlignment(ctxMP, kps); calculateWeightBearing(ctxMP, kps); 
+            runReviewLogic(ctxMP, (n) => kps.find(k => k.name === n), canvasMP);
+            if (selectedJointIndex !== null) drawCrosshair(ctxMP, kps[selectedJointIndex], canvasMP); 
+        } ctxComb.drawImage(canvasMP, 0, 0, w, h);
+    }
+
+    // --- 4. 解析＆描画モジュール (V76仕様) ---
+    function generateVirtualASIS(kps) {
+        if(!kps) return kps;
+        var height = parseFloat(document.getElementById('patientHeight').value) || 170;
+        var distanceCm = height * 0.085, ratio = pxToCmRatio || 0.15, distancePx = distanceCm / ratio;
+        var angleRad = (45 - estimatedPelvicTilt) * (Math.PI / 180);
+        var upwardOffsetPx = distancePx * Math.sin(angleRad), forwardOffsetPx = distancePx * Math.cos(angleRad);
+        
+        var lHip = kps.find(k=>k.name==='left_hip'||k.name==='23');
+        var rHip = kps.find(k=>k.name==='right_hip'||k.name==='24');
+        
+        if (lHip && rHip && lHip.score > 0.5 && rHip.score > 0.5) {
+            var asisL = { x: lHip.x, y: lHip.y - upwardOffsetPx, score: 1.0, name: 'virtual_asis_l' };
+            var asisR = { x: rHip.x, y: rHip.y - upwardOffsetPx, score: 1.0, name: 'virtual_asis_r' };
+            
+            if (currentTab === 'r_side') { asisL.x += forwardOffsetPx; asisR.x += forwardOffsetPx; } 
+            else if (currentTab === 'l_side') { asisL.x -= forwardOffsetPx; asisR.x -= forwardOffsetPx; }
+            
+            var newKps = JSON.parse(JSON.stringify(kps)); 
+            newKps.push(asisL); 
+            newKps.push(asisR); 
+            return newKps;
+        } 
+        return kps;
+    }
+
     function drawSkeleton(ctx, kps, color) {
         ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 4;
         
@@ -483,7 +454,6 @@
             if(k && k.score > 0.1 && !k.name.includes('virtual')) { ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(k.x, k.y, 4, 0, 2*Math.PI); ctx.fill(); }
         });
 
-        // 🌟 頭部アライメント（顔の輪郭と正中線）
         if (currentTab === 'front' || currentTab === 'dyn_overhead') {
             var earL = getK('left_ear'), earR = getK('right_ear'), nose = getK('nose'), shL = getK('left_shoulder'), shR = getK('right_shoulder');
             if (earL && earR && earL.score > 0.1 && earR.score > 0.1) {
@@ -691,232 +661,43 @@
         ctx.restore();
     }
 
-    function runReviewLogic(ctx, getK, canvas) {
-        var nose = getK('nose'); var originX, originY;
-        if (currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) {
-            if (window.customOriginMarkers[currentTab]) { originX = window.customOriginMarkers[currentTab].x; originY = window.customOriginMarkers[currentTab].y; } else {
-                var footPtsX = [], footPtsY = []; ['left_ankle', 'right_ankle', 'left_heel', 'right_heel', 'left_foot_index', 'right_foot_index'].forEach(function(name) { var p = getK(name); if (p && p.score > 0.1) { footPtsX.push(p.x); footPtsY.push(p.y); } });
-                if (footPtsX.length >= 2) { originX = (Math.min(...footPtsX) + Math.max(...footPtsX)) / 2; originY = Math.max(...footPtsY); }
-            }
-        }
-        if (originX !== undefined && originY !== undefined) {
-            window.currentAnchorPos = { x: originX, y: originY };
-            var anchorColor = window.anchorStatus === "dragging" ? "rgba(255, 165, 0, 0.8)" : "rgba(0, 191, 255, 0.8)";
-            ctx.save(); ctx.fillStyle = anchorColor; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(originX, originY, 20, 0, 2*Math.PI); ctx.fill(); ctx.stroke(); 
-            if (document.getElementById('showSwayAlert').checked) {
-                ctx.strokeStyle = anchorColor; ctx.lineWidth = 3; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.moveTo(originX, originY); ctx.lineTo(originX, 0); ctx.stroke(); 
-                var sway = nose ? (nose.x - originX) : 0; var corridorColor = Math.abs(sway) > 30 ? "rgba(255, 0, 0, 0.15)" : "rgba(0, 255, 0, 0.1)";
-                ctx.fillStyle = corridorColor; ctx.fillRect(originX - 30, 0, 60, originY);
-            } ctx.restore();
-        }
-    }
-
-    function getEventPos(canvas, e) {
-        var rect = canvas.getBoundingClientRect(); var clientX, clientY;
-        if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; } else if (e.changedTouches && e.changedTouches.length > 0) { clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY; } else { clientX = e.clientX; clientY = e.clientY; }
-        if (clientX === undefined) return null;
-        var videoRatio = canvas.width / canvas.height, containerRatio = rect.width / rect.height; var renderWidth, renderHeight, offsetX, offsetY;
-        if (containerRatio > videoRatio) { renderHeight = rect.height; renderWidth = rect.height * videoRatio; offsetX = (rect.width - renderWidth) / 2; offsetY = 0; } else { renderWidth = rect.width; renderHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - renderHeight) / 2; }
-        var scaleX = canvas.width / renderWidth, scaleY = canvas.height / renderHeight; return { x: (clientX - rect.left - offsetX) * scaleX, y: (clientY - rect.top - offsetY) * scaleY, renderScale: scaleX };
-    }
-
-    function refreshReportView() {
-        if(appMode === 'playback') return; var w = video.videoWidth, h = video.videoHeight;
-        if (isPausedForEdit && staticBackgroundData) { ctxMP.drawImage(staticBackgroundData, 0, 0, w, h); } else { ctxMP.drawImage(video, 0, 0, w, h); }
-        drawCenterGrid(ctxMP, canvasMP);
-
-        if (calibState !== "idle") {
-            ctxMP.fillStyle = "#ffeb3b";
-            if (calibrationPoints[0]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[0].x, calibrationPoints[0].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_left") drawCrosshair(ctxMP, calibrationPoints[0], canvasMP); }
-            if (calibrationPoints[1]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[1].x, calibrationPoints[1].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_right") drawCrosshair(ctxMP, calibrationPoints[1], canvasMP); }
-        }
-
-        if (window.reportDataStore[currentTab]) {
-            var kps = window.reportDataStore[currentTab]; drawSkeleton(ctxMP, kps, '#ff5252'); 
-            drawKendallAlignment(ctxMP, kps); calculateWeightBearing(ctxMP, kps); 
-            runReviewLogic(ctxMP, (n) => kps.find(k => k.name === n), canvasMP);
-            if (selectedJointIndex !== null) drawCrosshair(ctxMP, kps[selectedJointIndex], canvasMP); 
-        } ctxComb.drawImage(canvasMP, 0, 0, w, h);
-    }
-
-    // Canvas Events
-    radarWrapperMP.addEventListener('pointerdown', function(e) {
-        e.stopPropagation(); if (activeRadarDrag) return; initialTouch = { x: e.clientX, y: e.clientY };
-        longPressTimer = setTimeout(function() { var rect = radarWrapperMP.getBoundingClientRect(); activeRadarDrag = { element: radarWrapperMP, startX: initialTouch.x, startY: initialTouch.y, startLeft: rect.left, startTop: rect.top }; radarWrapperMP.style.right = 'auto'; radarWrapperMP.style.bottom = 'auto'; radarWrapperMP.style.left = rect.left + "px"; radarWrapperMP.style.top = rect.top + "px"; radarWrapperMP.classList.add('dragging'); isRadarMovedManually = true; }, 300);
-    });
-    radarWrapperMP.addEventListener('pointermove', function(e) { if (longPressTimer && initialTouch && Math.hypot(e.clientX - initialTouch.x, e.clientY - initialTouch.y) > 10) { clearTimeout(longPressTimer); longPressTimer = null; } });
-    var cancelPress = function() { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } };
-    radarWrapperMP.addEventListener('pointerup', cancelPress); radarWrapperMP.addEventListener('pointercancel', cancelPress);
-    window.addEventListener('pointermove', function(e) { if (activeRadarDrag) { e.preventDefault(); var dx = e.clientX - activeRadarDrag.startX, dy = e.clientY - activeRadarDrag.startY; activeRadarDrag.element.style.left = (activeRadarDrag.startLeft + dx) + "px"; activeRadarDrag.element.style.top = (activeRadarDrag.startTop + dy) + "px"; } }, { passive: false });
-    window.addEventListener('pointerup', function() { if (activeRadarDrag) { activeRadarDrag.element.classList.remove('dragging'); activeRadarDrag = null; } });
-
-    canvasMP.addEventListener('pointerdown', function(e) {
-        var pos = getEventPos(canvasMP, e); if (!pos) return;
-        if (calibState !== "idle") {
-            if (calibState === "wait_left" || calibState === "adjust_left") { calibrationPoints[0] = pos; calibState = "adjust_left"; calibrateMatBtn.innerText = "✅ 左端を確定"; document.getElementById('dpadPanel').style.display = 'flex'; } 
-            else if (calibState === "wait_right" || calibState === "adjust_right") { calibrationPoints[1] = pos; calibState = "adjust_right"; calibrateMatBtn.innerText = "✅ 右端を確定"; document.getElementById('dpadPanel').style.display = 'flex'; }
-            if (isPausedForEdit) refreshReportView(); return; 
-        }
-        var hitRadius = 80 * pos.renderScale; 
-        if ((currentTab === "front" || currentTab === "back" || currentTab === "dyn_overhead" || currentTab.startsWith("dyn_single")) && window.currentAnchorPos && !isRecording && appMode !== 'playback') {
-            if (Math.hypot(window.currentAnchorPos.x - pos.x, window.currentAnchorPos.y - pos.y) < hitRadius * 1.5) { dragTarget = { type: 'anchor' }; window.anchorStatus = "dragging"; closeDpad(); return; }
-        }
-        var kpsToSearch = null; if (appMode === 'playback' && isEditingPlaybackFrame) { var fIdx = parseInt(document.getElementById('timelineSlider').value); if (playbackDataMP[fIdx]) kpsToSearch = playbackDataMP[fIdx].keypoints; } else if (isPausedForEdit && appMode !== 'playback') { kpsToSearch = window.reportDataStore[currentTab]; }
-        if (kpsToSearch) {
-            var closestIdx = -1, minDist = hitRadius; kpsToSearch.forEach(function(kp, idx) { if (kp && kp.score > 0.0) { var dist = Math.hypot(kp.x - pos.x, kp.y - pos.y); if (dist < minDist) { minDist = dist; closestIdx = idx; } } });
-            if (closestIdx !== -1) { selectedJointIndex = closestIdx; document.getElementById('dpadPanel').style.display = 'flex'; } else { closeDpad(); }
-            if (appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); else refreshReportView();
-        }
-    });
-
-    canvasMP.addEventListener('pointermove', function(e) { if (dragTarget && dragTarget.type === 'anchor') { if(e.cancelable) e.preventDefault(); var pos = getEventPos(canvasMP, e); if (!pos) return; var safeX = Math.max(0, Math.min(pos.x, canvasMP.width)), safeY = Math.max(0, Math.min(pos.y, canvasMP.height)); window.customOriginMarkers[currentTab] = { x: safeX, y: safeY }; window.currentAnchorPos = { x: safeX, y: safeY }; if (isPausedForEdit) refreshReportView(); } });
-    var handleEnd = function() { if (dragTarget && dragTarget.type === 'anchor') { window.anchorStatus = "locked"; dragTarget = null; canvasMP.style.cursor = 'default'; } };
-    canvasMP.addEventListener('pointerup', handleEnd); canvasMP.addEventListener('pointercancel', handleEnd);
-
-    window.switchReportTab = function(val) { 
-        if (isRecording) return; currentTab = val; staticBackgroundData = null; window.anchorStatus = "unlocked"; window.currentAnchorPos = null;
-        if(window.customOriginMarkers[val]) window.customOriginMarkers[val] = null; swayHistoryMP = []; clearRadar(ctxRadarMP, "#ff5252");
-        closeDpad(); isEditingPlaybackFrame = false; document.getElementById('editFrameBtn').innerText = "✂️ 微調整"; document.getElementById('editFrameBtn').style.background = "#ff9100";
-        if(DURATION_MAP[val]) { var recommended = DURATION_MAP[val].toString(); if(Array.from(document.getElementById('durationSelect').options).map(opt => opt.value).includes(recommended)) document.getElementById('durationSelect').value = recommended; }
-        document.getElementById('tiltPanel').style.display = (val === 'r_side' || val === 'l_side') ? 'block' : 'none';
-        appMode = 'camera'; 
-        document.getElementById('playbackControls').style.display = 'none'; 
-        document.getElementById('mainControls').style.display = 'flex'; 
-        isPausedForEdit = false; refreshReportView();
-    }
-
     // --- 5. 録画と再生パイプライン ---
-    recBtn.onclick = function() {
-        controlsBox.style.display = 'none'; document.getElementById('toggleUiBtn').innerText = '🔼 UIを表示';
-        isPausedForEdit = false; staticBackgroundData = null; isRecording = true; closeDpad(); coordinateBufferMP = []; 
-        poseDataLog = []; 
-        recordingDuration = parseInt(document.getElementById('durationSelect').value); var start = Date.now(); swayHistoryMP = []; 
-        document.getElementById('timerDisplay').style.display = "block"; recBtn.disabled = true; document.getElementById('downloadCsvBtn').disabled = true;
-        
-        var timer = setInterval(async function() {
-            var elapsed = Date.now() - start; document.getElementById('timerDisplay').innerText = "REC " + Math.max(0, (recordingDuration - elapsed) / 1000).toFixed(1) + "s";
-            if (elapsed >= recordingDuration) { 
-                clearInterval(timer); 
-                await executePostProcessingStop(); 
-            }
-        }, 100);
+    window.refreshHistoryList = async function() {
+        var sessions = await dbManager.getAllSessions(); historyListContainer.innerHTML = '';
+        if(sessions.length === 0) { historyListContainer.innerHTML = '<div style="color:#aaa; text-align:center; padding:20px;">履歴なし</div>'; return; }
+        sessions.forEach(s => {
+            var item = document.createElement('div'); item.className = 'history-item';
+            item.innerHTML = `<div onclick="window.loadSession('${s.id}')"><b>${MODE_NAMES[s.mode] || s.mode}</b><br><small>${new Date(s.timestamp).toLocaleString()}</small></div><button class="history-action-btn del" onclick="event.stopPropagation(); window.deleteSession('${s.id}')">削除</button>`;
+            historyListContainer.appendChild(item);
+        });
+    };
+    
+    window.deleteSession = async function(id) { customConfirm("削除の確認", "データを削除しますか？", async () => { await dbManager.deleteSession(id); window.refreshHistoryList(); }); };
+    window.loadSession = async function(id) {
+        var sessions = await dbManager.getAllSessions(); var s = sessions.find(x=>x.id===id);
+        if(s) { poseDataLog = s.poseData; currentTab = s.mode; document.getElementById('modeSelect').value = s.mode; document.getElementById('historyPanel').style.display='none'; enterPlaybackMode(); }
     };
 
-    async function executePostProcessingStop() {
-        controlsBox.style.display = 'flex'; document.getElementById('toggleUiBtn').innerText = '🔽 UIを隠す';
-        isRecording = false; document.getElementById('timerDisplay').style.display = "none";
-        
-        if (poseDataLog.length > 0) {
-            var session = { id: 'session_' + Date.now(), timestamp: Date.now(), mode: currentTab, poseData: JSON.parse(JSON.stringify(poseDataLog)) };
-            try { await dbManager.saveSession(session); window.refreshHistoryList(); } catch(err) { console.error("Auto-save failed", err); }
-        }
-
-        if (currentTab.startsWith("dyn_")) { 
-            var deepestKp = null; var maxY = 0;
-            poseDataLog.forEach(d => {
-                if(d.mode === currentTab) {
-                    var hip = d.keypoints.find(k=>k.name==='left_hip' || k.name==='right_hip');
-                    if(hip && hip.y > maxY) { maxY = hip.y; deepestKp = d.keypoints; }
-                }
-            });
-            if(deepestKp) window.reportDataStore[currentTab] = JSON.parse(JSON.stringify(deepestKp));
-            enterPlaybackMode(); 
-        } 
-        else {
-            isPausedForEdit = true; 
-            var bgCanvas = document.createElement('canvas'); bgCanvas.width = canvasMP.width; bgCanvas.height = canvasMP.height;
-            bgCanvas.getContext('2d').drawImage(video, 0, 0, canvasMP.width, canvasMP.height); staticBackgroundData = bgCanvas;
-            if (coordinateBufferMP.length > 0) {
-                var totalFrames = coordinateBufferMP.length; var avgKeypoints = JSON.parse(JSON.stringify(coordinateBufferMP[0]));
-                avgKeypoints.forEach(function(kp, kpIdx) { var sumX = 0, sumY = 0; for (var f = 0; f < totalFrames; f++) { if(coordinateBufferMP[f][kpIdx]) { sumX += coordinateBufferMP[f][kpIdx].x; sumY += coordinateBufferMP[f][kpIdx].y; } } kp.x = sumX / totalFrames; kp.y = sumY / totalFrames; kp.score = 1.00; });
-                window.reportDataStore[currentTab] = avgKeypoints;
-            } recBtn.disabled = false; document.getElementById('downloadCsvBtn').disabled = false; refreshReportView(); 
-        }
-    }
-
-    function enterPlaybackMode() {
-        appMode = 'playback'; document.getElementById('mainControls').style.display = 'none'; document.getElementById('playbackControls').style.display = 'flex';
-        playbackDataMP = poseDataLog.filter(d => d.mode === currentTab);
-        if (playbackDataMP.length > 1) { playbackBaseTime = playbackDataMP[0].time; playbackTotalDuration = playbackDataMP[playbackDataMP.length - 1].time - playbackBaseTime; } else { playbackBaseTime = 0; playbackTotalDuration = 0; }
-        var maxFrames = playbackDataMP.length - 1; document.getElementById('timelineSlider').max = maxFrames > 0 ? maxFrames : 0; document.getElementById('timelineSlider').value = 0; document.getElementById('frameCounter').innerText = "0 / " + document.getElementById('timelineSlider').max;
-        renderPlaybackFrame(0); togglePlay(true);
-    }
-    
-    function exitPlaybackMode() { 
-        appMode = 'camera'; togglePlay(false); 
-        document.getElementById('playbackControls').style.display = 'none'; document.getElementById('mainControls').style.display = 'flex'; 
-        isPausedForEdit = false; closeDpad(); isEditingPlaybackFrame=false; document.getElementById('editFrameBtn').innerText = "✂️ 微調整"; document.getElementById('editFrameBtn').style.background = "#ff9100"; 
-        if(isExportingVideo) { isExportingVideo = false; if(exportRecorder && exportRecorder.state !== "inactive") exportRecorder.stop(); document.getElementById('exportVideoBtn').innerText = "🎥 動画出力"; document.getElementById('exportVideoBtn').disabled = false; }
-    }
-
-    function togglePlay(forcePlay) {
-        if(isEditingPlaybackFrame && forcePlay !== false) return; 
-        if (forcePlay === true || !isPlaying) {
-            isPlaying = true; document.getElementById('playPauseBtn').innerText = "⏸ 停止";
-            if (playbackDataMP.length > 1) { var currentIdx = parseInt(document.getElementById('timelineSlider').value); if(currentIdx >= playbackDataMP.length) currentIdx = 0; playbackStartTime = Date.now() - (playbackDataMP[currentIdx].time - playbackBaseTime); } else { playbackStartTime = Date.now(); }
-            playbackLoop();
-        } else { isPlaying = false; document.getElementById('playPauseBtn').innerText = "▶ 再生"; cancelAnimationFrame(playbackRafId); }
-    }
-
-    function playbackLoop() {
-        if (!isPlaying) return; var now = Date.now(), elapsed = now - playbackStartTime; 
-        if (elapsed > playbackTotalDuration) { 
-            if (isExportingVideo) { togglePlay(false); if (exportRecorder && exportRecorder.state !== "inactive") exportRecorder.stop(); return; }
-            playbackStartTime = now; elapsed = 0; 
-        }
-        var targetTime = playbackBaseTime + elapsed, targetIdx = playbackDataMP.length - 1;
-        for (var i = 0; i < playbackDataMP.length; i++) { if (playbackDataMP[i].time >= targetTime) { targetIdx = i; break; } }
-        document.getElementById('timelineSlider').value = targetIdx; renderPlaybackFrame(targetIdx); playbackRafId = requestAnimationFrame(playbackLoop);
-    }
-
-    function renderPlaybackFrame(frameIdx) {
-        document.getElementById('frameCounter').innerText = frameIdx + " / " + document.getElementById('timelineSlider').max; 
-        ctxMP.fillStyle = "#111"; ctxMP.fillRect(0, 0, canvasMP.width, canvasMP.height); 
-        drawCenterGrid(ctxMP, canvasMP);
-        if (playbackDataMP[frameIdx]) {
-            var actualKps = playbackDataMP[frameIdx].keypoints; 
-            drawSkeleton(ctxMP, actualKps, '#ffffff'); 
-            drawOHSFrontAnalysis(ctxMP, actualKps);
-            drawOHSSideAnalysis(ctxMP, actualKps);
-            drawKendallAlignment(ctxMP, actualKps); 
-            calculateWeightBearing(ctxMP, actualKps); 
-            runReviewLogic(ctxMP, (n) => actualKps.find(k => k.name === n), canvasMP);
-            if (selectedJointIndex !== null && isEditingPlaybackFrame) { drawCrosshair(ctxMP, actualKps[selectedJointIndex], canvasMP); }
-            drawPlaybackRadar(playbackDataMP, frameIdx, canvasMP);
-        } ctxComb.drawImage(canvasMP, 0, 0, canvasMP.width, canvasMP.height);
-    }
-
-    function startVideoExport() {
-        if (isExportingVideo) return;
-        isExportingVideo = true; exportChunks = []; togglePlay(false); document.getElementById('timelineSlider').value = 0; renderPlaybackFrame(0);
-        try {
-            var stream = canvasComb.captureStream(30);
-            var mimeType = MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm;codecs=vp8';
-            exportRecorder = new MediaRecorder(stream, { mimeType: mimeType });
-            exportRecorder.ondataavailable = function(e) { if (e.data.size > 0) exportChunks.push(e.data); };
-            exportRecorder.onstop = function() {
-                var ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
-                var b = new Blob(exportChunks, { type: mimeType }); 
-                var a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `connect_ai_${currentTab}_${Date.now()}.${ext}`; a.click();
-                isExportingVideo = false; document.getElementById('exportVideoBtn').innerText = "🎥 動画出力"; document.getElementById('exportVideoBtn').disabled = false;
-            };
-            exportRecorder.start();
-            document.getElementById('exportVideoBtn').innerText = "録画出力中..."; document.getElementById('exportVideoBtn').disabled = true;
-            playbackStartTime = Date.now(); togglePlay(true);
-        } catch (e) { console.error(e); isExportingVideo = false; document.getElementById('exportVideoBtn').innerText = "🎥 動画出力"; document.getElementById('exportVideoBtn').disabled = false; customAlert("エラー", "動画出力に失敗しました。"); }
-    }
-    document.getElementById('exportVideoBtn').onclick = startVideoExport;
-
-    // --- 6. システム・カメラ初期化 ---
+    // 🌟 V82修正：iPhone（iOS）向けのアクセス許可＆デバイス解放機構
     async function init() {
         try { await dbManager.init(); } catch(e) { console.error("DB Init Error:", e); }
         try {
+            // iOS対応：最初に仮のアクセスを求め、背面等のカメララベルと識別IDをご自身のiPhoneから強制解放させる
+            try {
+                var streamPermission = await navigator.mediaDevices.getUserMedia({ video: true });
+                streamPermission.getTracks().forEach(t => t.stop());
+            } catch(pErr) { console.log("iOS Permission Check:", pErr); }
+
             var devices = await navigator.mediaDevices.enumerateDevices();
             var vs = document.getElementById('videoSource');
             vs.innerHTML = ''; 
             var hasCam = false;
             devices.forEach(d => { 
-                if(d.kind==='videoinput') { vs.appendChild(new Option(d.label || "カメラ", d.deviceId)); hasCam = true; } 
+                if(d.kind==='videoinput') {
+                    var label = d.label || ("カメラ " + (vs.length + 1));
+                    vs.appendChild(new Option(label, d.deviceId)); 
+                    hasCam = true;
+                } 
             });
             if(!hasCam) vs.innerHTML = '<option value="">カメラなし</option>';
 
@@ -931,12 +712,27 @@
     }
     window.addEventListener('load', init); 
 
-    // 🌟 V76 安定版：カメラ再起動・フリーズ回避
+    // 🌟 V82修正：アウトカメラ優先＆理想値（ideal）指定による過剰制約フリーズ回避
     startBtn.onclick = async function() {
         renderSessionId++; var cur = renderSessionId;
         var vs = document.getElementById('videoSource').value;
-        var constraints = { video: { width: { ideal: 1920 }, height: { ideal: 1080 } } };
-        if (vs) constraints.video.deviceId = { ideal: vs }; 
+        
+        var constraints = { 
+            video: { 
+                width: { ideal: 1920 }, 
+                height: { ideal: 1080 },
+                facingMode: { ideal: "environment" } // デフォルトで背面を理想とする
+            } 
+        };
+        if (vs) {
+            constraints.video.deviceId = { ideal: vs };
+            var selText = document.getElementById('videoSource').options[document.getElementById('videoSource').selectedIndex].text;
+            if(/back|背面|environment|アウト/i.test(selText)) {
+                constraints.video.facingMode = { ideal: "environment" };
+            } else if(/front|前面|user|イン/i.test(selText)) {
+                constraints.video.facingMode = { ideal: "user" };
+            }
+        } 
 
         try {
             if(currentStream) { currentStream.getTracks().forEach(t=>t.stop()); video.pause(); video.srcObject = null; }
@@ -945,20 +741,20 @@
         } catch(e) {
             console.warn("High-res camera request failed, trying fallback...", e);
             try {
-                var fallbackConstraints = { video: true };
-                if (vs) fallbackConstraints.video = { deviceId: { ideal: vs } };
+                var fallbackConstraints = { video: { facingMode: { ideal: "environment" } } };
+                if (vs) fallbackConstraints.video.deviceId = { ideal: vs };
                 var streamFallback = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
                 startVideoStream(streamFallback, cur);
-                customAlert("お知らせ", "指定された解像度でのカメラ起動に失敗したため、標準画質で起動しました。");
+                customAlert("お知らせ", "指定解像度での起動に失敗したため、標準画質で起動しました。");
             } catch(fallbackErr) {
-                customAlert("カメラ起動エラー", `カメラにアクセスできませんでした。\n\n【1回目のエラー】\n${e.message}\n\n【フォールバックエラー】\n${fallbackErr.message}\n\n・他のアプリ(Zoom等)がカメラを使用していないか確認してください。\n・ブラウザのカメラ許可設定を確認してください。`);
+                customAlert("カメラ起動エラー", `カメラにアクセスできませんでした。\n\n【エラー詳細】\n${fallbackErr.message}\n\n・ブラウザの設定でカメラ許可がオンになっているか確認してください。\n・他のアプリがカメラを占有していないか確認してください。`);
             }
         }
     };
 
     function startVideoStream(stream, cur) {
         video.srcObject = stream; 
-        currentStream = stream; // 🌟 フリーズバグの修正
+        currentStream = stream;
         video.onloadeddata = function() {
             canvasMP.width = video.videoWidth; canvasMP.height = video.videoHeight;
             canvasComb.width = video.videoWidth; canvasComb.height = video.videoHeight;
@@ -987,7 +783,7 @@
         requestAnimationFrame(() => render(sid));
     }
 
-    // --- 7. ダッシュボード & LLM (V76仕様: 歩行なし・API入力あり) ---
+    // --- 7. ダッシュボード & LLM ---
     window.prepareAndPrintReport = function() {
         var grid = document.getElementById('dashGrid'); var html = '';
         
@@ -1002,25 +798,19 @@
                  html += `<div class="dash-metric"><span>下半身質量偏位 (左/右)</span> <span class="val">${wb.lower.L.toFixed(1)}% / ${wb.lower.R.toFixed(1)}%</span></div>`;
              }
              if(pDiff !== null) html += `<div class="dash-metric"><span>骨盤高低差</span> <span class="val ${pDiff>1.5?'warn':'good'}">${pDiff.toFixed(1)} cm</span></div>`;
-        } else {
-             html += '<p style="color:#aaa; text-align:center; padding: 20px 0;">未測定</p>';
-        }
+        } else { html += '<p style="color:#aaa; text-align:center; padding: 20px 0;">未測定</p>'; }
         html += '</div>';
 
         html += '<div class="dash-card"><h3>🧍 矢状面アライメント (Sagittal)</h3>';
         var sideKps = window.reportDataStore['l_side'] || window.reportDataStore['r_side'];
         if(sideKps) {
-             var isLeft = !!window.reportDataStore['l_side'];
-             var stress = getKendallStressData(sideKps, isLeft);
-             if(stress) {
-                 stress.forEach(s => { html += `<div class="dash-metric"><span>${s.name}</span> <span class="val ${s.pct>150?'warn':'good'}">${s.dev > 0 ? '+':''}${s.dev.toFixed(1)}cm (${s.pct.toFixed(0)}% 負荷)</span></div>`; });
-             }
+             var isLeft = !!window.reportDataStore['l_side'], stress = getKendallStressData(sideKps, isLeft);
+             if(stress) { stress.forEach(s => { html += `<div class="dash-metric"><span>${s.name}</span> <span class="val ${s.pct>150?'warn':'good'}">${s.dev > 0 ? '+':''}${s.dev.toFixed(1)}cm (${s.pct.toFixed(0)}% 負荷)</span></div>`; }); }
         } else { html += '<p style="color:#aaa; text-align:center; padding: 20px 0;">未測定</p>'; }
         html += '</div>';
 
         html += '<div class="dash-card"><h3>🏋️ 動的機能: OHS (Dynamic)</h3>';
-        var ohsF = window.reportDataStore['dyn_overhead'];
-        var ohsS = window.reportDataStore['dyn_overhead_side'];
+        var ohsF = window.reportDataStore['dyn_overhead'], ohsS = window.reportDataStore['dyn_overhead_side'];
         if(ohsF || ohsS) {
             if(ohsF) {
                 var data = getOHSFrontData(ohsF);
@@ -1041,13 +831,10 @@
         html += '<div class="dash-card"><h3>⚡ バランス＆可動性 (Mobility)</h3>';
         var tests = [ { id: 'dyn_single_r', name: '片脚バランス (右)' }, { id: 'dyn_single_l', name: '片脚バランス (左)' }, { id: 'dyn_flex_fwd', name: '立位体前屈' }, { id: 'dyn_flex_bwd', name: '立位体後屈' }, { id: 'dyn_shoulder_r', name: '肩複合可動性 (右上)' }, { id: 'dyn_shoulder_l', name: '肩複合可動性 (左上)' } ];
         var hasOther = false;
-        tests.forEach(t => {
-            if(window.reportDataStore[t.id]) { hasOther = true; html += `<div class="dash-metric"><span>${t.name}</span> <span class="val good">データ取得済 ✅</span></div>`; }
-        });
+        tests.forEach(t => { if(window.reportDataStore[t.id]) { hasOther = true; html += `<div class="dash-metric"><span>${t.name}</span> <span class="val good">データ取得済 ✅</span></div>`; } });
         if(!hasOther) html += '<p style="color:#aaa; text-align:center; padding: 20px 0;">未測定</p>';
         html += '</div>';
 
-        // 🌟 安定版 APIキー入力UI
         html += `<div class="dash-card" id="aiEvalCard" style="grid-column: 1 / -1;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 20px;">
                 <h3 style="margin:0; border:none; padding:0; color:#00bfff;">🧠 AI 臨床評価 (LLM Insight)</h3>
@@ -1061,62 +848,6 @@
             </div>
         </div>`;
         grid.innerHTML = html; document.getElementById('dashboardOverlay').style.display = 'block';
-    }
-
-    // AI評価データ抽出 (V76仕様)
-    function getWeightBearingData(kps) {
-        var getK = name => kps.find(k => k.name === name);
-        var lAnkle = getK('left_ankle'), rAnkle = getK('right_ankle'); if (!lAnkle || !rAnkle) return null;
-        var nose = getK('nose'), lSh = getK('left_shoulder'), rSh = getK('right_shoulder'), lHip = getK('left_hip'), rHip = getK('right_hip');
-        if (!nose || !lSh || !rSh || !lHip || !rHip) return null;
-        var dPx = rAnkle.x - lAnkle.x; if (Math.abs(dPx) < 10) return null;
-        var upperComX = (nose.x * 0.20) + (((lSh.x + rSh.x) / 2) * 0.80);
-        var lowerComX = (lHip.x + rHip.x) / 2;
-        var totalComX = (upperComX * 0.6) + (lowerComX * 0.4);
-        var calcRatio = (comX) => { var pctR = ((comX - lAnkle.x) / dPx) * 100, pctL = 100 - pctR; if(pctR < 0) { pctR = 0; pctL = 100; } if(pctR > 100) { pctR = 100; pctL = 0; } return { L: pctL, R: pctR }; };
-        return { upper: calcRatio(upperComX), lower: calcRatio(lowerComX), total: calcRatio(totalComX) };
-    }
-    function getPelvicDiff(kps) { var asisL = kps.find(k=>k.name==='virtual_asis_l'), asisR = kps.find(k=>k.name==='virtual_asis_r'); if(asisL && asisR && pxToCmRatio) return Math.abs(asisL.y - asisR.y) * pxToCmRatio; return null; }
-    function getKendallStressData(kps, isLeft) {
-        var getK = name => kps.find(k => k.name === name);
-        var dir = isLeft ? -1 : 1;
-        var ear = isLeft ? getK('left_ear') : getK('right_ear'), sh = isLeft ? getK('left_shoulder') : getK('right_shoulder'), hip = isLeft ? getK('left_hip') : getK('right_hip'), ankle = isLeft ? getK('left_ankle') : getK('right_ankle');
-        var targetAnkle = ankle && ankle.score > 0.1 ? ankle : null; if (!targetAnkle) { var heel = isLeft ? getK('left_heel') : getK('right_heel'); if (heel && heel.score > 0.1) targetAnkle = heel; }
-        if (!ear || !sh || !hip || !targetAnkle) return null;
-        var ratio = pxToCmRatio || 0.15, footCm = parseFloat(document.getElementById('footSize').value) || 25, plumbX = targetAnkle.x + (dir * ((footCm * 0.15) / ratio));
-        var c2 = { x: ear.x - (dir * (1.0 / ratio)), name: "C2 (頸椎)", d0: 1.5 };
-        var th3 = { x: sh.x, name: "Th3 (胸椎)", d0: 1.0 };
-        var tiltRad = estimatedPelvicTilt * (Math.PI / 180);
-        var s2X = hip.x - (dir * ((3.0/ratio) * Math.cos(tiltRad) - (2.0/ratio) * Math.sin(tiltRad)));
-        var s2 = { x: s2X, name: "S2 (仙骨)", d0: 1.0 };
-        var l3X = s2.x + (dir * ((3.0 + (estimatedPelvicTilt * 0.1)) / ratio));
-        var l3 = { x: l3X, name: "L3 (腰椎)", d0: 2.0 };
-        var straightTh11X = l3.x + (th3.x - l3.x) * ((l3.y - (s2.y - ((s2.y - sh.y) * 0.6))) / (l3.y - th3.y));
-        var th11X = straightTh11X - (dir * ((1.5 + (estimatedPelvicTilt * 0.05)) / ratio));
-        var th11 = { x: th11X, name: "Th11 (胸腰)", d0: 1.0 };
-        return [c2, th3, th11, l3, s2].map(pt => { var devCm = (pt.x - plumbX) * ratio * dir; var stressPct = ((pt.d0 + Math.max(0, devCm)) / pt.d0) * 100; if (devCm < -pt.d0) stressPct = Math.abs((pt.d0 + devCm)/pt.d0) * 100; return { name: pt.name, dev: devCm, pct: stressPct }; });
-    }
-    function getOHSFrontData(kps) {
-        var getK = name => kps.find(k => k.name === name);
-        const evalSide = (h, k, a, label) => {
-            if(!h||!k||!a) return null; var refX = h.x + (a.x - h.x) * ((k.y - h.y) / (a.y - h.y));
-            var angle = Math.abs(180 - Math.abs(Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI);
-            if(angle > 2.0) { var isIn = label==='R' ? k.x > refX : k.x < refX; return { warn: isIn, text: (isIn?"ニーイン ":"ニーアウト ") + angle.toFixed(1)+"°" }; }
-            return { warn: false, text: "正常 (Straight)" };
-        };
-        return { r: evalSide(getK('right_hip'),getK('right_knee'),getK('right_ankle'),'R'), l: evalSide(getK('left_hip'),getK('left_knee'),getK('left_ankle'),'L') };
-    }
-    function getOHSSideData(kps) {
-        var getK = name => kps.find(k => k.name === name);
-        var lS = getK('left_shoulder'), lH = getK('left_hip'), lK = getK('left_knee'), lA = getK('left_ankle'), lW = getK('left_wrist');
-        var rS = getK('right_shoulder'), rH = getK('right_hip'), rK = getK('right_knee'), rA = getK('right_ankle'), rW = getK('right_wrist');
-        var isLeft = (lS && rS && lS.score > rS.score);
-        var s = isLeft?lS:rS, h = isLeft?lH:rH, k = isLeft?lK:rK, a = isLeft?lA:rA, w = isLeft?lW:rW;
-        if (!s || !h || !k || !a) return null;
-        var trunkLean = Math.abs(Math.atan2(s.x - h.x, h.y - s.y) * 180 / Math.PI);
-        var kneeAng = Math.abs((Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI); if(kneeAng > 180) kneeAng = 360 - kneeAng;
-        var armAng = w ? Math.abs((Math.atan2(w.y-s.y, w.x-s.x) - Math.atan2(h.y-s.y, h.x-s.x)) * 180 / Math.PI) : null; if(armAng && armAng > 180) armAng = 360 - armAng;
-        return { trunk: trunkLean, knee: kneeAng, arm: armAng };
     }
 
     window.generateAiInsights = async function() {
@@ -1156,9 +887,7 @@
             if(!res.ok) throw new Error(`HTTP Error: ${res.status}`);
             const data = await res.json();
             document.getElementById('aiEvalContent').innerHTML = data.candidates[0].content.parts[0].text.replace(/\n/g, '<br>');
-        } catch(e) {
-            document.getElementById('aiEvalContent').innerHTML = `<span style="color:#ff5252;">評価の生成に失敗しました。APIキーが間違っているか、通信エラーです。(${e.message})</span>`;
-        }
+        } catch(e) { document.getElementById('aiEvalContent').innerHTML = `<span style="color:#ff5252;">評価の生成に失敗しました。APIキーが間違っているか、通信エラーです。(${e.message})</span>`; }
     };
 </script>
 </body>
