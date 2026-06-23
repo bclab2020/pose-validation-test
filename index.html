@@ -29,7 +29,7 @@
         #controlsBox { width: 100%; display: flex; flex-direction: column; gap: 10px; }
         .controls { background: rgba(20, 22, 26, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 15px; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.8); box-sizing: border-box; }
         button, select, input { padding: 8px 12px; font-size: 14px; cursor: pointer; border-radius: 6px; border: none; font-weight: bold; transition: 0.2s; outline: none; }
-        .mode-dropdown { background: #333; color: #deff9a; border: 1px solid #555; }
+        .mode-dropdown { background: #333; color: #deff9a; border: 1px solid #555; padding: 8px; border-radius: 4px; }
         .mode-dropdown optgroup { color: #aaa; background: #222; }
         
         #startBtn { background: #1976d2; color: white; }
@@ -80,17 +80,19 @@
         /* 統合ダッシュボード */
         #dashboardOverlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; background: rgba(5,5,5,0.98); z-index: 3000; display: none; overflow-y: auto; padding: 40px; box-sizing: border-box; }
         .dash-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #00bfff; padding-bottom: 20px; margin-bottom: 30px; }
-        .dash-title { color: #00bfff; font-size: 32px; font-weight: bold; margin: 0; }
+        .dash-title { color: #00bfff; font-size: 32px; font-weight: bold; margin: 0; display: flex; align-items: center; gap: 10px; }
         .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 25px; max-width: 1400px; margin: 0 auto; }
         .dash-card { background: #111; border: 1px solid #333; border-radius: 16px; padding: 25px; }
-        .dash-card h3 { color: #deff9a; border-bottom: 1px solid #333; padding-bottom: 15px; font-size: 18px; margin-bottom: 20px; }
-        .dash-metric { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 15px; background: rgba(255,255,255,0.03); padding: 10px 15px; border-radius: 8px; }
+        .dash-card h3 { color: #deff9a; margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 15px; font-size: 18px; margin-bottom: 20px; }
+        .dash-metric { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 15px; background: rgba(255,255,255,0.03); padding: 10px 15px; border-radius: 8px; }
         .dash-metric span:first-child { color: #aaa; }
-        .dash-metric .val { font-weight: bold; color: #fff; }
+        .dash-metric .val { font-weight: bold; color: #fff; font-size: 16px; }
         .dash-metric .val.warn { color: #ff5252; }
         .dash-metric .val.good { color: #39ff14; }
-        .dash-close, .dash-print { background: #333; color: #fff; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px; border:none; }
+        .dash-close, .dash-print { background: #333; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px; transition: 0.2s; }
         .dash-print { background: #ff9100; color: #000; margin-right: 10px; }
+        .dash-close:hover { background: #555; }
+        .dash-print:hover { filter: brightness(1.1); }
 
         /* インラインモーダルダイアログ */
         #customModal { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; background: rgba(0,0,0,0.85); z-index: 9999; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
@@ -106,14 +108,16 @@
         @media print {
             body { background: white; color: black; overflow: visible; }
             #uiFloatingLayer, #tiltPanel, #dpadPanel, #historyPanel, .view-port { display: none !important; }
-            #dashboardOverlay { display: block !important; position: static; background: white; padding: 0; }
-            .dash-card { background: #fff; border: 1px solid #ddd; break-inside: avoid; }
+            #dashboardOverlay { display: block !important; position: static; background: white; color: black; overflow: visible; padding: 0; }
+            .dash-card { background: #fff; border: 1px solid #ddd; box-shadow: none; break-inside: avoid; }
             .dash-card h3 { color: #000; border-bottom: 2px solid #000; }
             .dash-metric { background: #f9f9f9; border: 1px solid #eee; }
             .dash-metric span:first-child { color: #333; }
             .dash-metric .val { color: #000; }
             .dash-metric .val.warn { color: #d32f2f; }
             .dash-metric .val.good { color: #2e7d32; }
+            .dash-title { color: #000; border-bottom: none; }
+            .dash-header { border-bottom: 3px solid #000; }
             .dash-close, .dash-print { display: none; }
             #aiEvalCard { grid-column: 1 / -1; margin-top: 20px; break-inside: avoid; }
             #aiEvalContent { background: #f0f8ff !important; color: #000 !important; border-left: 4px solid #1976d2 !important; }
@@ -125,7 +129,7 @@
 
 <div class="view-port">
     <canvas id="canvasMP"></canvas>
-    <div class="label">CONNECT AI - V76 Stable Rollback Edition</div>
+    <div class="label">CONNECT AI - V76 Stable Base</div>
     <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     <div id="radarWrapperMP" class="radar-wrapper">
@@ -171,6 +175,7 @@
     <div class="dash-grid" id="dashGrid"></div>
 </div>
 
+<!-- 🌟 インラインカスタムモーダル -->
 <div id="customModal">
     <div class="modal-box">
         <h3 id="modalTitle" class="modal-title"></h3>
@@ -194,7 +199,7 @@
             <select id="videoSource" style="background:#fff; color:#000; border-radius:4px; padding:4px;">
                 <option value="">カメラ検索中...</option>
             </select>
-            
+
             <button id="startBtn" disabled>⏳ 起動準備中...</button>
             
             <div style="display:flex; gap:5px; background:rgba(0,0,0,0.5); padding:4px 10px; border-radius:6px; border:1px solid #555;">
@@ -204,6 +209,7 @@
             
             <button id="calibrateMatBtn">📏 マット校正</button>
 
+            <!-- V76 ロールバック: 歩行分析なし -->
             <select id="modeSelect" class="mode-dropdown" onchange="window.switchReportTab(this.value)">
                 <optgroup label="■ 静止姿勢アライメント">
                     <option value="front" selected>🧍 前面</option><option value="back">🧍 後面</option><option value="l_side">🧍 左側面</option><option value="r_side">🧍 右側面</option>
@@ -253,7 +259,8 @@
     window.customOriginMarkers = {}; window.reportDataStore = {};
     Object.keys(DURATION_MAP).forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
 
-    var detectors = [], isRunning = false, isRecording = false, isPausedForEdit = false, currentTab = "front", appMode = "camera", isPlaying = false, currentStream = null;
+    var detectors = [], isRunning = false, isRecording = false, isPausedForEdit = false, currentTab = "front", appMode = "camera", isPlaying = false;
+    var currentStream = null; // 🌟 安定化対応
     var playbackDataMP = [], mainRenderId = null, recordingDuration = 10000, coordinateBufferMP = [], poseDataLog = [], playbackRafId = null;
     var pxToCmRatio = null, estimatedPelvicTilt = 0, calibState = "idle", calibrationPoints = [];
     var exportRecorder = null, exportChunks = [], isExportingVideo = false, renderSessionId = 0, playbackStartTime = 0, playbackBaseTime = 0, playbackTotalDuration = 0;
@@ -417,6 +424,7 @@
             if(k && k.score > 0.1 && !k.name.includes('virtual')) { ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(k.x, k.y, 4, 0, 2*Math.PI); ctx.fill(); }
         });
 
+        // 🌟 頭部アライメント（顔の輪郭と正中線）
         if (currentTab === 'front' || currentTab === 'dyn_overhead') {
             var earL = getK('left_ear'), earR = getK('right_ear'), nose = getK('nose'), shL = getK('left_shoulder'), shR = getK('right_shoulder');
             if (earL && earR && earL.score > 0.1 && earR.score > 0.1) {
@@ -725,6 +733,7 @@
         } ctxComb.drawImage(canvasMP, 0, 0, w, h);
     }
 
+    // Canvas Events
     radarWrapperMP.addEventListener('pointerdown', function(e) {
         e.stopPropagation(); if (activeRadarDrag) return; initialTouch = { x: e.clientX, y: e.clientY };
         longPressTimer = setTimeout(function() { var rect = radarWrapperMP.getBoundingClientRect(); activeRadarDrag = { element: radarWrapperMP, startX: initialTouch.x, startY: initialTouch.y, startLeft: rect.left, startTop: rect.top }; radarWrapperMP.style.right = 'auto'; radarWrapperMP.style.bottom = 'auto'; radarWrapperMP.style.left = rect.left + "px"; radarWrapperMP.style.top = rect.top + "px"; radarWrapperMP.classList.add('dragging'); isRadarMovedManually = true; }, 300);
@@ -916,7 +925,7 @@
     }
     window.addEventListener('load', init); 
 
-    // 🌟 V82: カメラ再起動・フリーズ回避（currentStream解決済）
+    // 🌟 V76 安定版：カメラ再起動・フリーズ回避（currentStream解決・横長固定）
     startBtn.onclick = async function() {
         renderSessionId++; var cur = renderSessionId;
         var vs = document.getElementById('videoSource').value;
@@ -931,6 +940,7 @@
             console.warn("High-res camera request failed, trying fallback...", e);
             try {
                 var fallbackConstraints = { video: true };
+                if (vs) fallbackConstraints.video = { deviceId: { ideal: vs } };
                 var streamFallback = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
                 startVideoStream(streamFallback, cur);
                 customAlert("お知らせ", "指定された解像度でのカメラ起動に失敗したため、標準画質で起動しました。");
@@ -942,7 +952,7 @@
 
     function startVideoStream(stream, cur) {
         video.srcObject = stream; 
-        currentStream = stream; // V82 FIX: 変数を保持
+        currentStream = stream; // 🌟 フリーズバグの修正
         video.onloadeddata = function() {
             canvasMP.width = video.videoWidth; canvasMP.height = video.videoHeight;
             canvasComb.width = video.videoWidth; canvasComb.height = video.videoHeight;
@@ -969,7 +979,7 @@
         requestAnimationFrame(() => render(sid));
     }
 
-    // --- 7. ダッシュボード & LLM ---
+    // --- 7. ダッシュボード & LLM (V76仕様: 歩行なし・API入力あり) ---
     window.prepareAndPrintReport = function() {
         var grid = document.getElementById('dashGrid'); var html = '';
         
@@ -1029,6 +1039,7 @@
         if(!hasOther) html += '<p style="color:#aaa; text-align:center; padding: 20px 0;">未測定</p>';
         html += '</div>';
 
+        // 🌟 安定版 APIキー入力UI
         html += `<div class="dash-card" id="aiEvalCard" style="grid-column: 1 / -1;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 20px;">
                 <h3 style="margin:0; border:none; padding:0; color:#00bfff;">🧠 AI 臨床評価 (LLM Insight)</h3>
@@ -1044,7 +1055,7 @@
         grid.innerHTML = html; document.getElementById('dashboardOverlay').style.display = 'block';
     }
 
-    // AI評価に必要なデータ取得補助関数 (V76仕様)
+    // AI評価データ抽出 (V76仕様)
     function getWeightBearingData(kps) {
         var getK = name => kps.find(k => k.name === name);
         var lAnkle = getK('left_ankle'), rAnkle = getK('right_ankle'); if (!lAnkle || !rAnkle) return null;
