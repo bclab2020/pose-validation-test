@@ -129,7 +129,7 @@
 
 <div class="view-port">
     <canvas id="canvasMP"></canvas>
-    <div class="label">CONNECT AI - V76 Stable Base</div>
+    <div class="label">CONNECT AI - V76 Stable Base Edition</div>
     <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     <div id="radarWrapperMP" class="radar-wrapper">
@@ -175,7 +175,6 @@
     <div class="dash-grid" id="dashGrid"></div>
 </div>
 
-<!-- 🌟 インラインカスタムモーダル -->
 <div id="customModal">
     <div class="modal-box">
         <h3 id="modalTitle" class="modal-title"></h3>
@@ -209,7 +208,6 @@
             
             <button id="calibrateMatBtn">📏 マット校正</button>
 
-            <!-- V76 ロールバック: 歩行分析なし -->
             <select id="modeSelect" class="mode-dropdown" onchange="window.switchReportTab(this.value)">
                 <optgroup label="■ 静止姿勢アライメント">
                     <option value="front" selected>🧍 前面</option><option value="back">🧍 後面</option><option value="l_side">🧍 左側面</option><option value="r_side">🧍 右側面</option>
@@ -259,8 +257,7 @@
     window.customOriginMarkers = {}; window.reportDataStore = {};
     Object.keys(DURATION_MAP).forEach(dir => { window.reportDataStore[dir] = null; window.customOriginMarkers[dir] = null; });
 
-    var detectors = [], isRunning = false, isRecording = false, isPausedForEdit = false, currentTab = "front", appMode = "camera", isPlaying = false;
-    var currentStream = null; // 🌟 安定化対応
+    var detectors = [], isRunning = false, isRecording = false, isPausedForEdit = false, currentTab = "front", appMode = "camera", isPlaying = false, currentStream = null;
     var playbackDataMP = [], mainRenderId = null, recordingDuration = 10000, coordinateBufferMP = [], poseDataLog = [], playbackRafId = null;
     var pxToCmRatio = null, estimatedPelvicTilt = 0, calibState = "idle", calibrationPoints = [];
     var exportRecorder = null, exportChunks = [], isExportingVideo = false, renderSessionId = 0, playbackStartTime = 0, playbackBaseTime = 0, playbackTotalDuration = 0;
@@ -322,6 +319,11 @@
         document.getElementById('customModal').style.display = 'flex';
     }
 
+    function updateInfoPanel() {
+        var scaleText = pxToCmRatio ? "校正済 (1px = " + pxToCmRatio.toFixed(3) + "cm)" : "⚠️ スケール未校正";
+        document.getElementById('infoPanel').innerHTML = scaleText + "<br>骨盤傾斜: " + (estimatedPelvicTilt > 0 ? '+' : '') + estimatedPelvicTilt + "°";
+    }
+
     document.getElementById('toggleUiBtn').onclick = () => { document.getElementById('controlsBox').style.display = document.getElementById('controlsBox').style.display === 'none' ? 'flex' : 'none'; };
     document.getElementById('showHistoryBtn').onclick = async () => { 
         var p = document.getElementById('historyPanel');
@@ -329,7 +331,6 @@
     };
     document.getElementById('closeHistoryBtn').onclick = () => { document.getElementById('historyPanel').style.display = 'none'; };
 
-    // カメラ変更時に自動再起動
     document.getElementById('videoSource').onchange = () => { if (isRunning && !isRecording && appMode === 'camera') startBtn.click(); };
 
     var calibrateMatBtn = document.getElementById('calibrateMatBtn');
@@ -338,7 +339,7 @@
         else if (calibState === "adjust_left") { calibState = "wait_right"; calibrateMatBtn.innerText = "📍 右タップ"; } 
         else if (calibState === "adjust_right") {
             var distPx = Math.hypot(calibrationPoints[1].x - calibrationPoints[0].x, calibrationPoints[1].y - calibrationPoints[0].y);
-            if(distPx > 10) pxToCmRatio = 45.0 / distPx; calibState = "idle"; calibrateMatBtn.classList.remove('active'); calibrateMatBtn.innerText = "✅ 校正完了";
+            if(distPx > 10) pxToCmRatio = 45.0 / distPx; calibState = "idle"; calibrateMatBtn.classList.remove('active'); calibrateMatBtn.innerText = "✅ 校正完了"; updateInfoPanel();
             setTimeout(() => { if(calibState==="idle") calibrateMatBtn.innerText = "📏 マット校正"; }, 2000);
         } else { calibState = "idle"; calibrationPoints = []; calibrateMatBtn.classList.remove('active'); calibrateMatBtn.innerText = "📏 マット校正"; }
     };
@@ -346,6 +347,7 @@
     document.getElementById('pelvicTiltSlider').oninput = function(e) {
         estimatedPelvicTilt = parseInt(e.target.value);
         document.getElementById('tiltValDisplay').innerText = estimatedPelvicTilt === 0 ? "0°" : (estimatedPelvicTilt > 0 ? "+" + estimatedPelvicTilt + "° (前傾)" : estimatedPelvicTilt + "° (後傾)");
+        updateInfoPanel();
     };
 
     document.getElementById('dpadStep').onclick = function(e) { dpadStepVal = dpadStepVal === 1 ? 5 : 1; e.target.innerText = dpadStepVal + 'px'; };
@@ -403,6 +405,63 @@
             return newKps;
         } 
         return kps;
+    }
+
+    function drawCenterGrid(ctx, canvas) { 
+        ctx.save(); ctx.strokeStyle="rgba(255,255,255,0.4)"; ctx.lineWidth=5; 
+        ctx.beginPath(); ctx.moveTo(canvas.width/2,0); ctx.lineTo(canvas.width/2,canvas.height); ctx.stroke(); 
+        ctx.restore(); 
+    }
+
+    function drawCrosshair(ctx, kp, canvas) {
+        if(!kp) return; ctx.save(); ctx.strokeStyle = "rgba(0, 191, 255, 0.7)"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(0, kp.y); ctx.lineTo(canvas.width, kp.y); ctx.moveTo(kp.x, 0); ctx.lineTo(kp.x, canvas.height); ctx.stroke();
+        ctx.beginPath(); ctx.arc(kp.x, kp.y, 14, 0, 2*Math.PI); ctx.strokeStyle = "#00bfff"; ctx.lineWidth = 3; ctx.setLineDash([]); ctx.stroke();
+        ctx.fillStyle = "rgba(0, 191, 255, 0.3)"; ctx.fill(); ctx.restore();
+    }
+
+    function clearRadar(ctx, color) {
+        if (!ctx) return; ctx.clearRect(0, 0, 150, 150); ctx.strokeStyle = color + "44"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(75, 75, 30, 0, 2*Math.PI); ctx.stroke(); ctx.beginPath(); ctx.arc(75, 75, 60, 0, 2*Math.PI); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(75, 10); ctx.lineTo(75, 140); ctx.moveTo(10, 75); ctx.lineTo(140, 75); ctx.stroke(); 
+    }
+
+    function drawSpecificRadar(ctx, history, color) {
+        clearRadar(ctx, color); if (history.length < 2) return;
+        ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+        history.forEach(function(pt, idx) { 
+            var rX = 75 + (pt.x * 0.5), rY = 75 + (pt.y * 0.5), dist = Math.hypot(rX - 75, rY - 75);
+            if (dist > 65) { rX = 75 + ((rX - 75) * 65 / dist); rY = 75 + ((rY - 75) * 65 / dist); }
+            if (idx === 0) ctx.moveTo(rX, rY); else ctx.lineTo(rX, rY); 
+        });
+        ctx.stroke(); var lastPt = history[history.length - 1]; var lastRX = 75 + (lastPt.x * 0.5), lastRY = 75 + (lastPt.y * 0.5), lastDist = Math.hypot(lastRX - 75, lastRY - 75);
+        if (lastDist > 65) { lastRX = 75 + ((lastRX - 75) * 65 / lastDist); lastRY = 75 + ((lastRY - 75) * 65 / lastDist); }
+        ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(lastRX, lastRY, 4, 0, 2*Math.PI); ctx.fill(); ctx.restore();
+    }
+
+    function drawPlaybackRadar(dataArray, currentFrameIdx, canvas) {
+        clearRadar(ctxRadarMP, "#ff5252"); var history = [], baseHDist = null;
+        for (var i = 0; i <= currentFrameIdx; i++) {
+            var frameData = dataArray[i]; if (!frameData) continue; var kps = frameData.keypoints, nose = kps.find(k => k.name === 'nose');
+            var originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2, originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
+            if (nose) {
+                var copX = nose.x - originX, hDist = originY - nose.y; if (baseHDist === null) baseHDist = hDist; var copY = baseHDist - hDist;
+                if (currentTab.includes("side") || currentTab.includes("overhead_side")) { var shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (shoulder) copX = nose.x - shoulder.x; }
+                history.push({ x: copX, y: copY });
+            }
+        }
+        if (history.length > 0) drawSpecificRadar(ctxRadarMP, history, "#ff5252");
+    }
+
+    function updateRadar(kps, canvas) {
+        var history = swayHistoryMP; var nose = kps.find(k => k.name === 'nose');
+        var originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2, originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
+        if (nose) {
+            var copX = nose.x - originX, hDist = originY - nose.y; if (history.length === 0 || history.baseHDist === undefined) history.baseHDist = hDist;
+            var copY = history.baseHDist - hDist;
+            if (currentTab.includes("side") || currentTab.includes("overhead_side")) { var shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (shoulder) copX = nose.x - shoulder.x; }
+            history.push({ x: copX, y: copY }); if (history.length > 150) history.shift(); drawSpecificRadar(ctxRadarMP, history, "#ff5252");
+        }
     }
 
     function drawSkeleton(ctx, kps, color) {
@@ -630,59 +689,6 @@
         
         ctx.fillStyle = "#39ff14"; ctx.fillText("重力線 (Plumb Line)", plumbX + 10, 50);
         ctx.restore();
-    }
-
-    function updateRadar(kps, canvas) {
-        var history = swayHistoryMP; var nose = kps.find(k => k.name === 'nose');
-        var originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2, originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
-        if (nose) {
-            var copX = nose.x - originX, hDist = originY - nose.y; if (history.length === 0 || history.baseHDist === undefined) history.baseHDist = hDist;
-            var copY = history.baseHDist - hDist;
-            if (currentTab.includes("side") || currentTab.includes("overhead_side")) { var shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (shoulder) copX = nose.x - shoulder.x; }
-            history.push({ x: copX, y: copY }); if (history.length > 150) history.shift(); drawSpecificRadar(ctxRadarMP, history, "#ff5252");
-        }
-    }
-
-    function drawPlaybackRadar(dataArray, currentFrameIdx, canvas) {
-        clearRadar(ctxRadarMP, "#ff5252"); var history = [], baseHDist = null;
-        for (var i = 0; i <= currentFrameIdx; i++) {
-            var frameData = dataArray[i]; if (!frameData) continue; var kps = frameData.keypoints, nose = kps.find(k => k.name === 'nose');
-            var originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2, originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
-            if (nose) {
-                var copX = nose.x - originX, hDist = originY - nose.y; if (baseHDist === null) baseHDist = hDist; var copY = baseHDist - hDist;
-                if (currentTab.includes("side") || currentTab.includes("overhead_side")) { var shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (shoulder) copX = nose.x - shoulder.x; }
-                history.push({ x: copX, y: copY });
-            }
-        }
-        if (history.length > 0) drawSpecificRadar(ctxRadarMP, history, "#ff5252");
-    }
-
-    function drawSpecificRadar(ctx, history, color) {
-        clearRadar(ctx, color); if (history.length < 2) return;
-        ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
-        history.forEach(function(pt, idx) { 
-            var rX = 75 + (pt.x * 0.5), rY = 75 + (pt.y * 0.5), dist = Math.hypot(rX - 75, rY - 75);
-            if (dist > 65) { rX = 75 + ((rX - 75) * 65 / dist); rY = 75 + ((rY - 75) * 65 / dist); }
-            if (idx === 0) ctx.moveTo(rX, rY); else ctx.lineTo(rX, rY); 
-        });
-        ctx.stroke(); var lastPt = history[history.length - 1]; var lastRX = 75 + (lastPt.x * 0.5), lastRY = 75 + (lastPt.y * 0.5), lastDist = Math.hypot(lastRX - 75, lastRY - 75);
-        if (lastDist > 65) { lastRX = 75 + ((lastRX - 75) * 65 / lastDist); lastRY = 75 + ((lastRY - 75) * 65 / lastDist); }
-        ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(lastRX, lastRY, 4, 0, 2*Math.PI); ctx.fill(); ctx.restore();
-    }
-
-    function clearRadar(ctx, color) {
-        if (!ctx) return; ctx.clearRect(0, 0, 150, 150); ctx.strokeStyle = color + "44"; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(75, 75, 30, 0, 2*Math.PI); ctx.stroke(); ctx.beginPath(); ctx.arc(75, 75, 60, 0, 2*Math.PI); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(75, 10); ctx.lineTo(75, 140); ctx.moveTo(10, 75); ctx.lineTo(140, 75); ctx.stroke(); 
-    }
-
-    function drawCenterGrid(ctx, canvas) { ctx.save(); ctx.strokeStyle="rgba(255,255,255,0.4)"; ctx.lineWidth=5; ctx.beginPath(); ctx.moveTo(canvas.width/2,0); ctx.lineTo(canvas.width/2,canvas.height); ctx.stroke(); ctx.restore(); }
-
-    function drawCrosshair(ctx, kp, canvas) {
-        if(!kp) return; ctx.save(); ctx.strokeStyle = "rgba(0, 191, 255, 0.7)"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
-        ctx.beginPath(); ctx.moveTo(0, kp.y); ctx.lineTo(canvas.width, kp.y); ctx.moveTo(kp.x, 0); ctx.lineTo(kp.x, canvas.height); ctx.stroke();
-        ctx.beginPath(); ctx.arc(kp.x, kp.y, 14, 0, 2*Math.PI); ctx.strokeStyle = "#00bfff"; ctx.lineWidth = 3; ctx.setLineDash([]); ctx.stroke();
-        ctx.fillStyle = "rgba(0, 191, 255, 0.3)"; ctx.fill(); ctx.restore();
     }
 
     function runReviewLogic(ctx, getK, canvas) {
@@ -925,7 +931,7 @@
     }
     window.addEventListener('load', init); 
 
-    // 🌟 V76 安定版：カメラ再起動・フリーズ回避（currentStream解決・横長固定）
+    // 🌟 V76 安定版：カメラ再起動・フリーズ回避
     startBtn.onclick = async function() {
         renderSessionId++; var cur = renderSessionId;
         var vs = document.getElementById('videoSource').value;
@@ -974,6 +980,8 @@
             drawOHSSideAnalysis(ctxMP, kps);
             drawKendallAlignment(ctxMP, kps);
             calculateWeightBearing(ctxMP, kps);
+            runReviewLogic(ctxMP, (n) => kps.find(k => k.name === n), canvasMP);
+            updateRadar(kps, canvasMP);
         }
         ctxComb.drawImage(canvasMP, 0, 0, canvasMP.width, canvasMP.height);
         requestAnimationFrame(() => render(sid));
