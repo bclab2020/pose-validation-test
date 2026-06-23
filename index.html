@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CONNECT AI - Academic Master V76 (iOS Stable Edition)</title>
+    <title>CONNECT AI - Academic Master V76 (Stable Base Complete)</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
@@ -12,7 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 
     <style>
-        body { margin: 0; font-family: 'Noto Sans JP', sans-serif; background: #000; color: white; overflow: hidden; }
+        body { margin: 0; font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif; background: #000; color: white; overflow: hidden; }
         
         .view-port { position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; z-index: 1; display: flex; align-items: center; justify-content: center; background: #050505; }
         canvas { width: 100%; height: 100%; object-fit: contain; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -89,7 +89,7 @@
         .dash-metric .val { font-weight: bold; color: #fff; font-size: 16px; }
         .dash-metric .val.warn { color: #ff5252; }
         .dash-metric .val.good { color: #39ff14; }
-        .dash-close, .dash-print { background: #333; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px; transition: 0.2s; border:none;}
+        .dash-close, .dash-print { background: #333; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 15px; transition: 0.2s; border:none; }
         .dash-print { background: #ff9100; color: #000; margin-right: 10px; }
         .dash-close:hover { background: #555; }
         .dash-print:hover { filter: brightness(1.1); }
@@ -129,7 +129,7 @@
 
 <div class="view-port">
     <canvas id="canvasMP"></canvas>
-    <div class="label">CONNECT AI - V76 iOS Stable Base</div>
+    <div class="label">CONNECT AI - V76 iOS Stable Base Complete</div>
     <div class="info-panel" id="infoPanel">スケール未校正<br>骨盤傾斜: 0°</div>
     <div id="timerDisplay" class="timer-display">REC 10.0s</div>
     <div id="radarWrapperMP" class="radar-wrapper">
@@ -205,6 +205,12 @@
                 <span style="color:#aaa; font-size:12px;">身長</span>
                 <input type="number" id="patientHeight" value="170" style="width:40px; background:transparent; color:#00bfff; border:none; border-bottom:1px solid #444;">
             </div>
+
+            <div style="display:flex; gap:5px; background:rgba(0,0,0,0.5); padding:4px 10px; border-radius:6px; border:1px solid #555;">
+                <span style="color:#aaa; font-size:12px;">足ｻｲｽﾞ</span>
+                <input type="number" id="footSize" value="25" style="width:35px; background:transparent; color:#00bfff; border:none; border-bottom:1px solid #444;">
+                <span style="color:#aaa; font-size:12px;">cm</span>
+            </div>
             
             <button id="calibrateMatBtn">📏 マット校正</button>
 
@@ -244,7 +250,7 @@
 <video id="video" autoplay playsinline muted></video>
 
 <script>
-    // --- 1. グローバル定数と状態変数 ---
+    // --- 1. グローバル定数と状態変数 (V76仕様) ---
     var DURATION_MAP = { 
         'front': 10000, 'back': 5000, 'l_side': 5000, 'r_side': 5000, 
         'dyn_overhead': 15000, 'dyn_overhead_side': 15000, 
@@ -324,90 +330,62 @@
         document.getElementById('infoPanel').innerHTML = scaleText + "<br>骨盤傾斜: " + (estimatedPelvicTilt > 0 ? '+' : '') + estimatedPelvicTilt + "°";
     }
 
-    function drawCenterGrid(ctx, canvas) { 
-        ctx.save(); ctx.strokeStyle="rgba(255,255,255,0.4)"; ctx.lineWidth=5; 
-        ctx.beginPath(); ctx.moveTo(canvas.width/2,0); ctx.lineTo(canvas.width/2,canvas.height); ctx.stroke(); 
-        ctx.restore(); 
-    }
+    document.getElementById('toggleUiBtn').onclick = () => { document.getElementById('controlsBox').style.display = document.getElementById('controlsBox').style.display === 'none' ? 'flex' : 'none'; };
+    document.getElementById('showHistoryBtn').onclick = async () => { 
+        var p = document.getElementById('historyPanel');
+        if(p.style.display === 'flex') p.style.display = 'none'; else { await window.refreshHistoryList(); p.style.display = 'flex'; }
+    };
+    document.getElementById('closeHistoryBtn').onclick = () => { document.getElementById('historyPanel').style.display = 'none'; };
 
-    function drawCrosshair(ctx, kp, canvas) {
-        if(!kp) return; ctx.save(); ctx.strokeStyle = "rgba(0, 191, 255, 0.7)"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
-        ctx.beginPath(); ctx.moveTo(0, kp.y); ctx.lineTo(canvas.width, kp.y); ctx.moveTo(kp.x, 0); ctx.lineTo(kp.x, canvas.height); ctx.stroke();
-        ctx.beginPath(); ctx.arc(kp.x, kp.y, 14, 0, 2*Math.PI); ctx.strokeStyle = "#00bfff"; ctx.lineWidth = 3; ctx.setLineDash([]); ctx.stroke();
-        ctx.fillStyle = "rgba(0, 191, 255, 0.3)"; ctx.fill(); ctx.restore();
-    }
+    document.getElementById('videoSource').onchange = () => { if (isRunning && !isRecording && appMode === 'camera') startBtn.click(); };
 
-    function clearRadar(ctx, color) {
-        if (!ctx) return; ctx.clearRect(0, 0, 150, 150); ctx.strokeStyle = color + "44"; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(75, 75, 30, 0, 2*Math.PI); ctx.stroke(); ctx.beginPath(); ctx.arc(75, 75, 60, 0, 2*Math.PI); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(75, 10); ctx.lineTo(75, 140); ctx.moveTo(10, 75); ctx.lineTo(140, 75); ctx.stroke(); 
-    }
+    var calibrateMatBtn = document.getElementById('calibrateMatBtn');
+    calibrateMatBtn.onclick = function() {
+        if (calibState === "idle") { calibState = "wait_left"; calibrationPoints = []; calibrateMatBtn.classList.add('active'); calibrateMatBtn.innerText = "📍 左タップ"; } 
+        else if (calibState === "adjust_left") { calibState = "wait_right"; calibrateMatBtn.innerText = "📍 右タップ"; } 
+        else if (calibState === "adjust_right") {
+            var distPx = Math.hypot(calibrationPoints[1].x - calibrationPoints[0].x, calibrationPoints[1].y - calibrationPoints[0].y);
+            if(distPx > 10) pxToCmRatio = 45.0 / distPx; calibState = "idle"; calibrateMatBtn.classList.remove('active'); calibrateMatBtn.innerText = "✅ 校正完了"; updateInfoPanel();
+            setTimeout(() => { if(calibState==="idle") calibrateMatBtn.innerText = "📏 マット校正"; }, 2000);
+        } else { calibState = "idle"; calibrationPoints = []; calibrateMatBtn.classList.remove('active'); calibrateMatBtn.innerText = "📏 マット校正"; }
+    };
 
-    function drawSpecificRadar(ctx, history, color) {
-        clearRadar(ctx, color); if (history.length < 2) return;
-        ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
-        history.forEach(function(pt, idx) { 
-            var rX = 75 + (pt.x * 0.5), rY = 75 + (pt.y * 0.5), dist = Math.hypot(rX - 75, rY - 75);
-            if (dist > 65) { rX = 75 + ((rX - 75) * 65 / dist); rY = 75 + ((rY - 75) * 65 / dist); }
-            if (idx === 0) ctx.moveTo(rX, rY); else ctx.lineTo(rX, rY); 
-        });
-        ctx.stroke(); var lastPt = history[history.length - 1]; var lastRX = 75 + (lastPt.x * 0.5), lastRY = 75 + (lastPt.y * 0.5), lastDist = Math.hypot(lastRX - 75, lastRY - 75);
-        if (lastDist > 65) { lastRX = 75 + ((lastRX - 75) * 65 / lastDist); lastRY = 75 + ((lastRY - 75) * 65 / lastDist); }
-        ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(lastRX, lastRY, 4, 0, 2*Math.PI); ctx.fill(); ctx.restore();
-    }
+    document.getElementById('pelvicTiltSlider').oninput = function(e) {
+        estimatedPelvicTilt = parseInt(e.target.value);
+        document.getElementById('tiltValDisplay').innerText = estimatedPelvicTilt === 0 ? "0°" : (estimatedPelvicTilt > 0 ? "+" + estimatedPelvicTilt + "° (前傾)" : estimatedPelvicTilt + "° (後傾)");
+        updateInfoPanel();
+    };
 
-    function drawPlaybackRadar(dataArray, currentFrameIdx, canvas) {
-        clearRadar(ctxRadarMP, "#ff5252"); var history = [], baseHDist = null;
-        for (var i = 0; i <= currentFrameIdx; i++) {
-            var frameData = dataArray[i]; if (!frameData) continue; var kps = frameData.keypoints, nose = kps.find(k => k.name === 'nose');
-            var originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2, originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
-            if (nose) {
-                var copX = nose.x - originX, hDist = originY - nose.y; if (baseHDist === null) baseHDist = hDist; var copY = baseHDist - hDist;
-                if (currentTab.includes("side") || currentTab.includes("overhead_side")) { var shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (shoulder) copX = nose.x - shoulder.x; }
-                history.push({ x: copX, y: copY });
-            }
+    document.getElementById('dpadStep').onclick = function(e) { dpadStepVal = dpadStepVal === 1 ? 5 : 1; e.target.innerText = dpadStepVal + 'px'; };
+    var moveJoint = function(dx, dy) {
+        if (calibState === "adjust_left" && calibrationPoints[0]) { calibrationPoints[0].x += dx; calibrationPoints[0].y += dy; } 
+        else if (calibState === "adjust_right" && calibrationPoints[1]) { calibrationPoints[1].x += dx; calibrationPoints[1].y += dy; } 
+        else if (selectedJointIndex !== null) {
+            var kp = null; if(appMode === 'playback' && isEditingPlaybackFrame) { var fIdx = parseInt(document.getElementById('timelineSlider').value); if(playbackDataMP[fIdx]) kp = playbackDataMP[fIdx].keypoints[selectedJointIndex]; } 
+            else if (isPausedForEdit) { kp = window.reportDataStore[currentTab][selectedJointIndex]; } if(kp) { kp.x += dx; kp.y += dy; }
         }
-        if (history.length > 0) drawSpecificRadar(ctxRadarMP, history, "#ff5252");
-    }
+        if(appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); else if (isPausedForEdit) refreshReportView();
+    };
+    document.getElementById('dpadUp').onclick = function() { moveJoint(0, -dpadStepVal); }; 
+    document.getElementById('dpadDown').onclick = function() { moveJoint(0, dpadStepVal); };
+    document.getElementById('dpadLeft').onclick = function() { moveJoint(-dpadStepVal, 0); }; 
+    document.getElementById('dpadRight').onclick = function() { moveJoint(dpadStepVal, 0); };
+    
+    var closeDpad = function() { 
+        if (calibState === "adjust_left") { calibState = "wait_left"; calibrateMatBtn.innerText = "📍 左端をタップ"; calibrationPoints=[]; document.getElementById('dpadPanel').style.display = 'none'; if(isPausedForEdit) refreshReportView(); return; }
+        if (calibState === "adjust_right") { calibState = "wait_right"; calibrateMatBtn.innerText = "📍 右端をタップ"; calibrationPoints.pop(); document.getElementById('dpadPanel').style.display = 'none'; if(isPausedForEdit) refreshReportView(); return; }
+        selectedJointIndex = null; document.getElementById('dpadPanel').style.display = 'none'; if(appMode === 'playback') renderPlaybackFrame(parseInt(document.getElementById('timelineSlider').value)); else if(isPausedForEdit) refreshReportView(); 
+    };
+    document.getElementById('dpadClose').onclick = closeDpad;
 
-    function updateRadar(kps, canvas) {
-        var history = swayHistoryMP; var nose = kps.find(k => k.name === 'nose');
-        var originX = window.currentAnchorPos ? window.currentAnchorPos.x : canvas.width/2, originY = window.currentAnchorPos ? window.currentAnchorPos.y : canvas.height;
-        if (nose) {
-            var copX = nose.x - originX, hDist = originY - nose.y; if (history.length === 0 || history.baseHDist === undefined) history.baseHDist = hDist;
-            var copY = history.baseHDist - hDist;
-            if (currentTab.includes("side") || currentTab.includes("overhead_side")) { var shoulder = kps.find(k => k.name === 'left_shoulder') || kps.find(k => k.name === 'right_shoulder'); if (shoulder) copX = nose.x - shoulder.x; }
-            history.push({ x: copX, y: copY }); if (history.length > 150) history.shift(); drawSpecificRadar(ctxRadarMP, history, "#ff5252");
-        }
-    }
+    document.getElementById('editFrameBtn').onclick = function() {
+        if(!isEditingPlaybackFrame) { togglePlay(false); isEditingPlaybackFrame = true; this.innerText = "✅ 編集完了"; this.style.background = "#39ff14"; } 
+        else { isEditingPlaybackFrame = false; this.innerText = "✂️ 微調整"; this.style.background = "#ff9100"; closeDpad(); }
+    };
 
-    function getEventPos(canvas, e) {
-        var rect = canvas.getBoundingClientRect(); var clientX, clientY;
-        if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; } else if (e.changedTouches && e.changedTouches.length > 0) { clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY; } else { clientX = e.clientX; clientY = e.clientY; }
-        if (clientX === undefined) return null;
-        var videoRatio = canvas.width / canvas.height, containerRatio = rect.width / rect.height; var renderWidth, renderHeight, offsetX, offsetY;
-        if (containerRatio > videoRatio) { renderHeight = rect.height; renderWidth = rect.height * videoRatio; offsetX = (rect.width - renderWidth) / 2; offsetY = 0; } else { renderWidth = rect.width; renderHeight = rect.width / videoRatio; offsetX = 0; offsetY = (rect.height - renderHeight) / 2; }
-        var scaleX = canvas.width / renderWidth, scaleY = canvas.height / renderHeight; return { x: (clientX - rect.left - offsetX) * scaleX, y: (clientY - rect.top - offsetY) * scaleY, renderScale: scaleX };
-    }
-
-    function refreshReportView() {
-        if(appMode === 'playback') return; var w = video.videoWidth, h = video.videoHeight;
-        if (isPausedForEdit && staticBackgroundData) { ctxMP.drawImage(staticBackgroundData, 0, 0, w, h); } else { ctxMP.drawImage(video, 0, 0, w, h); }
-        drawCenterGrid(ctxMP, canvasMP);
-
-        if (calibState !== "idle") {
-            ctxMP.fillStyle = "#ffeb3b";
-            if (calibrationPoints[0]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[0].x, calibrationPoints[0].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_left") drawCrosshair(ctxMP, calibrationPoints[0], canvasMP); }
-            if (calibrationPoints[1]) { ctxMP.beginPath(); ctxMP.arc(calibrationPoints[1].x, calibrationPoints[1].y, 8, 0, 2*Math.PI); ctxMP.fill(); if(calibState==="adjust_right") drawCrosshair(ctxMP, calibrationPoints[1], canvasMP); }
-        }
-
-        if (window.reportDataStore[currentTab]) {
-            var kps = window.reportDataStore[currentTab]; drawSkeleton(ctxMP, kps, '#ff5252'); 
-            drawKendallAlignment(ctxMP, kps); calculateWeightBearing(ctxMP, kps); 
-            runReviewLogic(ctxMP, (n) => kps.find(k => k.name === n), canvasMP);
-            if (selectedJointIndex !== null) drawCrosshair(ctxMP, kps[selectedJointIndex], canvasMP); 
-        } ctxComb.drawImage(canvasMP, 0, 0, w, h);
-    }
+    document.getElementById('playPauseBtn').onclick = function() { togglePlay(); }; 
+    document.getElementById('backToCamBtn').onclick = function() { exitPlaybackMode(); };
+    document.getElementById('timelineSlider').oninput = function() { togglePlay(false); var fIdx = parseInt(document.getElementById('timelineSlider').value); renderPlaybackFrame(fIdx); };
 
     // --- 4. 解析＆描画モジュール (V76仕様) ---
     function generateVirtualASIS(kps) {
@@ -678,11 +656,10 @@
         if(s) { poseDataLog = s.poseData; currentTab = s.mode; document.getElementById('modeSelect').value = s.mode; document.getElementById('historyPanel').style.display='none'; enterPlaybackMode(); }
     };
 
-    // 🌟 V82修正：iPhone（iOS）向けのアクセス許可＆デバイス解放機構
+    // 🌟 iPhone（iOS）向けのアクセス許可＆デバイス解放機構
     async function init() {
         try { await dbManager.init(); } catch(e) { console.error("DB Init Error:", e); }
         try {
-            // iOS対応：最初に仮のアクセスを求め、背面等のカメララベルと識別IDをご自身のiPhoneから強制解放させる
             try {
                 var streamPermission = await navigator.mediaDevices.getUserMedia({ video: true });
                 streamPermission.getTracks().forEach(t => t.stop());
@@ -712,7 +689,7 @@
     }
     window.addEventListener('load', init); 
 
-    // 🌟 V82修正：アウトカメラ優先＆理想値（ideal）指定による過剰制約フリーズ回避
+    // アウトカメラ優先＆理想値指定による過剰制約フリーズ回避
     startBtn.onclick = async function() {
         renderSessionId++; var cur = renderSessionId;
         var vs = document.getElementById('videoSource').value;
@@ -721,7 +698,7 @@
             video: { 
                 width: { ideal: 1920 }, 
                 height: { ideal: 1080 },
-                facingMode: { ideal: "environment" } // デフォルトで背面を理想とする
+                facingMode: { ideal: "environment" } 
             } 
         };
         if (vs) {
@@ -754,7 +731,7 @@
 
     function startVideoStream(stream, cur) {
         video.srcObject = stream; 
-        currentStream = stream;
+        currentStream = stream; 
         video.onloadeddata = function() {
             canvasMP.width = video.videoWidth; canvasMP.height = video.videoHeight;
             canvasComb.width = video.videoWidth; canvasComb.height = video.videoHeight;
@@ -765,6 +742,13 @@
 
     async function render(sid) {
         if (sid !== renderSessionId || !isRunning || appMode === "playback") return;
+        
+        // 🌟 iOS/Safari 競合フリーズ防止安全ガード
+        if (video.readyState < 2) {
+            requestAnimationFrame(() => render(sid));
+            return;
+        }
+
         ctxMP.drawImage(video, 0, 0, canvasMP.width, canvasMP.height);
         var poses = await detectors[0].estimatePoses(video);
         if (poses.length > 0) {
@@ -835,6 +819,7 @@
         if(!hasOther) html += '<p style="color:#aaa; text-align:center; padding: 20px 0;">未測定</p>';
         html += '</div>';
 
+        // 安定版 APIキー入力UI
         html += `<div class="dash-card" id="aiEvalCard" style="grid-column: 1 / -1;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 20px;">
                 <h3 style="margin:0; border:none; padding:0; color:#00bfff;">🧠 AI 臨床評価 (LLM Insight)</h3>
@@ -848,6 +833,62 @@
             </div>
         </div>`;
         grid.innerHTML = html; document.getElementById('dashboardOverlay').style.display = 'block';
+    }
+
+    // AI評価データ抽出 (V76仕様)
+    function getWeightBearingData(kps) {
+        var getK = name => kps.find(k => k.name === name);
+        var lAnkle = getK('left_ankle'), rAnkle = getK('right_ankle'); if (!lAnkle || !rAnkle) return null;
+        var nose = getK('nose'), lSh = getK('left_shoulder'), rSh = getK('right_shoulder'), lHip = getK('left_hip'), rHip = getK('right_hip');
+        if (!nose || !lSh || !rSh || !lHip || !rHip) return null;
+        var dPx = rAnkle.x - lAnkle.x; if (Math.abs(dPx) < 10) return null;
+        var upperComX = (nose.x * 0.20) + (((lSh.x + rSh.x) / 2) * 0.80);
+        var lowerComX = (lHip.x + rHip.x) / 2;
+        var totalComX = (upperComX * 0.6) + (lowerComX * 0.4);
+        var calcRatio = (comX) => { var pctR = ((comX - lAnkle.x) / dPx) * 100, pctL = 100 - pctR; if(pctR < 0) { pctR = 0; pctL = 100; } if(pctR > 100) { pctR = 100; pctL = 0; } return { L: pctL, R: pctR }; };
+        return { upper: calcRatio(upperComX), lower: calcRatio(lowerComX), total: calcRatio(totalComX) };
+    }
+    function getPelvicDiff(kps) { var asisL = kps.find(k=>k.name==='virtual_asis_l'), asisR = kps.find(k=>k.name==='virtual_asis_r'); if(asisL && asisR && pxToCmRatio) return Math.abs(asisL.y - asisR.y) * pxToCmRatio; return null; }
+    function getKendallStressData(kps, isLeft) {
+        var getK = name => kps.find(k => k.name === name);
+        var dir = isLeft ? -1 : 1;
+        var ear = isLeft ? getK('left_ear') : getK('right_ear'), sh = isLeft ? getK('left_shoulder') : getK('right_shoulder'), hip = isLeft ? getK('left_hip') : getK('right_hip'), ankle = isLeft ? getK('left_ankle') : getK('right_ankle');
+        var targetAnkle = ankle && ankle.score > 0.1 ? ankle : null; if (!targetAnkle) { var heel = isLeft ? getK('left_heel') : getK('right_heel'); if (heel && heel.score > 0.1) targetAnkle = heel; }
+        if (!ear || !sh || !hip || !targetAnkle) return null;
+        var ratio = pxToCmRatio || 0.15, footCm = parseFloat(document.getElementById('footSize').value) || 25, plumbX = targetAnkle.x + (dir * ((footCm * 0.15) / ratio));
+        var c2 = { x: ear.x - (dir * (1.0 / ratio)), name: "C2 (頸椎)", d0: 1.5 };
+        var th3 = { x: sh.x, name: "Th3 (胸椎)", d0: 1.0 };
+        var tiltRad = estimatedPelvicTilt * (Math.PI / 180);
+        var s2X = hip.x - (dir * ((3.0/ratio) * Math.cos(tiltRad) - (2.0/ratio) * Math.sin(tiltRad)));
+        var s2 = { x: s2X, name: "S2 (仙骨)", d0: 1.0 };
+        var l3X = s2.x + (dir * ((3.0 + (estimatedPelvicTilt * 0.1)) / ratio));
+        var l3 = { x: l3X, name: "L3 (腰椎)", d0: 2.0 };
+        var straightTh11X = l3.x + (th3.x - l3.x) * ((l3.y - (s2.y - ((s2.y - sh.y) * 0.6))) / (l3.y - th3.y));
+        var th11X = straightTh11X - (dir * ((1.5 + (estimatedPelvicTilt * 0.05)) / ratio));
+        var th11 = { x: th11X, name: "Th11 (胸腰)", d0: 1.0 };
+        return [c2, th3, th11, l3, s2].map(pt => { var devCm = (pt.x - plumbX) * ratio * dir; var stressPct = ((pt.d0 + Math.max(0, devCm)) / pt.d0) * 100; if (devCm < -pt.d0) stressPct = Math.abs((pt.d0 + devCm)/pt.d0) * 100; return { name: pt.name, dev: devCm, pct: stressPct }; });
+    }
+    function getOHSFrontData(kps) {
+        var getK = name => kps.find(k => k.name === name);
+        const evalSide = (h, k, a, label) => {
+            if(!h||!k||!a) return null; var refX = h.x + (a.x - h.x) * ((k.y - h.y) / (a.y - h.y));
+            var angle = Math.abs(180 - Math.abs(Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI);
+            if(angle > 2.0) { var isIn = label==='R' ? k.x > refX : k.x < refX; return { warn: isIn, text: (isIn?"ニーイン ":"ニーアウト ") + angle.toFixed(1)+"°" }; }
+            return { warn: false, text: "正常 (Straight)" };
+        };
+        return { r: evalSide(getK('right_hip'),getK('right_knee'),getK('right_ankle'),'R'), l: evalSide(getK('left_hip'),getK('left_knee'),getK('left_ankle'),'L') };
+    }
+    function getOHSSideData(kps) {
+        var getK = name => kps.find(k => k.name === name);
+        var lS = getK('left_shoulder'), lH = getK('left_hip'), lK = getK('left_knee'), lA = getK('left_ankle'), lW = getK('left_wrist');
+        var rS = getK('right_shoulder'), rH = getK('right_hip'), rK = getK('right_knee'), rA = getK('right_ankle'), rW = getK('right_wrist');
+        var isLeft = (lS && rS && lS.score > rS.score);
+        var s = isLeft?lS:rS, h = isLeft?lH:rH, k = isLeft?lK:rK, a = isLeft?lA:rA, w = isLeft?lW:rW;
+        if (!s || !h || !k || !a) return null;
+        var trunkLean = Math.abs(Math.atan2(s.x - h.x, h.y - s.y) * 180 / Math.PI);
+        var kneeAng = Math.abs((Math.atan2(a.y-k.y, a.x-k.x) - Math.atan2(h.y-k.y, h.x-k.x)) * 180 / Math.PI); if(kneeAng > 180) kneeAng = 360 - kneeAng;
+        var armAng = w ? Math.abs((Math.atan2(w.y-s.y, w.x-s.x) - Math.atan2(h.y-s.y, h.x-s.x)) * 180 / Math.PI) : null; if(armAng && armAng > 180) armAng = 360 - armAng;
+        return { trunk: trunkLean, knee: kneeAng, arm: armAng };
     }
 
     window.generateAiInsights = async function() {
